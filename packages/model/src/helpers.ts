@@ -54,3 +54,30 @@ export function addObject(lesson: Lesson, pageId: string, object: LessonObject):
     updatedAt: new Date().toISOString(),
   };
 }
+
+export function updateObject(
+  lesson: Lesson,
+  pageId: string,
+  objectId: string,
+  object: LessonObject,
+): Lesson {
+  return {
+    ...lesson,
+    pages: lesson.pages.map((p) =>
+      p.id === pageId
+        ? { ...p, objects: p.objects.map((o) => (o.id === objectId ? object : o)) }
+        : p,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function removeObject(lesson: Lesson, pageId: string, objectId: string): Lesson {
+  return {
+    ...lesson,
+    pages: lesson.pages.map((p) =>
+      p.id === pageId ? { ...p, objects: p.objects.filter((o) => o.id !== objectId) } : p,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}

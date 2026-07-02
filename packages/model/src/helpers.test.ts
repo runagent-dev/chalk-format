@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { addObject, addPage, createLesson, generateId } from './helpers.js';
+import {
+  addObject,
+  addPage,
+  createLesson,
+  generateId,
+  removeObject,
+  updateObject,
+} from './helpers.js';
 import type { RectObject } from './lesson.js';
 
 describe('generateId', () => {
@@ -79,5 +86,66 @@ describe('addObject', () => {
     const lesson = createLesson();
     const updated = addObject(lesson, 'nope', rect);
     expect(updated.pages[0]!.objects).toEqual([]);
+  });
+});
+
+describe('updateObject', () => {
+  const rect: RectObject = {
+    id: 'r1',
+    type: 'rect',
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    fill: '#000',
+    stroke: '#000',
+    strokeWidth: 1,
+  };
+
+  it('replaces the object with matching id on the given page', () => {
+    const l1 = createLesson();
+    const pageId = l1.pages[0]!.id;
+    const l2 = addObject(l1, pageId, rect);
+    const updated: RectObject = { ...rect, x: 42 };
+    const l3 = updateObject(l2, pageId, rect.id, updated);
+    expect(l3.pages[0]!.objects).toEqual([updated]);
+  });
+
+  it('is a no-op when objectId does not match', () => {
+    const l1 = createLesson();
+    const pageId = l1.pages[0]!.id;
+    const l2 = addObject(l1, pageId, rect);
+    const l3 = updateObject(l2, pageId, 'nope', { ...rect, x: 999 });
+    expect(l3.pages[0]!.objects).toEqual([rect]);
+  });
+});
+
+describe('removeObject', () => {
+  const rect: RectObject = {
+    id: 'r1',
+    type: 'rect',
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    fill: '#000',
+    stroke: '#000',
+    strokeWidth: 1,
+  };
+
+  it('removes the object with matching id from the given page', () => {
+    const l1 = createLesson();
+    const pageId = l1.pages[0]!.id;
+    const l2 = addObject(l1, pageId, rect);
+    const l3 = removeObject(l2, pageId, rect.id);
+    expect(l3.pages[0]!.objects).toEqual([]);
+  });
+
+  it('is a no-op when objectId does not match', () => {
+    const l1 = createLesson();
+    const pageId = l1.pages[0]!.id;
+    const l2 = addObject(l1, pageId, rect);
+    const l3 = removeObject(l2, pageId, 'nope');
+    expect(l3.pages[0]!.objects).toEqual([rect]);
   });
 });
