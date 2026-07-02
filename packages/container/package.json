@@ -1,0 +1,24 @@
+{
+  "name": "@chalkbook/format",
+  "version": "0.0.0",
+  "description": ".chalk ZIP package format: pack, unpack, validate.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "echo 'no build for source-exported package'"
+  },
+  "dependencies": {
+    "@chalkbook/core": "workspace:*",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}

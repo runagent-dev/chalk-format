@@ -1,0 +1,16 @@
+{
+  "name": "@chalkbook/pdf-engine",
+  "version": "0.0.0",
+  "description": "PDF.js wrappers, page rendering, and PDF-page-to-lesson-page mapping (Sprint 4).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "echo 'placeholder'"
+  }
+}
