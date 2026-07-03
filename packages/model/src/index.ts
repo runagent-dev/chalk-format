@@ -1,3 +1,4 @@
 export * from './lesson.js';
 export * from './helpers.js';
 export * from './hit-test.js';
+export * from './hash.js';
