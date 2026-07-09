@@ -39,7 +39,27 @@ export type LessonPage = {
   title: string;
   background: PageBackground;
   objects: LessonObject[];
+  /**
+   * Logical page size. Every object coordinate lives in this space;
+   * the renderer maps it onto the physical stage with one transform,
+   * so annotations stay glued to the background across window sizes.
+   * Optional for lessons saved before the field existed — use
+   * `getPageSize` instead of reading these directly.
+   */
+  width?: number;
+  height?: number;
 };
+
+/** Default logical board size (16:9) for pages without explicit dims. */
+export const DEFAULT_PAGE_WIDTH = 1600;
+export const DEFAULT_PAGE_HEIGHT = 900;
+
+export function getPageSize(page: LessonPage): { width: number; height: number } {
+  return {
+    width: page.width ?? DEFAULT_PAGE_WIDTH,
+    height: page.height ?? DEFAULT_PAGE_HEIGHT,
+  };
+}
 
 export type Lesson = {
   id: string;
