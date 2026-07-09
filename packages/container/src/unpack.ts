@@ -5,28 +5,85 @@ import type { AssetBundle, AssetPayload } from './pack.js';
 
 export type UnpackInput = Uint8Array | ArrayBuffer | Blob;
 
+/**
+ * Safety limits applied while reading a `.chalk` package. Both guards
+ * exist because a lesson file may come from an untrusted source: a
+ * crafted ZIP with a huge central directory or highly-compressed
+ * entries would otherwise DoS the importing browser tab.
+ */
+export interface UnpackLimits {
+  /** Maximum number of ZIP entries. Default 10_000. */
+  maxEntries?: number;
+  /**
+   * Maximum cumulative bytes inflated while reading manifest, pages,
+   * and declared assets. Default 512 MiB.
+   */
+  maxTotalBytes?: number;
+}
+
+export const DEFAULT_MAX_ENTRIES = 10_000;
+export const DEFAULT_MAX_TOTAL_BYTES = 512 * 1024 * 1024;
+
 export interface UnpackResult {
   lesson: Lesson;
   assets: AssetBundle;
+  /**
+   * Ids declared in the manifest whose bytes were not in the ZIP.
+   * Legal for thin bundles (a server-side AssetService supplies the
+   * bytes), but a standalone client should warn the user: pages
+   * referencing these assets will render without their backgrounds.
+   */
+  missingAssetIds: string[];
+}
+
+export function checkEntryCount(zip: JSZip, limits?: UnpackLimits): void {
+  const maxEntries = limits?.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  const count = Object.keys(zip.files).length;
+  if (count > maxEntries) {
+    throw new Error(`package has ${count} entries, exceeding the limit of ${maxEntries}`);
+  }
 }
 
 /**
- * Read a `.chalk` ZIP. Returns both the lesson model and any bundled
- * assets (fat-bundle mode). Assets referenced in the manifest but
- * missing from the ZIP are silently skipped — a thin bundle may
- * reference them by id only and rely on a server-side AssetService
- * to fetch bytes.
+ * Read a `.chalk` ZIP. Returns the lesson model, any bundled assets
+ * (fat-bundle mode), and the ids of manifest assets that had no bytes
+ * in the ZIP (thin bundles / damaged files) so callers can warn.
  */
-export async function unpackLesson(input: UnpackInput): Promise<UnpackResult> {
+export async function unpackLesson(
+  input: UnpackInput,
+  limits?: UnpackLimits,
+): Promise<UnpackResult> {
   const zip = await JSZip.loadAsync(input);
+  checkEntryCount(zip, limits);
+  const maxTotalBytes = limits?.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES;
+  let totalBytes = 0;
+  const countBytes = (n: number, path: string) => {
+    totalBytes += n;
+    if (totalBytes > maxTotalBytes) {
+      throw new Error(
+        `package exceeds the total-size limit of ${maxTotalBytes} bytes while reading ${path}`,
+      );
+    }
+  };
+
   const manifestFile = zip.file('manifest.json');
   if (!manifestFile) {
     throw new Error('missing manifest.json');
   }
 
-  const manifest = JSON.parse(await manifestFile.async('string')) as Manifest;
+  const manifestText = await manifestFile.async('string');
+  countBytes(manifestText.length, 'manifest.json');
+  const manifest = JSON.parse(manifestText) as Manifest;
   if (manifest.format !== CHALKBOOK_FORMAT) {
     throw new Error(`unexpected format: ${manifest.format}`);
+  }
+  if (
+    typeof manifest.metadata !== 'object' ||
+    manifest.metadata === null ||
+    typeof manifest.metadata.createdAt !== 'string' ||
+    typeof manifest.metadata.updatedAt !== 'string'
+  ) {
+    throw new Error('manifest is missing metadata (createdAt/updatedAt)');
   }
 
   const pages: LessonPage[] = [];
@@ -38,17 +95,28 @@ export async function unpackLesson(input: UnpackInput): Promise<UnpackResult> {
     if (!pageFile) {
       throw new Error(`missing page file: ${entry.file}`);
     }
-    pages.push(JSON.parse(await pageFile.async('string')) as LessonPage);
+    const pageText = await pageFile.async('string');
+    countBytes(pageText.length, entry.file);
+    try {
+      pages.push(JSON.parse(pageText) as LessonPage);
+    } catch (err) {
+      throw new Error(`invalid JSON in ${entry.file}: ${(err as Error).message}`);
+    }
   }
 
   const assets: AssetBundle = new Map();
+  const missingAssetIds: string[] = [];
   for (const entry of manifest.assets ?? []) {
     if (entry.path.includes('..')) {
       throw new Error(`unsafe path in manifest asset: ${entry.path}`);
     }
     const file = zip.file(entry.path);
-    if (!file) continue;
+    if (!file) {
+      missingAssetIds.push(entry.id);
+      continue;
+    }
     const bytes = await file.async('uint8array');
+    countBytes(bytes.length, entry.path);
     const payload: AssetPayload = { type: entry.type, bytes };
     assets.set(entry.id, payload);
   }
@@ -63,5 +131,6 @@ export async function unpackLesson(input: UnpackInput): Promise<UnpackResult> {
       updatedAt: manifest.metadata.updatedAt,
     },
     assets,
+    missingAssetIds,
   };
 }

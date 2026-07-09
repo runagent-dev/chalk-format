@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { CHALKBOOK_FORMAT } from './manifest.js';
-import type { UnpackInput } from './unpack.js';
+import { checkEntryCount, type UnpackInput, type UnpackLimits } from './unpack.js';
 
 export type ValidationSeverity = 'error' | 'warning';
 
@@ -14,7 +14,10 @@ export type ValidationResult = {
   issues: ValidationIssue[];
 };
 
-export async function validateLessonPackage(input: UnpackInput): Promise<ValidationResult> {
+export async function validateLessonPackage(
+  input: UnpackInput,
+  limits?: UnpackLimits,
+): Promise<ValidationResult> {
   const issues: ValidationIssue[] = [];
 
   let zip: JSZip;
@@ -24,6 +27,15 @@ export async function validateLessonPackage(input: UnpackInput): Promise<Validat
     return {
       ok: false,
       issues: [{ severity: 'error', message: `invalid zip: ${(err as Error).message}` }],
+    };
+  }
+
+  try {
+    checkEntryCount(zip, limits);
+  } catch (err) {
+    return {
+      ok: false,
+      issues: [{ severity: 'error', message: (err as Error).message }],
     };
   }
 
@@ -73,6 +85,47 @@ export async function validateLessonPackage(input: UnpackInput): Promise<Validat
       }
       if (!zip.file(p.file)) {
         issues.push({ severity: 'error', message: `page file missing: ${p.file}` });
+      }
+    }
+  }
+
+  const metadata = manifest.metadata;
+  if (
+    !isRecord(metadata) ||
+    typeof metadata.createdAt !== 'string' ||
+    typeof metadata.updatedAt !== 'string'
+  ) {
+    issues.push({
+      severity: 'error',
+      message: 'manifest.metadata must be an object with createdAt/updatedAt strings',
+    });
+  }
+
+  const assets = manifest.assets;
+  if (assets !== undefined) {
+    if (!Array.isArray(assets)) {
+      issues.push({ severity: 'error', message: 'manifest.assets must be an array' });
+    } else {
+      const seenPaths = new Set<string>();
+      for (const a of assets) {
+        if (!isRecord(a) || typeof a.id !== 'string' || typeof a.path !== 'string') {
+          issues.push({
+            severity: 'error',
+            message: `asset entry missing 'id'/'path': ${JSON.stringify(a)}`,
+          });
+          continue;
+        }
+        if (a.path.includes('..')) {
+          issues.push({ severity: 'error', message: `unsafe path in asset entry: ${a.path}` });
+          continue;
+        }
+        if (seenPaths.has(a.path)) {
+          issues.push({ severity: 'error', message: `duplicate asset path: ${a.path}` });
+        }
+        seenPaths.add(a.path);
+        if (!zip.file(a.path)) {
+          issues.push({ severity: 'error', message: `asset file missing: ${a.path}` });
+        }
       }
     }
   }

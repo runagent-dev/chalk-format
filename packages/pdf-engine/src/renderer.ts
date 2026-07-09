@@ -44,29 +44,35 @@ export async function renderPdfPage(
   const targetWidth = options.targetWidth ?? 1200;
 
   const page = await pdf.document.getPage(pageNumber);
-  const baseViewport = page.getViewport({ scale: 1 });
-  const scale = targetWidth / baseViewport.width;
-  const viewport = page.getViewport({ scale });
+  try {
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = targetWidth / baseViewport.width;
+    const viewport = page.getViewport({ scale });
 
-  const width = Math.ceil(viewport.width);
-  const height = Math.ceil(viewport.height);
+    const width = Math.ceil(viewport.width);
+    const height = Math.ceil(viewport.height);
 
-  const canvas = createCanvas(width, height);
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('failed to acquire 2D canvas context for PDF render');
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('failed to acquire 2D canvas context for PDF render');
+    }
+
+    // PDF.js's render signature varies across versions. Cast keeps us
+    // portable across a 4.x / 5.x bump without forking types.
+    await page.render({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      canvasContext: context,
+      viewport,
+    } as never).promise;
+
+    const bytes = await canvasToPng(canvas);
+    return { bytes, type: 'image/png', width, height, pageNumber };
+  } finally {
+    // Free per-page resources held on the main thread; the document
+    // itself is released by closePdf().
+    page.cleanup();
   }
-
-  // PDF.js's render signature varies across versions. Cast keeps us
-  // portable across a 4.x / 5.x bump without forking types.
-  await page.render({
-    canvas: canvas as unknown as HTMLCanvasElement,
-    canvasContext: context,
-    viewport,
-  } as never).promise;
-
-  const bytes = await canvasToPng(canvas);
-  return { bytes, type: 'image/png', width, height, pageNumber };
 }
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;

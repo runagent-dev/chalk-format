@@ -1,5 +1,5 @@
 export { configurePdfWorker, isPdfWorkerConfigured } from './worker.js';
-export { loadPdf, type PdfDocument } from './loader.js';
+export { loadPdf, closePdf, type PdfDocument } from './loader.js';
 export {
   renderPdfPage,
   type RenderedPage,

@@ -30,9 +30,19 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
 
   const assetEntries: ManifestAssetEntry[] = [];
   if (assets) {
+    const pathToId = new Map<string, string>();
     for (const [id, payload] of assets) {
       const safeName = safeAssetPath(id);
       const path = `assets/${safeName}`;
+      const previous = pathToId.get(path);
+      if (previous !== undefined) {
+        // Escaping is lossy ('a:b' and 'a_b' both become 'a_b'); writing
+        // both would silently return wrong bytes for one id on unpack.
+        throw new Error(
+          `asset ids collide after path escaping: '${previous}' and '${id}' both map to '${path}'`,
+        );
+      }
+      pathToId.set(path, id);
       zip.file(path, payload.bytes);
       assetEntries.push({ id, type: payload.type, path });
     }

@@ -30,3 +30,13 @@ export async function loadPdf(bytes: Uint8Array): Promise<PdfDocument> {
   const document = await task.promise;
   return { document, numPages: document.numPages };
 }
+
+/**
+ * Release the worker-side memory held by a loaded PDF. Callers must
+ * invoke this when they are done rendering (typically in a `finally`);
+ * otherwise every import leaks the fully parsed document in the PDF.js
+ * worker for the lifetime of the tab.
+ */
+export async function closePdf(pdf: PdfDocument): Promise<void> {
+  await pdf.document.destroy();
+}
