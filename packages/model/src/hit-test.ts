@@ -27,8 +27,14 @@ export function hitText(text: TextObject, x: number, y: number): boolean {
  * Ink hit-test: within `size/2 + tolerance` of any segment of the
  * polyline. Uses point-to-segment distance so drawing across a stroke
  * catches it even if no vertex is under the pointer.
+ *
+ * `points` are relative to the object's `x`/`y` offset (matching how
+ * Konva positions a Line), so the query point is shifted into the
+ * stroke's local space first.
  */
 export function hitInk(ink: InkObject, x: number, y: number, tolerance = 2): boolean {
+  x -= ink.x;
+  y -= ink.y;
   const threshold = ink.size / 2 + tolerance;
   const pts = ink.points;
   // Need at least two points to form a segment; a single-point stroke

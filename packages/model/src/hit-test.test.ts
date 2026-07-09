@@ -88,6 +88,17 @@ describe('hitInk', () => {
     const nothing: InkObject = { ...ink, points: [] };
     expect(hitInk(nothing, 0, 0)).toBe(false);
   });
+  it('honors the object x/y offset (points are relative to it)', () => {
+    // Same stroke translated by (200, 300): hit at translated location,
+    // miss at the untranslated one.
+    const moved: InkObject = { ...ink, x: 200, y: 300 };
+    expect(hitInk(moved, 250, 300)).toBe(true);
+    expect(hitInk(moved, 50, 0)).toBe(false);
+    // Single-point dot also honors the offset.
+    const dot: InkObject = { ...ink, x: 200, y: 300, points: [50, 50] };
+    expect(hitInk(dot, 251, 351)).toBe(true);
+    expect(hitInk(dot, 51, 51)).toBe(false);
+  });
 });
 
 describe('hitObject', () => {
