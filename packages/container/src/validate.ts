@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { lessonPageSchema } from '@chalkbook/core';
 import { CHALKBOOK_FORMAT } from './manifest.js';
 import { checkEntryCount, type UnpackInput, type UnpackLimits } from './unpack.js';
 
@@ -82,9 +83,31 @@ export async function validateLessonPackage(
       }
       if (p.file.includes('..')) {
         issues.push({ severity: 'error', message: `unsafe path in page entry: ${p.file}` });
+        continue;
       }
-      if (!zip.file(p.file)) {
+      const pageFile = zip.file(p.file);
+      if (!pageFile) {
         issues.push({ severity: 'error', message: `page file missing: ${p.file}` });
+        continue;
+      }
+      // Validate the page's content against the model schema, so what
+      // `validate` accepts is exactly what `unpack` can decode.
+      let pageData: unknown;
+      try {
+        pageData = JSON.parse(await pageFile.async('string'));
+      } catch {
+        issues.push({ severity: 'error', message: `page file is not valid JSON: ${p.file}` });
+        continue;
+      }
+      const parsed = lessonPageSchema.safeParse(pageData);
+      if (!parsed.success) {
+        const first = parsed.error.issues[0];
+        issues.push({
+          severity: 'error',
+          message: `page ${p.file} does not match the model: ${
+            first ? `${first.path.join('.') || '(root)'}: ${first.message}` : 'invalid'
+          }`,
+        });
       }
     }
   }

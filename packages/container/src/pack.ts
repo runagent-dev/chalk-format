@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Lesson } from '@chalkbook/core';
+import { CHALK_FORMAT_VERSION, validateLessonModel, type Lesson } from '@chalkbook/core';
 import {
   CHALKBOOK_FORMAT,
   CHALKBOOK_VERSION,
@@ -26,6 +26,14 @@ export interface AssetPayload {
  *                the manifest carries an empty asset list.
  */
 export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<Uint8Array> {
+  // Never emit an invalid document: validate the model against the same
+  // schema the decoder parses with, so anything packLesson accepts,
+  // unpackLesson accepts.
+  const validation = validateLessonModel(lesson);
+  if (!validation.ok) {
+    throw new Error(`cannot pack an invalid lesson: ${validation.issues.join('; ')}`);
+  }
+
   const zip = new JSZip();
 
   const assetEntries: ManifestAssetEntry[] = [];
@@ -51,6 +59,7 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
   const manifest: Manifest = {
     format: CHALKBOOK_FORMAT,
     version: CHALKBOOK_VERSION,
+    formatVersion: CHALK_FORMAT_VERSION,
     id: lesson.id,
     title: lesson.title,
     locale: lesson.locale,

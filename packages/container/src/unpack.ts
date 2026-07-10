@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Lesson, LessonPage } from '@chalkbook/core';
+import { migrateToLatest, parseLesson, type Lesson } from '@chalkbook/core';
 import { CHALKBOOK_FORMAT, type Manifest } from './manifest.js';
 import type { AssetBundle, AssetPayload } from './pack.js';
 
@@ -86,7 +86,7 @@ export async function unpackLesson(
     throw new Error('manifest is missing metadata (createdAt/updatedAt)');
   }
 
-  const pages: LessonPage[] = [];
+  const rawPages: unknown[] = [];
   for (const entry of manifest.pages) {
     if (entry.file.includes('..')) {
       throw new Error(`unsafe path in manifest: ${entry.file}`);
@@ -98,7 +98,7 @@ export async function unpackLesson(
     const pageText = await pageFile.async('string');
     countBytes(pageText.length, entry.file);
     try {
-      pages.push(JSON.parse(pageText) as LessonPage);
+      rawPages.push(JSON.parse(pageText));
     } catch (err) {
       throw new Error(`invalid JSON in ${entry.file}: ${(err as Error).message}`);
     }
@@ -121,16 +121,21 @@ export async function unpackLesson(
     assets.set(entry.id, payload);
   }
 
-  return {
-    lesson: {
-      id: manifest.id,
-      title: manifest.title,
-      locale: manifest.locale,
-      pages,
-      createdAt: manifest.metadata.createdAt,
-      updatedAt: manifest.metadata.updatedAt,
-    },
-    assets,
-    missingAssetIds,
+  // Assemble the raw document, upgrade it from its stored format version
+  // to the current one, then validate it through the schema. This
+  // replaces the old `as LessonPage` cast: a tampered or outdated file is
+  // rejected here rather than crashing later in the renderer.
+  const rawLesson = {
+    id: manifest.id,
+    title: manifest.title,
+    locale: manifest.locale,
+    pages: rawPages,
+    createdAt: manifest.metadata.createdAt,
+    updatedAt: manifest.metadata.updatedAt,
   };
+  const fromVersion =
+    typeof manifest.formatVersion === 'number' ? manifest.formatVersion : 1;
+  const lesson: Lesson = parseLesson(migrateToLatest(rawLesson, fromVersion));
+
+  return { lesson, assets, missingAssetIds };
 }

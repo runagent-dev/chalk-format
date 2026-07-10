@@ -16,6 +16,7 @@
     "build": "echo 'no build for source-exported package'"
   },
   "dependencies": {
+    "@chalkbook/core": "workspace:*",
     "pdfjs-dist": "^5.4.149"
   },
   "devDependencies": {

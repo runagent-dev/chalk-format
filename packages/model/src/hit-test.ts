@@ -1,13 +1,48 @@
-import type { InkObject, LessonObject, RectObject, TextObject } from './lesson.js';
+import type {
+  ArrowObject,
+  EllipseObject,
+  EmbedObject,
+  ImageObject,
+  InkObject,
+  LessonObject,
+  LineObject,
+  RectObject,
+  TextObject,
+} from './lesson.js';
+
+/** Point is inside an axis-aligned box defined by x/y/width/height. */
+function hitBox(
+  box: { x: number; y: number; width: number; height: number },
+  x: number,
+  y: number,
+): boolean {
+  return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+}
 
 /** Point is inside a rectangle's axis-aligned bounding box. */
 export function hitRect(rect: RectObject, x: number, y: number): boolean {
-  return (
-    x >= rect.x &&
-    x <= rect.x + rect.width &&
-    y >= rect.y &&
-    y <= rect.y + rect.height
-  );
+  return hitBox(rect, x, y);
+}
+
+/** Point is inside an image / embed placement box. */
+export function hitImage(image: ImageObject | EmbedObject, x: number, y: number): boolean {
+  return hitBox(image, x, y);
+}
+
+/** Point is inside the ellipse inscribed in the object's box. */
+export function hitEllipse(ell: EllipseObject, x: number, y: number): boolean {
+  const rx = ell.width / 2;
+  const ry = ell.height / 2;
+  if (rx <= 0 || ry <= 0) return false;
+  const dx = (x - (ell.x + rx)) / rx;
+  const dy = (y - (ell.y + ry)) / ry;
+  return dx * dx + dy * dy <= 1;
+}
+
+/** Point is within `strokeWidth/2 + tolerance` of a line/arrow segment. */
+export function hitSegment(seg: LineObject | ArrowObject, x: number, y: number, tolerance = 2): boolean {
+  const threshold = seg.strokeWidth / 2 + tolerance;
+  return distanceToSegment(x, y, seg.x, seg.y, seg.x2, seg.y2) <= threshold;
 }
 
 /**
@@ -84,6 +119,18 @@ export function hitObject(obj: LessonObject, x: number, y: number): boolean {
       return hitText(obj, x, y);
     case 'ink':
       return hitInk(obj, x, y);
+    case 'image':
+    case 'embed':
+      return hitImage(obj, x, y);
+    case 'ellipse':
+      return hitEllipse(obj, x, y);
+    case 'line':
+    case 'arrow':
+      return hitSegment(obj, x, y);
+    case 'vector':
+      // Render-only for now: a vector carries no bounds, so we can't
+      // hit-test it without parsing its path. Not selectable yet.
+      return false;
   }
 }
 
@@ -93,11 +140,10 @@ export function hitObject(obj: LessonObject, x: number, y: number): boolean {
  * be considered the top-most hit-test candidate.
  *
  *   ink                       → annotationLayer (rank 2)
- *   rect, text                → contentLayer     (rank 1)
+ *   everything else           → contentLayer     (rank 1)
  *
  * Kept here in @chalkbook/core so hit-test doesn't depend on
- * canvas-konva. When new object types (image, video, PDF background,
- * plugin widget) land, add them to this switch.
+ * canvas-konva. When new object types land, add them to this switch.
  */
 export function stackingRank(type: LessonObject['type']): number {
   switch (type) {
@@ -105,6 +151,12 @@ export function stackingRank(type: LessonObject['type']): number {
       return 2;
     case 'rect':
     case 'text':
+    case 'image':
+    case 'ellipse':
+    case 'line':
+    case 'arrow':
+    case 'vector':
+    case 'embed':
       return 1;
   }
 }

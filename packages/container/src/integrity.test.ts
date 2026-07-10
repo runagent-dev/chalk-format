@@ -10,6 +10,7 @@ function baseManifest(overrides: Partial<Manifest> = {}): Manifest {
   return {
     format: CHALKBOOK_FORMAT,
     version: CHALKBOOK_VERSION,
+    formatVersion: 1,
     id: 'lesson_1',
     title: 'T',
     locale: 'en',

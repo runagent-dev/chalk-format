@@ -101,6 +101,40 @@ describe('hitInk', () => {
   });
 });
 
+describe('hitObject — rich item types (v3)', () => {
+  it('hits an image within its box, misses outside', () => {
+    const image = { id: 'im', x: 10, y: 20, type: 'image' as const, assetId: 'a', width: 100, height: 50 };
+    expect(hitObject(image, 50, 40)).toBe(true);
+    expect(hitObject(image, 200, 40)).toBe(false);
+  });
+
+  it('hits an embed within its box', () => {
+    const embed = { id: 'v', x: 0, y: 0, type: 'embed' as const, embed: 'video' as const, width: 100, height: 100 };
+    expect(hitObject(embed, 50, 50)).toBe(true);
+    expect(hitObject(embed, 150, 50)).toBe(false);
+  });
+
+  it('hits an ellipse inside its radius, misses the box corner', () => {
+    // Ellipse centered at (50, 50), rx=50, ry=25.
+    const ell = { id: 'e', x: 0, y: 0, type: 'ellipse' as const, width: 100, height: 50, fill: '#f00', stroke: '#000', strokeWidth: 1 };
+    expect(hitObject(ell, 50, 50)).toBe(true); // center
+    expect(hitObject(ell, 2, 2)).toBe(false); // corner is outside the ellipse
+  });
+
+  it('hits near a line/arrow segment, misses far from it', () => {
+    const line = { id: 'l', x: 0, y: 0, type: 'line' as const, x2: 100, y2: 0, stroke: '#000', strokeWidth: 4 };
+    expect(hitObject(line, 50, 1)).toBe(true);
+    expect(hitObject(line, 50, 40)).toBe(false);
+    const arrow = { ...line, id: 'a', type: 'arrow' as const };
+    expect(hitObject(arrow, 50, 1)).toBe(true);
+  });
+
+  it('does not hit-test vector objects yet (render-only until they carry bounds)', () => {
+    const vec = { id: 'v', x: 0, y: 0, type: 'vector' as const, path: 'M0 0 L10 10' };
+    expect(hitObject(vec, 5, 5)).toBe(false);
+  });
+});
+
 describe('hitObject', () => {
   it('dispatches by object type', () => {
     expect(hitObject(rect, 50, 40)).toBe(true);

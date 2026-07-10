@@ -22,7 +22,14 @@ export type ManifestMetadata = {
 
 export type Manifest = {
   format: typeof CHALKBOOK_FORMAT;
+  /** Human-readable display version (semver-ish). */
   version: string;
+  /**
+   * Integer model version that drives migration on decode. Files written
+   * before this field existed are treated as version 1 (the model shape
+   * was identical), so it is backward compatible.
+   */
+  formatVersion: number;
   id: string;
   title: string;
   locale: string;

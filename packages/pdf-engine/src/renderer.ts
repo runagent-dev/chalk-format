@@ -1,9 +1,9 @@
 import type { PdfDocument } from './loader.js';
 
 export interface RenderedPage {
-  /** PNG bytes of the rendered page. */
+  /** Encoded image bytes of the rendered page. */
   bytes: Uint8Array;
-  /** MIME type — always `image/png` for now. */
+  /** MIME type of `bytes` — `image/webp` by default, `image/png` on request. */
   type: string;
   /** Rendered width in pixels. */
   width: number;
@@ -13,6 +13,8 @@ export interface RenderedPage {
   pageNumber: number;
 }
 
+export type RenderImageFormat = 'webp' | 'png';
+
 export interface RenderOptions {
   /**
    * Target width in pixels. Scaled from the PDF's natural viewport so
@@ -20,6 +22,29 @@ export interface RenderOptions {
    * Default 1200 — a compromise between quality and file size.
    */
   targetWidth?: number;
+  /**
+   * Output image codec. Defaults to `webp` — typically 5–10× smaller
+   * than PNG for textbook pages with no visible loss at reading zoom.
+   * Use `png` when lossless output is required.
+   */
+  format?: RenderImageFormat;
+  /** Lossy quality 0..1 (WebP only). Default 0.82. */
+  quality?: number;
+}
+
+const DEFAULT_QUALITY = 0.82;
+
+/** Resolve the encode target for a render, applying defaults and clamps. */
+export function resolveRenderFormat(options: RenderOptions): {
+  mime: string;
+  quality: number;
+} {
+  const format = options.format ?? 'webp';
+  const clamped = Math.max(0, Math.min(1, options.quality ?? DEFAULT_QUALITY));
+  return {
+    mime: format === 'png' ? 'image/png' : 'image/webp',
+    quality: clamped,
+  };
 }
 
 /**
@@ -66,8 +91,9 @@ export async function renderPdfPage(
       viewport,
     } as never).promise;
 
-    const bytes = await canvasToPng(canvas);
-    return { bytes, type: 'image/png', width, height, pageNumber };
+    const { mime, quality } = resolveRenderFormat(options);
+    const bytes = await canvasToImage(canvas, mime, quality);
+    return { bytes, type: mime, width, height, pageNumber };
   } finally {
     // Free per-page resources held on the main thread; the document
     // itself is released by closePdf().
@@ -87,13 +113,17 @@ function createCanvas(width: number, height: number): AnyCanvas {
   return c;
 }
 
-async function canvasToPng(canvas: AnyCanvas): Promise<Uint8Array> {
+async function canvasToImage(
+  canvas: AnyCanvas,
+  mime: string,
+  quality: number,
+): Promise<Uint8Array> {
   if (canvas instanceof OffscreenCanvas) {
-    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    const blob = await canvas.convertToBlob({ type: mime, quality });
     return new Uint8Array(await blob.arrayBuffer());
   }
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, 'image/png');
+    canvas.toBlob(resolve, mime, quality);
   });
   if (!blob) throw new Error('canvas.toBlob returned null');
   return new Uint8Array(await blob.arrayBuffer());
