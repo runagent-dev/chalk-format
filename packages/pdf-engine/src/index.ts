@@ -12,5 +12,11 @@ export {
   mapTextItemToRun,
   type PdfTextItem,
 } from './text-layer.js';
+export {
+  buildPdfLesson,
+  type RenderedPdfPage,
+  type StagedPdf,
+  type BuildPdfLessonOptions,
+} from './staging.js';
 
 export const PDF_ENGINE_VERSION = '0.1.0';

@@ -1,0 +1,27 @@
+{
+  "name": "@chalkbook/pdf-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "chalkbook-pdf": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@chalkbook/core": "workspace:*",
+    "@chalkbook/format": "workspace:*",
+    "@chalkbook/pdf-engine": "workspace:*",
+    "@napi-rs/canvas": "^1.0.2",
+    "pdfjs-dist": "^5.7.284"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.8"
+  }
+}
