@@ -18,3 +18,4 @@ export {
   type LessonValidation,
 } from './schema.js';
 export { migrateToLatest, MIGRATIONS, type Migration } from './migrate.js';
+export { referencedAssetIds } from './assets.js';

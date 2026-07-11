@@ -40,8 +40,7 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
   if (assets) {
     const pathToId = new Map<string, string>();
     for (const [id, payload] of assets) {
-      const safeName = safeAssetPath(id);
-      const path = `assets/${safeName}`;
+      const path = assetStorageKey(id);
       const previous = pathToId.get(path);
       if (previous !== undefined) {
         // Escaping is lossy ('a:b' and 'a_b' both become 'a_b'); writing
@@ -92,4 +91,14 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
  */
 function safeAssetPath(id: string): string {
   return id.replace(/[:/\\]/g, '_').replace(/\.\./g, '_');
+}
+
+/**
+ * Canonical storage key for a content-addressed asset — `assets/<safe>`.
+ * The single scheme shared by the .chalk packer, the cloud upload tool,
+ * and the client's cloud-fallback resolver, so an asset written to a
+ * bucket at this key is the same one a `.chalk` references.
+ */
+export function assetStorageKey(id: string): string {
+  return `assets/${safeAssetPath(id)}`;
 }
