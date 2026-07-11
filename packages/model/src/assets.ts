@@ -1,4 +1,5 @@
 import type { Lesson, LessonObject, PageBackground } from './lesson.js';
+import type { Overlay } from './overlay.js';
 
 /** Content-addressed asset ids referenced by a page background, if any. */
 function backgroundAssetIds(bg: PageBackground): string[] {
@@ -53,6 +54,25 @@ export function referencedAssetIds(lesson: Lesson): string[] {
     for (const obj of page.objects) {
       for (const id of objectAssetIds(obj)) seen.add(id);
     }
+  }
+  return [...seen];
+}
+
+/**
+ * Every content-addressed asset id an OVERLAY introduces, deduplicated —
+ * the assets from its new pages and its per-page upserts/background
+ * overrides. (Base assets are NOT included; they come from the base
+ * bundle.) Used by the overlay packer to decide which bytes to carry.
+ */
+export function overlayReferencedAssetIds(overlay: Overlay): string[] {
+  const seen = new Set<string>();
+  for (const page of overlay.newPages) {
+    for (const id of backgroundAssetIds(page.background)) seen.add(id);
+    for (const obj of page.objects) for (const id of objectAssetIds(obj)) seen.add(id);
+  }
+  for (const edit of Object.values(overlay.pages)) {
+    if (edit.background) for (const id of backgroundAssetIds(edit.background)) seen.add(id);
+    for (const obj of edit.upsertedObjects ?? []) for (const id of objectAssetIds(obj)) seen.add(id);
   }
   return [...seen];
 }

@@ -64,27 +64,7 @@ export async function packLesson(
 
   const zip = new JSZip();
 
-  const assetEntries: ManifestAssetEntry[] = [];
-  if (assets) {
-    const pathToId = new Map<string, string>();
-    for (const [id, payload] of assets) {
-      const path = assetStorageKey(id);
-      const previous = pathToId.get(path);
-      if (previous !== undefined) {
-        // Escaping is lossy ('a:b' and 'a_b' both become 'a_b'); writing
-        // both would silently return wrong bytes for one id on unpack.
-        throw new Error(
-          `asset ids collide after path escaping: '${previous}' and '${id}' both map to '${path}'`,
-        );
-      }
-      pathToId.set(path, id);
-      // In thin mode, externalize only assets that can be re-fetched by id
-      // (content-addressed). Everything else is inlined regardless of mode.
-      const inline = !thin || !isSha256AssetId(id);
-      if (inline) zip.file(path, payload.bytes);
-      assetEntries.push({ id, type: payload.type, path, inline });
-    }
-  }
+  const assetEntries = writeAssetsToZip(zip, assets, thin);
 
   const manifest: Manifest = {
     format: CHALKBOOK_FORMAT,
@@ -113,6 +93,38 @@ export async function packLesson(
   });
 
   return zip.generateAsync({ type: 'uint8array' });
+}
+
+/**
+ * Write an asset bundle into a ZIP and return the manifest entries. In
+ * `thin` mode a content-addressed asset is externalized (entry only, no
+ * bytes) so it can be re-fetched by id; everything else is inlined. Shared
+ * by packLesson and packOverlay so both write assets identically.
+ */
+export function writeAssetsToZip(
+  zip: JSZip,
+  assets: AssetBundle | undefined,
+  thin: boolean,
+): ManifestAssetEntry[] {
+  const assetEntries: ManifestAssetEntry[] = [];
+  if (!assets) return assetEntries;
+  const pathToId = new Map<string, string>();
+  for (const [id, payload] of assets) {
+    const path = assetStorageKey(id);
+    const previous = pathToId.get(path);
+    if (previous !== undefined) {
+      // Escaping is lossy ('a:b' and 'a_b' both become 'a_b'); writing
+      // both would silently return wrong bytes for one id on unpack.
+      throw new Error(
+        `asset ids collide after path escaping: '${previous}' and '${id}' both map to '${path}'`,
+      );
+    }
+    pathToId.set(path, id);
+    const inline = !thin || !isSha256AssetId(id);
+    if (inline) zip.file(path, payload.bytes);
+    assetEntries.push({ id, type: payload.type, path, inline });
+  }
+  return assetEntries;
 }
 
 /**

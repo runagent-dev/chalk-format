@@ -18,4 +18,15 @@ export {
   type LessonValidation,
 } from './schema.js';
 export { migrateToLatest, MIGRATIONS, type Migration } from './migrate.js';
-export { referencedAssetIds } from './assets.js';
+export { referencedAssetIds, overlayReferencedAssetIds } from './assets.js';
+export {
+  composeOverlay,
+  diffLesson,
+  parseOverlay,
+  overlaySchema,
+  pageEditSchema,
+  overlayBaseRefSchema,
+  type Overlay,
+  type PageEdit,
+  type OverlayBaseRef,
+} from './overlay.js';

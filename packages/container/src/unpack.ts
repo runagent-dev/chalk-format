@@ -1,7 +1,37 @@
 import JSZip from 'jszip';
 import { migrateToLatest, parseLesson, type Lesson } from '@chalkbook/core';
-import { CHALKBOOK_FORMAT, type Manifest } from './manifest.js';
+import { CHALKBOOK_FORMAT, type Manifest, type ManifestAssetEntry } from './manifest.js';
 import type { AssetBundle, AssetPayload } from './pack.js';
+
+/**
+ * Read the assets a manifest declares out of a ZIP. Entries whose bytes
+ * aren't present land in `missingAssetIds` (legal for thin bundles).
+ * `countBytes` enforces the caller's inflate budget. Shared by
+ * unpackLesson and unpackOverlay.
+ */
+export async function readAssetsFromZip(
+  zip: JSZip,
+  entries: ManifestAssetEntry[],
+  countBytes: (n: number, path: string) => void,
+): Promise<{ assets: AssetBundle; missingAssetIds: string[] }> {
+  const assets: AssetBundle = new Map();
+  const missingAssetIds: string[] = [];
+  for (const entry of entries) {
+    if (entry.path.includes('..')) {
+      throw new Error(`unsafe path in manifest asset: ${entry.path}`);
+    }
+    const file = zip.file(entry.path);
+    if (!file) {
+      missingAssetIds.push(entry.id);
+      continue;
+    }
+    const bytes = await file.async('uint8array');
+    countBytes(bytes.length, entry.path);
+    const payload: AssetPayload = { type: entry.type, bytes };
+    assets.set(entry.id, payload);
+  }
+  return { assets, missingAssetIds };
+}
 
 export type UnpackInput = Uint8Array | ArrayBuffer | Blob;
 
@@ -110,22 +140,11 @@ export async function unpackLesson(
     }
   }
 
-  const assets: AssetBundle = new Map();
-  const missingAssetIds: string[] = [];
-  for (const entry of manifest.assets ?? []) {
-    if (entry.path.includes('..')) {
-      throw new Error(`unsafe path in manifest asset: ${entry.path}`);
-    }
-    const file = zip.file(entry.path);
-    if (!file) {
-      missingAssetIds.push(entry.id);
-      continue;
-    }
-    const bytes = await file.async('uint8array');
-    countBytes(bytes.length, entry.path);
-    const payload: AssetPayload = { type: entry.type, bytes };
-    assets.set(entry.id, payload);
-  }
+  const { assets, missingAssetIds } = await readAssetsFromZip(
+    zip,
+    manifest.assets ?? [],
+    countBytes,
+  );
 
   // Assemble the raw document, upgrade it from its stored format version
   // to the current one, then validate it through the schema. This

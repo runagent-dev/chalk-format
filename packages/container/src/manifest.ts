@@ -1,3 +1,5 @@
+import type { OverlayBaseRef } from '@chalkbook/core';
+
 export const CHALKBOOK_FORMAT = 'chalkbook.lesson' as const;
 export const CHALKBOOK_VERSION = '0.1.0' as const;
 
@@ -36,6 +38,8 @@ export type Manifest = {
    * was identical), so it is backward compatible.
    */
   formatVersion: number;
+  /** `lesson` (default/absent) vs an overlay — see OverlayManifest. */
+  kind?: 'lesson';
   id: string;
   title: string;
   locale: string;
@@ -46,6 +50,23 @@ export type Manifest = {
    * `thin` externalizes cloud-resolvable assets, listing them in the
    * manifest for an AssetService to fetch by id. Absent = fat.
    */
+  bundling?: 'fat' | 'thin';
+  metadata: ManifestMetadata;
+};
+
+/**
+ * Manifest of an OVERLAY `.chalk` — a delta over a read-only base. The
+ * overlay body lives in `overlay.json`; only the base pointer, the new
+ * assets, and metadata live here. `kind: 'overlay'` distinguishes it from
+ * a lesson bundle on decode.
+ */
+export type OverlayManifest = {
+  format: typeof CHALKBOOK_FORMAT;
+  version: string;
+  formatVersion: number;
+  kind: 'overlay';
+  base: OverlayBaseRef;
+  assets: ManifestAssetEntry[];
   bundling?: 'fat' | 'thin';
   metadata: ManifestMetadata;
 };
