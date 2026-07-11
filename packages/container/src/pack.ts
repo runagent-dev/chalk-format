@@ -1,5 +1,10 @@
 import JSZip from 'jszip';
-import { CHALK_FORMAT_VERSION, validateLessonModel, type Lesson } from '@chalkbook/core';
+import {
+  CHALK_FORMAT_VERSION,
+  isSha256AssetId,
+  validateLessonModel,
+  type Lesson,
+} from '@chalkbook/core';
 import {
   CHALKBOOK_FORMAT,
   CHALKBOOK_VERSION,
@@ -16,16 +21,39 @@ export interface AssetPayload {
   bytes: Uint8Array;
 }
 
+export interface PackOptions {
+  /**
+   * `fat` (default) inlines every asset's bytes into the ZIP — a fully
+   * self-contained file. `thin` externalizes content-addressed
+   * (`sha256:…`) assets: they are listed in the manifest but their bytes
+   * are left out, to be fetched from the AssetService by id. This yields
+   * a tiny `.chalk` that links to shared/cloud assets instead of carrying
+   * (often large) page rasters.
+   *
+   * Non-content-addressed assets are ALWAYS inlined even in `thin` mode —
+   * there is no id-based way to re-fetch them, so dropping their bytes
+   * would make the bundle permanently unrenderable.
+   */
+  mode?: 'fat' | 'thin';
+}
+
 /**
  * Pack a lesson into a `.chalk` ZIP.
  *
  * @param lesson  The lesson to pack.
  * @param assets  Optional bundle of asset payloads referenced by the
- *                lesson. Each entry is written under `assets/<id>` in
- *                the ZIP and recorded in the manifest. When omitted
- *                the manifest carries an empty asset list.
+ *                lesson. Each entry is recorded in the manifest under
+ *                `assets/<id>`; in `fat` mode its bytes are written there
+ *                too. When omitted the manifest carries an empty asset
+ *                list.
+ * @param options Packing options — see {@link PackOptions.mode}.
  */
-export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<Uint8Array> {
+export async function packLesson(
+  lesson: Lesson,
+  assets?: AssetBundle,
+  options?: PackOptions,
+): Promise<Uint8Array> {
+  const thin = options?.mode === 'thin';
   // Never emit an invalid document: validate the model against the same
   // schema the decoder parses with, so anything packLesson accepts,
   // unpackLesson accepts.
@@ -50,8 +78,11 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
         );
       }
       pathToId.set(path, id);
-      zip.file(path, payload.bytes);
-      assetEntries.push({ id, type: payload.type, path });
+      // In thin mode, externalize only assets that can be re-fetched by id
+      // (content-addressed). Everything else is inlined regardless of mode.
+      const inline = !thin || !isSha256AssetId(id);
+      if (inline) zip.file(path, payload.bytes);
+      assetEntries.push({ id, type: payload.type, path, inline });
     }
   }
 
@@ -67,6 +98,7 @@ export async function packLesson(lesson: Lesson, assets?: AssetBundle): Promise<
       file: `pages/page-${index + 1}.json`,
     })),
     assets: assetEntries,
+    bundling: thin ? 'thin' : 'fat',
     metadata: {
       createdAt: lesson.createdAt,
       updatedAt: lesson.updatedAt,

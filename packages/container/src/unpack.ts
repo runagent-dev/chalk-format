@@ -34,6 +34,12 @@ export interface UnpackResult {
    * referencing these assets will render without their backgrounds.
    */
   missingAssetIds: string[];
+  /**
+   * How the file carried its assets. `thin` means the missing ids above
+   * are expected (fetch them via the AssetService), not a damaged file.
+   * Absent-in-manifest defaults to `fat` for backward compatibility.
+   */
+  bundling: 'fat' | 'thin';
 }
 
 export function checkEntryCount(zip: JSZip, limits?: UnpackLimits): void {
@@ -137,5 +143,6 @@ export async function unpackLesson(
     typeof manifest.formatVersion === 'number' ? manifest.formatVersion : 1;
   const lesson: Lesson = parseLesson(migrateToLatest(rawLesson, fromVersion));
 
-  return { lesson, assets, missingAssetIds };
+  const bundling = manifest.bundling === 'thin' ? 'thin' : 'fat';
+  return { lesson, assets, missingAssetIds, bundling };
 }

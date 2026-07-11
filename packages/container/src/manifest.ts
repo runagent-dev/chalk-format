@@ -11,6 +11,12 @@ export type ManifestAssetEntry = {
   id: string;
   type: string;
   path: string;
+  /**
+   * Whether the bytes live in this ZIP (fat) or must be fetched from the
+   * AssetService by id (thin). Absent = inline, so files written before
+   * this field are read as fat — backward compatible.
+   */
+  inline?: boolean;
 };
 
 export type ManifestMetadata = {
@@ -35,5 +41,11 @@ export type Manifest = {
   locale: string;
   pages: ManifestPageEntry[];
   assets: ManifestAssetEntry[];
+  /**
+   * How assets are carried. `fat` (default) inlines every asset's bytes;
+   * `thin` externalizes cloud-resolvable assets, listing them in the
+   * manifest for an AssetService to fetch by id. Absent = fat.
+   */
+  bundling?: 'fat' | 'thin';
   metadata: ManifestMetadata;
 };

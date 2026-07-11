@@ -146,7 +146,11 @@ export async function validateLessonPackage(
           issues.push({ severity: 'error', message: `duplicate asset path: ${a.path}` });
         }
         seenPaths.add(a.path);
-        if (!zip.file(a.path)) {
+        // `inline: false` marks a thin-bundle asset whose bytes live in the
+        // AssetService, not this ZIP — a missing file is expected, not
+        // damage. Absent/true means inline: a missing file IS damage.
+        const external = a.inline === false;
+        if (!external && !zip.file(a.path)) {
           issues.push({ severity: 'error', message: `asset file missing: ${a.path}` });
         }
       }

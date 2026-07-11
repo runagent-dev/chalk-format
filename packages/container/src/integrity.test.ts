@@ -123,6 +123,25 @@ describe('validateLessonPackage integrity', () => {
     expect(result.issues.some((i) => i.message.includes('assets/a.png'))).toBe(true);
   });
 
+  it('accepts a missing file for an external (thin) asset entry', async () => {
+    const manifest = baseManifest({
+      bundling: 'thin',
+      assets: [{ id: 'a', type: 'image/png', path: 'assets/a.png', inline: false }],
+    });
+    const result = await validateLessonPackage(await zipWith(manifest));
+    expect(result.ok).toBe(true);
+    expect(result.issues.some((i) => i.message.includes('assets/a.png'))).toBe(false);
+  });
+
+  it('still flags a missing file for an inline asset entry (inline: true)', async () => {
+    const manifest = baseManifest({
+      assets: [{ id: 'a', type: 'image/png', path: 'assets/a.png', inline: true }],
+    });
+    const result = await validateLessonPackage(await zipWith(manifest));
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.message.includes('assets/a.png'))).toBe(true);
+  });
+
   it('flags duplicate asset paths', async () => {
     const manifest = baseManifest({
       assets: [
