@@ -16,7 +16,7 @@
     "@chalkbook/core": "workspace:*",
     "@chalkbook/format": "workspace:*",
     "@chalkbook/pdf-engine": "workspace:*",
-    "@napi-rs/canvas": "^1.0.2",
+    "@napi-rs/canvas": "^0.1.100",
     "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {

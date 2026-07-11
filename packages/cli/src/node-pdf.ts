@@ -12,6 +12,13 @@ import { resolveRenderFormat } from '@chalkbook/pdf-engine/renderer';
 import type { RenderedPdfPage } from '@chalkbook/pdf-engine/staging';
 import type { TextRun } from '@chalkbook/core';
 
+// NOTE: @napi-rs/canvas MUST be pinned to the SAME version PDF.js depends on
+// (^0.1.100). PDF.js renders vector paths as `ctx.fill(new Path2D(...))` and
+// polyfills the Path2D/DOMMatrix/ImageData globals from ITS OWN bundled
+// @napi-rs/canvas; if our `createCanvas` context is a different major, that
+// context rejects PDF.js's Path2D with "Value is none of these types String,
+// Path". Keeping one version across the dep tree avoids that mismatch.
+
 type Matrix = [number, number, number, number, number, number];
 
 /**
