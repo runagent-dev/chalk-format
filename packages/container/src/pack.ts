@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import {
   CHALK_FORMAT_VERSION,
   isSha256AssetId,
+  referencedAssetIds,
   validateLessonModel,
   type Lesson,
 } from '@chalkbook/core';
@@ -65,6 +66,21 @@ export async function packLesson(
   const zip = new JSZip();
 
   const assetEntries = writeAssetsToZip(zip, assets, thin);
+
+  // Referenced content-addressed assets whose bytes were not provided are
+  // intentional cloud references (media lives in the object store + client
+  // cache, never bundled). Record them as external manifest entries so the
+  // decoder resolves them from the asset service instead of "missing".
+  const bundled = new Set(assetEntries.map((e) => e.id));
+  for (const id of referencedAssetIds(lesson)) {
+    if (bundled.has(id) || !isSha256AssetId(id)) continue;
+    assetEntries.push({
+      id,
+      type: 'application/octet-stream',
+      path: assetStorageKey(id),
+      inline: false,
+    });
+  }
 
   const manifest: Manifest = {
     format: CHALKBOOK_FORMAT,
