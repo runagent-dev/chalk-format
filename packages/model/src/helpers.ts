@@ -1,9 +1,14 @@
+import { nanoid } from 'nanoid';
 import type { Lesson, LessonObject, LessonPage, PageBackground } from './lesson.js';
 
-let counter = 0;
-
+/**
+ * Ids are the overlay merge key, so they must be unique across clients, not
+ * just within one session. nanoid seeds from `crypto.getRandomValues`, which
+ * (unlike `crypto.randomUUID`) also works on the plain-HTTP LAN a self-hosted
+ * classroom board runs on.
+ */
 export function generateId(prefix = 'id'): string {
-  return `${prefix}_${Date.now().toString(36)}_${(counter++).toString(36)}`;
+  return `${prefix}_${nanoid()}`;
 }
 
 export function createLesson(title = 'Untitled Lesson'): Lesson {
