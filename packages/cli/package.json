@@ -13,11 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@chalkbook/core": "workspace:*",
-    "@chalkbook/format": "workspace:*",
-    "@chalkbook/pdf-engine": "workspace:*",
-    "@napi-rs/canvas": "^0.1.100",
-    "pdfjs-dist": "^5.7.284"
+    "@chalkbook/doc-convert": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

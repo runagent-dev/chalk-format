@@ -1,0 +1,29 @@
+{
+  "name": "@chalkbook/doc-convert",
+  "version": "0.1.0",
+  "description": "Server-side document → .chalk conversion. Node-only (rasterizes with @napi-rs/canvas); shared by the API's conversion service and the CLI.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "build": "echo 'no build for source-exported package'"
+  },
+  "dependencies": {
+    "@chalkbook/core": "workspace:*",
+    "@chalkbook/format": "workspace:*",
+    "@chalkbook/pdf-engine": "workspace:*",
+    "@napi-rs/canvas": "^0.1.100",
+    "pdfjs-dist": "^5.7.284"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "vitest": "^2.1.8"
+  }
+}
