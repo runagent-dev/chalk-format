@@ -18,13 +18,20 @@ export const IMAGE_TYPES = [
 /** Containers/codecs every target browser decodes natively. We do not transcode. */
 export const VIDEO_TYPES = ['video/mp4', 'video/webm'] as const;
 export const AUDIO_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/ogg'] as const;
+/**
+ * GLB only — binary glTF is one self-contained file with standard PBR
+ * materials. OBJ/FBX/STL are multi-file, proprietary, or materially poorer,
+ * and would need a conversion step we do not have.
+ */
+export const MODEL_TYPES = ['model/gltf-binary'] as const;
 
 export type ImageType = (typeof IMAGE_TYPES)[number];
 export type VideoType = (typeof VIDEO_TYPES)[number];
 export type AudioType = (typeof AUDIO_TYPES)[number];
-export type MediaType = ImageType | VideoType | AudioType;
+export type ModelType = (typeof MODEL_TYPES)[number];
+export type MediaType = ImageType | VideoType | AudioType | ModelType;
 
-export type MediaKind = 'image' | 'video' | 'audio';
+export type MediaKind = 'image' | 'video' | 'audio' | 'model3d';
 
 const at = (b: Uint8Array, offset: number, ascii: string): boolean => {
   if (b.length < offset + ascii.length) return false;
@@ -72,6 +79,8 @@ export function sniffMediaType(bytes: Uint8Array): MediaType | null {
     return null; // .mkv — a container browsers will not play
   }
 
+  // Binary glTF: "glTF" magic, then a little-endian version word.
+  if (at(bytes, 0, 'glTF')) return 'model/gltf-binary';
   if (at(bytes, 0, 'OggS')) return 'audio/ogg';
   // MP3: an ID3 tag, or a bare frame sync (11 set bits).
   if (at(bytes, 0, 'ID3')) return 'audio/mpeg';
@@ -83,6 +92,7 @@ export function sniffMediaType(bytes: Uint8Array): MediaType | null {
 export function mediaKindOf(type: MediaType): MediaKind {
   if ((IMAGE_TYPES as readonly string[]).includes(type)) return 'image';
   if ((VIDEO_TYPES as readonly string[]).includes(type)) return 'video';
+  if ((MODEL_TYPES as readonly string[]).includes(type)) return 'model3d';
   return 'audio';
 }
 

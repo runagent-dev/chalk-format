@@ -64,3 +64,17 @@ describe('mediaKindOf', () => {
     expect(mediaKindOf('audio/ogg')).toBe('audio');
   });
 });
+
+describe('3D models', () => {
+  it('identifies binary glTF and groups it as model3d', () => {
+    const glb = new Uint8Array([...'glTF'].map((c) => c.charCodeAt(0)).concat([2, 0, 0, 0]));
+    expect(sniffMediaType(glb)).toBe('model/gltf-binary');
+    expect(mediaKindOf('model/gltf-binary')).toBe('model3d');
+  });
+
+  it('rejects text glTF and other model formats we cannot render', () => {
+    // A .gltf JSON references external buffers; OBJ/STL have no materials.
+    expect(sniffMediaType(new Uint8Array([...'{"asset":{'].map((c) => c.charCodeAt(0))))).toBeNull();
+    expect(sniffMediaType(new Uint8Array([...'solid cube'].map((c) => c.charCodeAt(0))))).toBeNull();
+  });
+});
