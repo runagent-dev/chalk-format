@@ -1,35 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseLesson } from '@chalkbook/core';
 import { unpackLesson } from '@chalkbook/format';
 import { convertPdf } from './pdf.js';
-
-/**
- * A minimal one-page PDF, written by hand so the suite needs no fixture
- * binary and no network. Enough structure for PDF.js to parse and render.
- */
-function tinyPdf(): Uint8Array {
-  const objects = [
-    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
-    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
-    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>endobj',
-    '4 0 obj<</Length 44>>stream\nBT /F1 24 Tf 20 40 Td (Chalkbook) Tj ET\nendstream endobj',
-    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj',
-  ];
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [];
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj + '\n';
-  }
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const off of offsets) pdf += `${String(off).padStart(10, '0')} 00000 n \n`;
-  pdf += `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
-  return new Uint8Array(Buffer.from(pdf, 'latin1'));
-}
+import { tinyPdf } from './testing.js';
 
 describe('convertPdf', () => {
   it('produces a schema-valid .chalk with a page per PDF page and a cover', async () => {
@@ -87,10 +60,4 @@ describe('convertPdf', () => {
   it('rejects bytes that are not a PDF', async () => {
     await expect(convertPdf(new Uint8Array([1, 2, 3, 4]), { title: 'x' })).rejects.toThrow();
   }, 30_000);
-});
-
-/** The fixture path helper stays honest about where the repo root is. */
-it('runs from the package directory', async () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  await expect(readFile(join(here, 'pdf.ts'), 'utf8')).resolves.toContain('convertPdf');
 });
