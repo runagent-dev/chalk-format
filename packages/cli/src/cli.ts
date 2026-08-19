@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { convertPdfToChalk } from './convert.js';
+import { convertPdfToChalk, titleFromFilename } from '@chalkbook/doc-convert';
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
   const positional: string[] = [];
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const input = positional[0];
   if (!input) throw new Error('convert needs a <file.pdf> path');
 
-  const title = flags.title ?? basename(input).replace(/\.pdf$/i, '');
+  const title = flags.title ?? titleFromFilename(basename(input));
   const out = flags.out ?? input.replace(/\.pdf$/i, '') + '.chalk';
 
   const pdfBytes = new Uint8Array(await readFile(input));

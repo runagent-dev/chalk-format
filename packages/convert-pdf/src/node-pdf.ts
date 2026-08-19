@@ -1,3 +1,8 @@
+// The reference is load-bearing now that this file is imported across package
+// boundaries: without it a consumer's program checks it against pdfjs-dist's
+// real (browser-shaped) types instead of the local shim, and fails.
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference path="./pdfjs-legacy.d.ts" />
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';

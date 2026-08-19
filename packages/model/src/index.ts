@@ -2,6 +2,22 @@ export * from './lesson.js';
 export * from './helpers.js';
 export * from './hit-test.js';
 export * from './hash.js';
+export {
+  sniffMediaType,
+  mediaKindOf,
+  isImageType,
+  IMAGE_TYPES,
+  VIDEO_TYPES,
+  AUDIO_TYPES,
+  MODEL_TYPES,
+  type MediaType,
+  type MediaKind,
+  type ImageType,
+  type VideoType,
+  type AudioType,
+  type ModelType,
+} from './media-type.js';
+export * from './object-transform.js';
 // Schema functions/constants only. The model *types* come via lesson.js
 // (which re-exports them from schema.js), so we deliberately do not
 // `export *` from schema.js to avoid duplicate type exports.
