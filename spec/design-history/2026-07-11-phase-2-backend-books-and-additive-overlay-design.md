@@ -1,6 +1,11 @@
 # Phase 2 — Backend book delivery + additive overlay (`.chalk`) design
 
-Status: **2a shipped** (this PR); **2b designed, not yet built**.
+Status: **2a shipped** (this PR); **2b shipped** (`user_lessons` table,
+`GET/PUT /api/lessons/:id`, base/overlay compose, client fork-on-edit +
+sync — see `apps/server/src/lessons.ts`, `apps/server/src/db/overlays-pg.ts`,
+`packages/core/src/overlay.ts`, `apps/web/src/library/lesson-sync.ts`). Real
+per-user auth (item 2 under "Hard parts") is still the dev-mode bearer
+token described in `AUTH_MODE=dev` — issue #25 remains open.
 Date: 2026-07-11.
 
 ## Goal
@@ -152,9 +157,11 @@ The overlay is the **unit of sync**:
 - Web catalog reads `/api/books` when `VITE_API_URL` is set, with a
   static `catalog.json` fallback.
 
-### 2b — additive overlay + sync + auth (DESIGNED, next)
+### 2b — additive overlay + sync + auth (SHIPPED — auth still dev-mode)
 - Base/overlay `.chalk` manifest + `base ⊕ overlay` compose (+ tests).
 - `user_lessons` table + `GET/PUT /api/lessons/:id`.
-- Fork-on-edit in the web; pin-until-synced eviction; rebase on base
-  update.
+- Fork-on-edit in the web; rebase on base update (last-write-wins by
+  `updatedAt`, per §6.3 above — no CRDT).
+- Real per-user auth (vs. the dev-mode bearer token) is still open —
+  tracked as issue #25.
 - Auth (the gating decision) — needed for per-user overlays.
