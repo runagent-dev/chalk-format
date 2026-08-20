@@ -62,7 +62,13 @@ export async function packOverlay(
 
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
   zip.file('overlay.json', JSON.stringify(overlay, null, 2));
-  return zip.generateAsync({ type: 'uint8array' });
+  // See packLesson: DEFLATE the JSON entries; asset bytes already opted
+  // into STORE via writeAssetsToZip.
+  return zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
 }
 
 export interface UnpackOverlayResult {
