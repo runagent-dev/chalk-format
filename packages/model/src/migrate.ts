@@ -23,6 +23,10 @@ export const MIGRATIONS: Record<number, Migration> = {
   // embed). Purely additive — a v2 document contains none of them and is
   // already valid under v3, so identity again.
   2: (doc) => doc,
+  // v3 → v4: image/embed objects gained an optional `displayMode`. A v3
+  // document has none, which is already valid under v4 (absent means
+  // 'full', the same rendering v3 always had), so identity again.
+  3: (doc) => doc,
 };
 
 /**

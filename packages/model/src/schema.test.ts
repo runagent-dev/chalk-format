@@ -93,8 +93,8 @@ describe('CHALK_FORMAT_VERSION', () => {
     expect(CHALK_FORMAT_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 3 now that rich item types exist', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(3);
+  it('is 4 now that image/embed objects carry a displayMode', () => {
+    expect(CHALK_FORMAT_VERSION).toBe(4);
   });
 });
 

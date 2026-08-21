@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hitInk, hitObject, hitRect, hitTest, hitText } from './hit-test.js';
+import { MEDIA_ICON_SIZE } from './object-transform.js';
 import type { InkObject, RectObject, TextObject } from './lesson.js';
 
 const rect: RectObject = {
@@ -112,6 +113,24 @@ describe('hitObject — rich item types (v3)', () => {
     const embed = { id: 'v', x: 0, y: 0, type: 'embed' as const, embed: 'video' as const, width: 100, height: 100 };
     expect(hitObject(embed, 50, 50)).toBe(true);
     expect(hitObject(embed, 150, 50)).toBe(false);
+  });
+
+  it('hit-tests the fixed icon footprint, not the stored size, when displayMode is "icon"', () => {
+    const image = {
+      id: 'im',
+      x: 10,
+      y: 20,
+      type: 'image' as const,
+      assetId: 'a',
+      width: 100,
+      height: 50,
+      displayMode: 'icon' as const,
+    };
+    // A point well within the STORED 100x50 box, but outside the small
+    // icon footprint anchored at (10, 20), must now miss.
+    expect(hitObject(image, 80, 60)).toBe(false);
+    // A point within the icon footprint still hits.
+    expect(hitObject(image, 10 + MEDIA_ICON_SIZE / 2, 20 + MEDIA_ICON_SIZE / 2)).toBe(true);
   });
 
   it('hits an ellipse inside its radius, misses the box corner', () => {

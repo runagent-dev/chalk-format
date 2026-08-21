@@ -13,6 +13,13 @@ const TEXT_WIDTH_PER_CHAR = 0.55;
 export const MIN_TEXT_FONT_SIZE = 6;
 export const MAX_TEXT_FONT_SIZE = 800;
 
+/** Fixed page-space footprint (square) an image/embed renders and
+ *  hit-tests at when `displayMode === 'icon'` — a small uniform marker
+ *  instead of its stored `width`/`height`. Shared by `objectBBox` (below),
+ *  `hit-test.ts`'s `hitImage`, and `canvas-konva`'s icon-mode renderer, so
+ *  "how big is this on screen" has exactly one source of truth. */
+export const MEDIA_ICON_SIZE = 56;
+
 export function textBox(text: TextObject): ObjectBox {
   const width = Math.max(1, text.text.length) * text.fontSize * TEXT_WIDTH_PER_CHAR;
   return { x: text.x, y: text.y, width, height: text.fontSize };
@@ -44,9 +51,13 @@ export function objectBBox(obj: LessonObject): ObjectBox {
   switch (obj.type) {
     case 'text':
       return textBox(obj);
-    case 'rect':
     case 'image':
     case 'embed':
+      if (obj.displayMode === 'icon') {
+        return { x: obj.x, y: obj.y, width: MEDIA_ICON_SIZE, height: MEDIA_ICON_SIZE };
+      }
+      return { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
+    case 'rect':
     case 'ellipse':
       return { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
     case 'line':

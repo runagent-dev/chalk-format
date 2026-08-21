@@ -108,7 +108,15 @@ export async function packLesson(
     zip.file(`pages/page-${index + 1}.json`, JSON.stringify(page, null, 2));
   });
 
-  return zip.generateAsync({ type: 'uint8array' });
+  // DEFLATE the default (manifest + pages: plain JSON, compresses well).
+  // Asset bytes get their own STORE override in writeAssetsToZip — they're
+  // already-compressed formats (PNG/JPEG/PDF/etc.), so re-deflating them
+  // burns CPU for near-zero size gain.
+  return zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
 }
 
 /**
@@ -137,7 +145,9 @@ export function writeAssetsToZip(
     }
     pathToId.set(path, id);
     const inline = !thin || !isSha256AssetId(id);
-    if (inline) zip.file(path, payload.bytes);
+    // STORE, not DEFLATE: asset bytes (images/PDFs/video/3D) are already
+    // compressed formats — re-deflating them costs CPU for near-zero gain.
+    if (inline) zip.file(path, payload.bytes, { compression: 'STORE' });
     assetEntries.push({ id, type: payload.type, path, inline });
   }
   return assetEntries;

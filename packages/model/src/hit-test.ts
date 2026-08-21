@@ -9,33 +9,48 @@ import type {
   RectObject,
   TextObject,
 } from './lesson.js';
+import { objectBBox } from './object-transform.js';
 
-/** Point is inside an axis-aligned box defined by x/y/width/height. */
+/** Point is inside an axis-aligned box defined by x/y/width/height, grown
+ *  by `tolerance` on each side (0 = exact box, matching every pre-existing
+ *  caller). */
 function hitBox(
   box: { x: number; y: number; width: number; height: number },
   x: number,
   y: number,
+  tolerance = 0,
 ): boolean {
-  return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+  return (
+    x >= box.x - tolerance &&
+    x <= box.x + box.width + tolerance &&
+    y >= box.y - tolerance &&
+    y <= box.y + box.height + tolerance
+  );
 }
 
-/** Point is inside a rectangle's axis-aligned bounding box. */
-export function hitRect(rect: RectObject, x: number, y: number): boolean {
-  return hitBox(rect, x, y);
+/** Point is inside a rectangle's axis-aligned bounding box (grown by `tolerance`). */
+export function hitRect(rect: RectObject, x: number, y: number, tolerance = 0): boolean {
+  return hitBox(rect, x, y, tolerance);
 }
 
-/** Point is inside an image / embed placement box. */
-export function hitImage(image: ImageObject | EmbedObject, x: number, y: number): boolean {
-  return hitBox(image, x, y);
+/** Point is inside an image / embed placement box (grown by `tolerance`).
+ *  Hit-tests the object's *effective* box (`objectBBox`) rather than its
+ *  raw stored `width`/`height` — when `displayMode === 'icon'` that's a
+ *  small fixed marker, not the full placed size, and this must agree
+ *  with what's actually drawn (and with the selection box, which also
+ *  derives from `objectBBox`). */
+export function hitImage(image: ImageObject | EmbedObject, x: number, y: number, tolerance = 0): boolean {
+  return hitBox(objectBBox(image), x, y, tolerance);
 }
 
-/** Point is inside the ellipse inscribed in the object's box. */
-export function hitEllipse(ell: EllipseObject, x: number, y: number): boolean {
-  const rx = ell.width / 2;
-  const ry = ell.height / 2;
+/** Point is inside the ellipse inscribed in the object's box, grown by
+ *  `tolerance` (added to both radii). */
+export function hitEllipse(ell: EllipseObject, x: number, y: number, tolerance = 0): boolean {
+  const rx = ell.width / 2 + tolerance;
+  const ry = ell.height / 2 + tolerance;
   if (rx <= 0 || ry <= 0) return false;
-  const dx = (x - (ell.x + rx)) / rx;
-  const dy = (y - (ell.y + ry)) / ry;
+  const dx = (x - (ell.x + ell.width / 2)) / rx;
+  const dy = (y - (ell.y + ell.height / 2)) / ry;
   return dx * dx + dy * dy <= 1;
 }
 
@@ -52,10 +67,10 @@ export function hitSegment(seg: LineObject | ArrowObject, x: number, y: number, 
  * glyph widths via `Canvas.measureText` and embed the result on the
  * `TextObject` itself; the hit-test signature stays the same.
  */
-export function hitText(text: TextObject, x: number, y: number): boolean {
+export function hitText(text: TextObject, x: number, y: number, tolerance = 0): boolean {
   const width = Math.max(1, text.text.length) * text.fontSize * 0.55;
   const height = text.fontSize;
-  return x >= text.x && x <= text.x + width && y >= text.y && y <= text.y + height;
+  return hitBox({ x: text.x, y: text.y, width, height }, x, y, tolerance);
 }
 
 /**
@@ -110,23 +125,30 @@ function distanceToSegment(
   return Math.hypot(px - cx, py - cy);
 }
 
-/** Type-dispatch hit-test for any LessonObject. */
-export function hitObject(obj: LessonObject, x: number, y: number): boolean {
+/**
+ * Type-dispatch hit-test for any LessonObject. `tolerance` grows every
+ * shape's hit area uniformly — the mechanism a caller like the eraser's
+ * radius modes uses to test a wide circle instead of a bare point.
+ * Left `undefined`, each shape falls back to its own default (0 for
+ * box/ellipse shapes, 2px for the stroke-ish ink/line/arrow, matching
+ * every pre-existing caller exactly).
+ */
+export function hitObject(obj: LessonObject, x: number, y: number, tolerance?: number): boolean {
   switch (obj.type) {
     case 'rect':
-      return hitRect(obj, x, y);
+      return hitRect(obj, x, y, tolerance);
     case 'text':
-      return hitText(obj, x, y);
+      return hitText(obj, x, y, tolerance);
     case 'ink':
-      return hitInk(obj, x, y);
+      return hitInk(obj, x, y, tolerance);
     case 'image':
     case 'embed':
-      return hitImage(obj, x, y);
+      return hitImage(obj, x, y, tolerance);
     case 'ellipse':
-      return hitEllipse(obj, x, y);
+      return hitEllipse(obj, x, y, tolerance);
     case 'line':
     case 'arrow':
-      return hitSegment(obj, x, y);
+      return hitSegment(obj, x, y, tolerance);
     case 'vector':
       // Render-only for now: a vector carries no bounds, so we can't
       // hit-test it without parsing its path. Not selectable yet.
@@ -171,13 +193,21 @@ export function stackingRank(type: LessonObject['type']): number {
  *   2. Within the same rank, later source index wins — matches how
  *      Konva draws children (later = on top).
  *
- * Callers typically take `hits[0]` for the top-most hit.
+ * Callers typically take `hits[0]` for the top-most hit. `tolerance`
+ * (see `hitObject`) is forwarded to every candidate — e.g. the eraser's
+ * radius modes pass the brush radius here instead of the default point
+ * tolerance.
  */
-export function hitTest(objects: readonly LessonObject[], x: number, y: number): LessonObject[] {
+export function hitTest(
+  objects: readonly LessonObject[],
+  x: number,
+  y: number,
+  tolerance?: number,
+): LessonObject[] {
   const hits: Array<{ obj: LessonObject; rank: number; index: number }> = [];
   for (let i = 0; i < objects.length; i++) {
     const obj = objects[i]!;
-    if (hitObject(obj, x, y)) {
+    if (hitObject(obj, x, y, tolerance)) {
       hits.push({ obj, rank: stackingRank(obj.type), index: i });
     }
   }
