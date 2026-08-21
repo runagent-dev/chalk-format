@@ -9,6 +9,7 @@ import type {
   RectObject,
   TextObject,
 } from './lesson.js';
+import { objectBBox } from './object-transform.js';
 
 /** Point is inside an axis-aligned box defined by x/y/width/height, grown
  *  by `tolerance` on each side (0 = exact box, matching every pre-existing
@@ -32,9 +33,14 @@ export function hitRect(rect: RectObject, x: number, y: number, tolerance = 0): 
   return hitBox(rect, x, y, tolerance);
 }
 
-/** Point is inside an image / embed placement box (grown by `tolerance`). */
+/** Point is inside an image / embed placement box (grown by `tolerance`).
+ *  Hit-tests the object's *effective* box (`objectBBox`) rather than its
+ *  raw stored `width`/`height` — when `displayMode === 'icon'` that's a
+ *  small fixed marker, not the full placed size, and this must agree
+ *  with what's actually drawn (and with the selection box, which also
+ *  derives from `objectBBox`). */
 export function hitImage(image: ImageObject | EmbedObject, x: number, y: number, tolerance = 0): boolean {
-  return hitBox(image, x, y, tolerance);
+  return hitBox(objectBBox(image), x, y, tolerance);
 }
 
 /** Point is inside the ellipse inscribed in the object's box, grown by

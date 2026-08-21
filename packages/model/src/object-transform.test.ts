@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { inkBox, moveObjectBy, objectBBox, scaleObjectAbout } from './object-transform.js';
+import { MEDIA_ICON_SIZE, inkBox, moveObjectBy, objectBBox, scaleObjectAbout } from './object-transform.js';
 import type {
   ArrowObject,
   EllipseObject,
+  EmbedObject,
   ImageObject,
   InkObject,
   LessonObject,
@@ -24,6 +25,9 @@ function arrow(): ArrowObject {
 }
 function image(): ImageObject {
   return { id: 'im1', type: 'image', x: 100, y: 100, width: 200, height: 100, assetId: 'sha256:' + 'a'.repeat(64) };
+}
+function embed(): EmbedObject {
+  return { id: 'em1', type: 'embed', embed: 'video', x: 50, y: 60, width: 320, height: 180 };
 }
 function ellipse(): EllipseObject {
   return { id: 'e1', type: 'ellipse', x: 0, y: 0, width: 50, height: 50, fill: 'rgba(0,0,0,0)', stroke: '#000', strokeWidth: 1 };
@@ -47,6 +51,27 @@ describe('objectBBox', () => {
   it('reports vector as zero-sized (position only)', () => {
     const v = { id: 'v1', type: 'vector', x: 7, y: 8, path: 'M0 0' } as LessonObject;
     expect(objectBBox(v)).toEqual({ x: 7, y: 8, width: 0, height: 0 });
+  });
+
+  it('uses stored width/height for image/embed when displayMode is absent or "full"', () => {
+    expect(objectBBox(image())).toEqual({ x: 100, y: 100, width: 200, height: 100 });
+    expect(objectBBox({ ...image(), displayMode: 'full' })).toEqual({ x: 100, y: 100, width: 200, height: 100 });
+    expect(objectBBox(embed())).toEqual({ x: 50, y: 60, width: 320, height: 180 });
+  });
+
+  it('uses the fixed MEDIA_ICON_SIZE for image/embed when displayMode is "icon"', () => {
+    expect(objectBBox({ ...image(), displayMode: 'icon' })).toEqual({
+      x: 100,
+      y: 100,
+      width: MEDIA_ICON_SIZE,
+      height: MEDIA_ICON_SIZE,
+    });
+    expect(objectBBox({ ...embed(), displayMode: 'icon' })).toEqual({
+      x: 50,
+      y: 60,
+      width: MEDIA_ICON_SIZE,
+      height: MEDIA_ICON_SIZE,
+    });
   });
 });
 

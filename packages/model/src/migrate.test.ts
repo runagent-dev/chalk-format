@@ -32,4 +32,26 @@ describe('migrateToLatest', () => {
     };
     expect(() => migrateToLatest(v1, 1)).not.toThrow();
   });
+
+  it('upgrades a v3 document (image object, no displayMode) to the latest without throwing', () => {
+    // A v3 image object has no `displayMode` — the v3→v4 migration leaves
+    // it absent (optional, meaning 'full'), so the upgraded doc is valid
+    // under v4 and renders exactly as it did under v3.
+    const v3 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      pages: [
+        {
+          id: 'p',
+          title: 'Page 1',
+          background: { type: 'blank' },
+          objects: [{ id: 'i', type: 'image', x: 0, y: 0, assetId: 'sha256:abc', width: 100, height: 50 }],
+        },
+      ],
+    };
+    expect(() => migrateToLatest(v3, 3)).not.toThrow();
+  });
 });

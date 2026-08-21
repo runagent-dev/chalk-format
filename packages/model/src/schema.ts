@@ -21,7 +21,14 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 3;
+export const CHALK_FORMAT_VERSION = 4;
+
+/** Placement size for image/embed objects — `'full'` (default, absent)
+ *  draws at the object's stored `width`/`height`; `'icon'` draws as a
+ *  small fixed-size marker instead (see `MEDIA_ICON_SIZE` in
+ *  object-transform.ts), so a teacher can drop a compact clickable badge
+ *  anywhere without it fighting for space with page content. */
+export const mediaDisplayModeSchema = z.enum(['full', 'icon']);
 
 const objectBase = {
   id: z.string(),
@@ -63,6 +70,7 @@ export const imageObjectSchema = z.object({
   assetId: z.string(),
   width: z.number(),
   height: z.number(),
+  displayMode: mediaDisplayModeSchema.optional(),
 });
 
 export const ellipseObjectSchema = z.object({
@@ -118,6 +126,7 @@ export const embedObjectSchema = z.object({
   assetId: z.string().optional(),
   url: z.string().optional(),
   poster: z.string().optional(),
+  displayMode: mediaDisplayModeSchema.optional(),
 });
 
 export const lessonObjectSchema = z.discriminatedUnion('type', [
@@ -187,6 +196,7 @@ export type ArrowObject = z.infer<typeof arrowObjectSchema>;
 export type VectorObject = z.infer<typeof vectorObjectSchema>;
 export type EmbedObject = z.infer<typeof embedObjectSchema>;
 export type EmbedKind = EmbedObject['embed'];
+export type MediaDisplayMode = z.infer<typeof mediaDisplayModeSchema>;
 export type LessonObject = z.infer<typeof lessonObjectSchema>;
 export type PageBackground = z.infer<typeof pageBackgroundSchema>;
 export type TextRun = z.infer<typeof textRunSchema>;
