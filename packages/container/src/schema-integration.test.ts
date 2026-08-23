@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { addObject, createLesson, type Lesson } from '@chalkbook/core';
+import { CHALK_FORMAT_VERSION, addObject, createLesson, type Lesson } from '@chalkbook/core';
 import { packLesson } from './pack.js';
 import { unpackLesson } from './unpack.js';
 import { CHALKBOOK_FORMAT, CHALKBOOK_VERSION } from './manifest.js';
@@ -43,7 +43,7 @@ describe('encode validates against the schema', () => {
     const bytes = await packLesson(createLesson('V'));
     const zip = await JSZip.loadAsync(bytes);
     const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
-    expect(manifest.formatVersion).toBe(4);
+    expect(manifest.formatVersion).toBe(CHALK_FORMAT_VERSION);
   });
 
   it('round-trips every rich item type (v3)', async () => {

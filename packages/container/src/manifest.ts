@@ -44,6 +44,12 @@ export type Manifest = {
   title: string;
   locale: string;
   pages: ManifestPageEntry[];
+  /**
+   * Satellite pages backing region-snip objects (see
+   * `@chalkbook/core`'s `lesson.snipPages`). Absent = [] — files written
+   * before this field existed have none, so this is backward compatible.
+   */
+  snipPages?: ManifestPageEntry[];
   assets: ManifestAssetEntry[];
   /**
    * How assets are carried. `fat` (default) inlines every asset's bytes;

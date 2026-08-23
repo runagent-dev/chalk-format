@@ -93,6 +93,10 @@ export async function packLesson(
       id: page.id,
       file: `pages/page-${index + 1}.json`,
     })),
+    snipPages: lesson.snipPages.map((page, index) => ({
+      id: page.id,
+      file: `snip-pages/snip-${index + 1}.json`,
+    })),
     assets: assetEntries,
     bundling: thin ? 'thin' : 'fat',
     metadata: {
@@ -106,6 +110,10 @@ export async function packLesson(
 
   lesson.pages.forEach((page, index) => {
     zip.file(`pages/page-${index + 1}.json`, JSON.stringify(page, null, 2));
+  });
+
+  lesson.snipPages.forEach((page, index) => {
+    zip.file(`snip-pages/snip-${index + 1}.json`, JSON.stringify(page, null, 2));
   });
 
   // DEFLATE the default (manifest + pages: plain JSON, compresses well).

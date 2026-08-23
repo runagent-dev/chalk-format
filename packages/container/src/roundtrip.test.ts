@@ -68,6 +68,31 @@ describe('chalk round-trip', () => {
     expect(Array.from(assets.get('sha256:png')!.bytes)).toEqual(Array.from(pngBytes));
   });
 
+  it('round-trips a region-snip satellite page — capture background, annotation, and icon', async () => {
+    let lesson = createLesson('With a snip');
+    const captureBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]); // PNG signature
+    const bundle: AssetBundle = new Map([
+      ['sha256:capture', { type: 'image/png', bytes: captureBytes }],
+    ]);
+    lesson = {
+      ...lesson,
+      snipPages: [
+        {
+          id: 'sp1',
+          title: 'Snip',
+          background: { type: 'image', assetId: 'sha256:capture' },
+          objects: [{ id: 'a1', x: 1, y: 2, type: 'rect', width: 3, height: 4, fill: '#f00', stroke: '#000', strokeWidth: 1 }],
+        },
+      ],
+    };
+    lesson = addObject(lesson, lesson.pages[0]!.id, { id: 's1', x: 5, y: 6, type: 'snip', snipPageId: 'sp1' });
+
+    const { lesson: restored, assets } = await roundTrip(lesson, bundle);
+    expect(restored.pages[0]!.objects).toEqual([{ id: 's1', x: 5, y: 6, type: 'snip', snipPageId: 'sp1' }]);
+    expect(restored.snipPages).toEqual(lesson.snipPages);
+    expect(Array.from(assets.get('sha256:capture')!.bytes)).toEqual(Array.from(captureBytes));
+  });
+
   it('accepts ids that contain colons (like sha256:...) safely', async () => {
     // Colons are the standard content-hash separator but some ZIP
     // tooling dislikes them; the packer must escape internally while
