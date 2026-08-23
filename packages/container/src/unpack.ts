@@ -157,6 +157,7 @@ export async function unpackLesson(
     pages: rawPages,
     createdAt: manifest.metadata.createdAt,
     updatedAt: manifest.metadata.updatedAt,
+    ...(manifest.coverAssetId ? { coverAssetId: manifest.coverAssetId } : {}),
   };
   const fromVersion =
     typeof manifest.formatVersion === 'number' ? manifest.formatVersion : 1;

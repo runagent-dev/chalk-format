@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { addObject, createLesson, type Lesson } from '@chalkbook/core';
-import { packLesson, type AssetBundle } from './pack.js';
+import { packLesson, thinBundleStorageKey, type AssetBundle } from './pack.js';
 import { unpackLesson } from './unpack.js';
 import { validateLessonPackage } from './validate.js';
 
@@ -84,5 +84,37 @@ describe('thin bundles', () => {
     const thin = await packLesson(lesson, bundle, { mode: 'thin' });
     const result = await validateLessonPackage(thin);
     expect(result.ok).toBe(true); // externalized bytes are not treated as damage
+  });
+
+  it('alwaysInline keeps a specific content-addressed asset\'s bytes even in thin mode', async () => {
+    const lesson = createLesson('Selective Thin');
+    let l = addObject(lesson, lesson.pages[0]!.id, {
+      id: 'thumb', type: 'image', x: 0, y: 0, width: 10, height: 10, assetId: SHA_A,
+    });
+    l = addObject(l, l.pages[0]!.id, {
+      id: 'full', type: 'image', x: 20, y: 0, width: 10, height: 10, assetId: SHA_CLOUD,
+    });
+    const bundle: AssetBundle = new Map([
+      [SHA_A, { type: 'image/png', bytes: pngBytes }],
+      [SHA_CLOUD, { type: 'image/png', bytes: pngBytes }],
+    ]);
+    const out = await unpackLesson(
+      await packLesson(l, bundle, { mode: 'thin', alwaysInline: new Set([SHA_A]) }),
+    );
+    expect(out.assets.get(SHA_A)?.bytes).toEqual(pngBytes); // kept inline
+    expect(out.missingAssetIds).toEqual([SHA_CLOUD]); // still externalized
+  });
+});
+
+describe('thinBundleStorageKey', () => {
+  it('is deterministic and derived from the source id, not content', () => {
+    const id = `sha256:${'b'.repeat(64)}`;
+    expect(thinBundleStorageKey(id)).toBe(thinBundleStorageKey(id));
+    expect(thinBundleStorageKey(id)).toBe(`assets/sha256_${'b'.repeat(64)}.thin`);
+  });
+
+  it('never collides with a real asset key', () => {
+    const id = `sha256:${'d'.repeat(64)}`;
+    expect(thinBundleStorageKey(id).endsWith('.thin')).toBe(true);
   });
 });

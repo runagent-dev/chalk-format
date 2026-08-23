@@ -43,6 +43,9 @@ export type Manifest = {
   id: string;
   title: string;
   locale: string;
+  /** Explicit cover override — see `Lesson.coverAssetId`. Absent = derive
+   *  from page 1. */
+  coverAssetId?: string;
   pages: ManifestPageEntry[];
   assets: ManifestAssetEntry[];
   /**

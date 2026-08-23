@@ -13,7 +13,7 @@ import {
   type PdfTextContentItem,
 } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { mapTextItemToRun } from '@chalkbook/pdf-engine/text-layer';
-import { resolveRenderFormat } from '@chalkbook/pdf-engine/renderer';
+import { THUMBNAIL_QUALITY, THUMBNAIL_TARGET_WIDTH, resolveRenderFormat } from '@chalkbook/pdf-engine/renderer';
 import type { RenderedPdfPage } from '@chalkbook/pdf-engine/staging';
 import type { TextRun } from '@chalkbook/core';
 
@@ -107,6 +107,19 @@ export async function renderPdfToPages(
             : await canvas.encode('png'),
         );
 
+        // Downscale the already-rendered canvas for the always-inlined
+        // preview — no second PDF rasterization pass needed. Mirrors the
+        // browser renderer's `renderThumbnail` (@chalkbook/pdf-engine/renderer).
+        const thumbScale = THUMBNAIL_TARGET_WIDTH / width;
+        const thumbWidth = Math.max(1, Math.round(width * thumbScale));
+        const thumbHeight = Math.max(1, Math.round(height * thumbScale));
+        const thumbCanvas = createCanvas(thumbWidth, thumbHeight);
+        const thumbContext = thumbCanvas.getContext('2d');
+        thumbContext.drawImage(canvas, 0, 0, thumbWidth, thumbHeight);
+        const thumbnailBytes = new Uint8Array(
+          await thumbCanvas.encode('webp', Math.round(THUMBNAIL_QUALITY * 100)),
+        );
+
         pages.push({
           pageNumber: n,
           bytes,
@@ -114,6 +127,8 @@ export async function renderPdfToPages(
           width,
           height,
           textLayer: await extractText(page, viewport.transform as Matrix),
+          thumbnailBytes,
+          thumbnailMime: 'image/webp',
         });
       } finally {
         page.cleanup();

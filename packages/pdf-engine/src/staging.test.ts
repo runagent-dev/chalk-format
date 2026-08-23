@@ -12,6 +12,8 @@ function rendered(): RenderedPdfPage[] {
       width: 1200,
       height: 1553,
       textLayer: [{ text: 'Hi', x: 1, y: 2, width: 10, fontSize: 12 }],
+      thumbnailBytes: new Uint8Array([11, 12]),
+      thumbnailMime: 'image/webp',
     },
     {
       pageNumber: 2,
@@ -20,20 +22,26 @@ function rendered(): RenderedPdfPage[] {
       width: 1200,
       height: 1553,
       textLayer: [],
+      thumbnailBytes: new Uint8Array([13, 14]),
+      thumbnailMime: 'image/webp',
     },
   ];
 }
 
 describe('buildPdfLesson', () => {
-  it('stores the original PDF plus one render per page (content-addressed)', async () => {
+  it('stores the original PDF plus one render and one thumbnail per page (content-addressed)', async () => {
     const staged = await buildPdfLesson(pdfBytes, rendered(), { title: 'Book' });
-    expect(staged.assets.size).toBe(3); // pdf + 2 renders
+    expect(staged.assets.size).toBe(5); // pdf + 2 renders + 2 thumbnails
     const bg = staged.pages[0]!.background;
     if (bg.type !== 'pdf_page') throw new Error('expected pdf_page');
     expect(bg.assetId).toMatch(/^sha256:/);
     expect(bg.renderedImageAssetId).toMatch(/^sha256:/);
+    expect(bg.thumbnailAssetId).toMatch(/^sha256:/);
+    // Distinct assets — the thumbnail is not just an alias for the render.
+    expect(bg.thumbnailAssetId).not.toBe(bg.renderedImageAssetId);
     expect(staged.assets.has(bg.assetId)).toBe(true);
     expect(staged.assets.has(bg.renderedImageAssetId!)).toBe(true);
+    expect(staged.assets.has(bg.thumbnailAssetId!)).toBe(true);
   });
 
   it('builds one page per render with dims and the pdf_page background', async () => {

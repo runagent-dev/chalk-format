@@ -54,4 +54,41 @@ describe('migrateToLatest', () => {
     };
     expect(() => migrateToLatest(v3, 3)).not.toThrow();
   });
+
+  it('upgrades a v4 document (pdf_page background, no thumbnailAssetId) to the latest without throwing', () => {
+    // A v4 pdf_page background has no `thumbnailAssetId` — the v4→v5
+    // migration leaves it absent (optional), so the upgraded doc is
+    // valid under v5 and simply has no thumbnail to show yet.
+    const v4 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      pages: [
+        {
+          id: 'p',
+          title: 'Page 1',
+          background: { type: 'pdf_page', assetId: 'sha256:pdf', pageNumber: 1, renderedImageAssetId: 'sha256:render' },
+          objects: [],
+        },
+      ],
+    };
+    expect(() => migrateToLatest(v4, 4)).not.toThrow();
+  });
+
+  it('upgrades a v5 document (no coverAssetId) to the latest without throwing', () => {
+    // A v5 lesson has no top-level `coverAssetId` — the v5→v6 migration
+    // leaves it absent (optional), so the upgraded doc is valid under v6
+    // and simply falls back to the derived "use page 1" cover.
+    const v5 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      pages: [{ id: 'p', title: 'Page 1', background: { type: 'blank' }, objects: [] }],
+    };
+    expect(() => migrateToLatest(v5, 5)).not.toThrow();
+  });
 });

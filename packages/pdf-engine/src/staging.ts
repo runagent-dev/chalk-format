@@ -12,6 +12,11 @@ export interface RenderedPdfPage {
   width: number;
   height: number;
   textLayer: TextRun[];
+  /** A small always-inlined preview render, distinct from `bytes` — the
+   *  full-resolution render, which is resolved lazily and may not be
+   *  locally resident. */
+  thumbnailBytes: Uint8Array;
+  thumbnailMime: string;
 }
 
 export interface StagedPdf {
@@ -47,6 +52,8 @@ export async function buildPdfLesson(
   for (const page of rendered) {
     const renderId = await hashBytes(page.bytes);
     assets.set(renderId, { type: page.mime, bytes: page.bytes });
+    const thumbnailId = await hashBytes(page.thumbnailBytes);
+    assets.set(thumbnailId, { type: page.thumbnailMime, bytes: page.thumbnailBytes });
     pages.push({
       id: generateId('page'),
       title: `${options.title} — page ${page.pageNumber}`,
@@ -55,6 +62,7 @@ export async function buildPdfLesson(
         assetId: pdfAssetId,
         pageNumber: page.pageNumber,
         renderedImageAssetId: renderId,
+        thumbnailAssetId: thumbnailId,
       },
       objects: [],
       width: page.width,

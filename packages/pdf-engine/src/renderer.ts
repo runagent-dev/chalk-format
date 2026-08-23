@@ -11,6 +11,13 @@ export interface RenderedPage {
   height: number;
   /** 1-indexed page number in the source PDF. */
   pageNumber: number;
+  /** A small (`THUMBNAIL_TARGET_WIDTH`-wide) preview render, distinct from
+   *  `bytes` — the full-resolution render is resolved lazily and may not
+   *  be locally resident, so callers that need something to show
+   *  instantly (a page panel) use this instead. */
+  thumbnailBytes: Uint8Array;
+  /** MIME type of `thumbnailBytes` — always `image/webp`. */
+  thumbnailType: string;
 }
 
 export type RenderImageFormat = 'webp' | 'png';
@@ -33,6 +40,17 @@ export interface RenderOptions {
 }
 
 const DEFAULT_QUALITY = 0.82;
+
+/** Target width for a page's always-inlined preview render — small enough
+ *  that a whole book's worth of them stays cheap to keep resident (see
+ *  `THUMBNAIL_QUALITY`), unlike the full-resolution page renders that are
+ *  resolved lazily. Shared by the browser renderer (this file) and the
+ *  Node one (`@chalkbook/doc-convert`'s `node-pdf.ts`) so both platforms
+ *  produce identically-sized thumbnails. */
+export const THUMBNAIL_TARGET_WIDTH = 240;
+/** Lossy WebP quality for thumbnails — lower than the full-render default
+ *  since a 240px preview doesn't need reading-zoom fidelity. */
+export const THUMBNAIL_QUALITY = 0.7;
 
 /** Resolve the encode target for a render, applying defaults and clamps. */
 export function resolveRenderFormat(options: RenderOptions): {
@@ -93,12 +111,36 @@ export async function renderPdfPage(
 
     const { mime, quality } = resolveRenderFormat(options);
     const bytes = await canvasToImage(canvas, mime, quality);
-    return { bytes, type: mime, width, height, pageNumber };
+    const { bytes: thumbnailBytes, type: thumbnailType } = await renderThumbnail(canvas, width, height);
+    return { bytes, type: mime, width, height, pageNumber, thumbnailBytes, thumbnailType };
   } finally {
     // Free per-page resources held on the main thread; the document
     // itself is released by closePdf().
     page.cleanup();
   }
+}
+
+/**
+ * Downscale an already-rendered page canvas to `THUMBNAIL_TARGET_WIDTH`
+ * and re-encode — no PDF re-rasterization needed, just a second cheap
+ * draw+encode of the canvas the full render already produced.
+ */
+async function renderThumbnail(
+  source: AnyCanvas,
+  sourceWidth: number,
+  sourceHeight: number,
+): Promise<{ bytes: Uint8Array; type: string }> {
+  const scale = THUMBNAIL_TARGET_WIDTH / sourceWidth;
+  const thumbWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const thumbHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = createCanvas(thumbWidth, thumbHeight);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('failed to acquire 2D canvas context for PDF thumbnail');
+  }
+  context.drawImage(source as unknown as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
+  const bytes = await canvasToImage(canvas, 'image/webp', THUMBNAIL_QUALITY);
+  return { bytes, type: 'image/webp' };
 }
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;

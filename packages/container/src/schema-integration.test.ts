@@ -43,7 +43,7 @@ describe('encode validates against the schema', () => {
     const bytes = await packLesson(createLesson('V'));
     const zip = await JSZip.loadAsync(bytes);
     const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
-    expect(manifest.formatVersion).toBe(4);
+    expect(manifest.formatVersion).toBe(6);
   });
 
   it('round-trips every rich item type (v3)', async () => {
