@@ -9,10 +9,15 @@ function backgroundAssetIds(bg: PageBackground): string[] {
       return [];
     case 'pdf_page':
       return bg.renderedImageAssetId ? [bg.assetId, bg.renderedImageAssetId] : [bg.assetId];
+    case 'image':
+      return [bg.assetId];
   }
 }
 
-/** Content-addressed asset ids referenced by an object, if any. */
+/** Content-addressed asset ids referenced by an object, if any. `snip`
+ *  carries no asset id of its own — the capture lives on its satellite
+ *  page (lesson.snipPages), reached only via snipPageId, and is collected
+ *  by referencedAssetIds' separate snipPages loop. */
 function objectAssetIds(obj: LessonObject): string[] {
   switch (obj.type) {
     case 'rect':
@@ -22,6 +27,7 @@ function objectAssetIds(obj: LessonObject): string[] {
     case 'line':
     case 'arrow':
     case 'vector':
+    case 'snip':
       return [];
     case 'image':
       return [obj.assetId];
@@ -50,6 +56,15 @@ function objectAssetIds(obj: LessonObject): string[] {
 export function referencedAssetIds(lesson: Lesson): string[] {
   const seen = new Set<string>();
   for (const page of lesson.pages) {
+    for (const id of backgroundAssetIds(page.background)) seen.add(id);
+    for (const obj of page.objects) {
+      for (const id of objectAssetIds(obj)) seen.add(id);
+    }
+  }
+  // Satellite pages (region-snip captures + their annotations) aren't part
+  // of lesson.pages — walk them too, or a snip's capture/media reads as
+  // unreferenced and can be evicted or dropped from export.
+  for (const page of lesson.snipPages) {
     for (const id of backgroundAssetIds(page.background)) seen.add(id);
     for (const obj of page.objects) {
       for (const id of objectAssetIds(obj)) seen.add(id);

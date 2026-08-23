@@ -7,6 +7,10 @@ function lessonWith(pages: Lesson['pages']): Lesson {
   return { ...createLesson('T'), pages };
 }
 
+function lessonWithSnipPages(snipPages: Lesson['snipPages']): Lesson {
+  return { ...createLesson('T'), snipPages };
+}
+
 describe('referencedAssetIds', () => {
   it('collects pdf_page background assets (pdf + rendered image)', () => {
     const l = lessonWith([
@@ -56,6 +60,33 @@ describe('referencedAssetIds', () => {
     // shared pdf id appears once
     expect(referencedAssetIds(l).filter((id) => id === 'sha256:pdf')).toHaveLength(1);
     expect(referencedAssetIds(l).sort()).toEqual(['sha256:pdf', 'sha256:r1', 'sha256:r2']);
+  });
+
+  it('collects assets from lesson.snipPages — both the capture background and a nested object', () => {
+    // The test that would catch a missed loop: a snip's capture lives only
+    // on its satellite page's background, and its annotations only in that
+    // page's own objects — neither is reachable through lesson.pages.
+    const l = lessonWithSnipPages([
+      {
+        id: 'sp1',
+        title: 'Snip',
+        background: { type: 'image', assetId: 'sha256:capture' },
+        objects: [{ id: 'im', x: 0, y: 0, type: 'image', assetId: 'sha256:annotation', width: 10, height: 10 }],
+      },
+    ]);
+    expect(referencedAssetIds(l).sort()).toEqual(['sha256:annotation', 'sha256:capture']);
+  });
+
+  it('a snip object on a normal page contributes no asset id of its own', () => {
+    const l = lessonWith([
+      {
+        id: 'p1',
+        title: 'P',
+        background: { type: 'blank' },
+        objects: [{ id: 's', x: 0, y: 0, type: 'snip', snipPageId: 'sp1' }],
+      },
+    ]);
+    expect(referencedAssetIds(l)).toEqual([]);
   });
 
   it('returns [] for a lesson with only blank pages and non-asset objects', () => {

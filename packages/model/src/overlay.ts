@@ -102,6 +102,10 @@ export function composeOverlay(base: Lesson, overlay: Overlay): Lesson {
     title: overlay.titleOverride ?? base.title,
     locale: base.locale,
     pages,
+    // Region-snip satellite pages aren't part of the overlay model yet
+    // (see packages/core/src/schema.ts's snipPages doc comment) — carry
+    // the base's through unchanged rather than silently dropping them.
+    snipPages: base.snipPages,
     createdAt: base.createdAt,
     updatedAt: overlay.updatedAt,
   };

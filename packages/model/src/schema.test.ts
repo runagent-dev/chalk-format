@@ -48,6 +48,44 @@ describe('lessonSchema', () => {
     expect(lessonSchema.safeParse({ ...validLesson(), pages: [{ id: 'p', title: 't', background: { type: 'color', color: '#fff' }, objects: [] }] }).success).toBe(true);
   });
 
+  it('accepts an image background (a frozen region-snip capture)', () => {
+    const parsed = lessonSchema.safeParse({
+      ...validLesson(),
+      pages: [{ id: 'p', title: 't', background: { type: 'image', assetId: 'sha256:cap' }, objects: [] }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts a snip object pointing at a satellite page, and defaults snipPages to []', () => {
+    const lesson = validLesson();
+    const snipPageId = 'snippage_1';
+    const withSnip = {
+      ...lesson,
+      pages: [
+        {
+          ...lesson.pages[0]!,
+          objects: [
+            ...lesson.pages[0]!.objects,
+            { id: 's1', x: 10, y: 20, type: 'snip', snipPageId },
+          ],
+        },
+      ],
+      snipPages: [
+        { id: snipPageId, title: 'Snip', background: { type: 'image', assetId: 'sha256:cap' }, objects: [] },
+      ],
+    };
+    const parsed = parseLesson(withSnip);
+    expect(parsed.pages[0]!.objects).toHaveLength(4);
+    expect(parsed.snipPages).toHaveLength(1);
+  });
+
+  it('defaults snipPages to [] when absent (pre-v5 documents)', () => {
+    const lesson = validLesson() as Record<string, unknown>;
+    delete lesson.snipPages;
+    const parsed = parseLesson(lesson);
+    expect(parsed.snipPages).toEqual([]);
+  });
+
   it('rejects an object with an unknown type', () => {
     const bad = validLesson();
     (bad.pages[0]!.objects as unknown[])[0] = { id: 'x', x: 0, y: 0, type: 'triangle' };
@@ -93,8 +131,8 @@ describe('CHALK_FORMAT_VERSION', () => {
     expect(CHALK_FORMAT_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 4 now that image/embed objects carry a displayMode', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(4);
+  it('is 5 now that lessons carry snipPages', () => {
+    expect(CHALK_FORMAT_VERSION).toBe(5);
   });
 });
 

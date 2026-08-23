@@ -27,6 +27,11 @@ export const MIGRATIONS: Record<number, Migration> = {
   // document has none, which is already valid under v4 (absent means
   // 'full', the same rendering v3 always had), so identity again.
   3: (doc) => doc,
+  // v4 → v5: lessons gained snipPages (region-snip satellite pages), a
+  // 'snip' object type, and an 'image' page-background variant. A v4
+  // document has none of these; snipPages defaults to [] at parse time
+  // (see schema.ts's z.default), so this is identity again.
+  4: (doc) => doc,
 };
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MEDIA_ICON_SIZE, inkBox, moveObjectBy, objectBBox, scaleObjectAbout } from './object-transform.js';
+import { MEDIA_ICON_SIZE, SNIP_ICON_SIZE, inkBox, moveObjectBy, objectBBox, scaleObjectAbout } from './object-transform.js';
 import type {
   ArrowObject,
   EllipseObject,
@@ -31,6 +31,9 @@ function embed(): EmbedObject {
 }
 function ellipse(): EllipseObject {
   return { id: 'e1', type: 'ellipse', x: 0, y: 0, width: 50, height: 50, fill: 'rgba(0,0,0,0)', stroke: '#000', strokeWidth: 1 };
+}
+function snip(): LessonObject {
+  return { id: 's1', type: 'snip', x: 40, y: 60, snipPageId: 'sp1' } as LessonObject;
 }
 
 describe('objectBBox', () => {
@@ -73,6 +76,10 @@ describe('objectBBox', () => {
       height: MEDIA_ICON_SIZE,
     });
   });
+
+  it('uses the fixed SNIP_ICON_SIZE for a snip object', () => {
+    expect(objectBBox(snip())).toEqual({ x: 40, y: 60, width: SNIP_ICON_SIZE, height: SNIP_ICON_SIZE });
+  });
 });
 
 describe('moveObjectBy', () => {
@@ -86,6 +93,10 @@ describe('moveObjectBy', () => {
 
   it('shifts every ink point pair', () => {
     expect(moveObjectBy(ink(), 1, 2)).toMatchObject({ points: [11, 12, 31, 12, 31, 42] });
+  });
+
+  it('shifts a snip x/y only', () => {
+    expect(moveObjectBy(snip(), 5, 7)).toMatchObject({ x: 45, y: 67, snipPageId: 'sp1' });
   });
 });
 
@@ -130,6 +141,10 @@ describe('scaleObjectAbout', () => {
   it('returns vector unchanged (no computable extent)', () => {
     const v = { id: 'v1', type: 'vector', x: 0, y: 0, path: 'M0 0L10 10' } as LessonObject;
     expect(scaleObjectAbout(v, 0, 0, 3)).toEqual(v);
+  });
+
+  it('returns a snip unchanged (not resizable in v1)', () => {
+    expect(scaleObjectAbout(snip(), 0, 0, 3)).toEqual(snip());
   });
 });
 

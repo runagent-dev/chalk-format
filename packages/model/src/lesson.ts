@@ -13,6 +13,7 @@ export type {
   VectorObject,
   EmbedObject,
   EmbedKind,
+  SnipObject,
   MediaDisplayMode,
   LessonObject,
   PageBackground,

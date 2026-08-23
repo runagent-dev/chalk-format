@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHALK_FORMAT_VERSION } from './schema.js';
+import { CHALK_FORMAT_VERSION, parseLesson } from './schema.js';
 import { migrateToLatest } from './migrate.js';
 
 describe('migrateToLatest', () => {
@@ -53,5 +53,21 @@ describe('migrateToLatest', () => {
       ],
     };
     expect(() => migrateToLatest(v3, 3)).not.toThrow();
+  });
+
+  it('upgrades a v4 document (no snipPages, no snip objects) to the latest and defaults snipPages to []', () => {
+    // A v4 lesson has no snipPages field at all — the v4→v5 migration is
+    // identity, and schema.ts's z.default([]) fills it in at parse time.
+    const v4 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      pages: [{ id: 'p', title: 'Page 1', background: { type: 'blank' }, objects: [] }],
+    };
+    const migrated = migrateToLatest(v4, 4);
+    expect(() => parseLesson(migrated)).not.toThrow();
+    expect(parseLesson(migrated).snipPages).toEqual([]);
   });
 });

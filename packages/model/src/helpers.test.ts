@@ -1,13 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   addObject,
+  addObjectToSnipPage,
   addPage,
+  addSnipPage,
   createLesson,
   generateId,
   removeObject,
+  removeObjectFromSnipPage,
+  removeSnipPage,
+  replaceSnipPageObjects,
   updateObject,
+  updateObjectInSnipPage,
 } from './helpers.js';
-import type { RectObject } from './lesson.js';
+import type { LessonPage, RectObject } from './lesson.js';
 
 describe('generateId', () => {
   it('produces unique ids on rapid calls', () => {
@@ -23,6 +29,7 @@ describe('createLesson', () => {
     expect(lesson.pages).toHaveLength(1);
     expect(lesson.pages[0]!.background).toEqual({ type: 'blank' });
     expect(lesson.pages[0]!.objects).toEqual([]);
+    expect(lesson.snipPages).toEqual([]);
     expect(lesson.locale).toBe('en');
     expect(lesson.createdAt).toBe(lesson.updatedAt);
   });
@@ -147,5 +154,70 @@ describe('removeObject', () => {
     const l2 = addObject(l1, pageId, rect);
     const l3 = removeObject(l2, pageId, 'nope');
     expect(l3.pages[0]!.objects).toEqual([rect]);
+  });
+});
+
+describe('snip page helpers', () => {
+  const rect: RectObject = {
+    id: 'r1',
+    type: 'rect',
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    fill: '#000',
+    stroke: '#000',
+    strokeWidth: 1,
+  };
+  const snipPage: LessonPage = {
+    id: 'sp1',
+    title: 'Snip',
+    background: { type: 'image', assetId: 'sha256:capture' },
+    objects: [],
+  };
+
+  it('addSnipPage appends to snipPages, leaving pages untouched', () => {
+    const l1 = createLesson();
+    const l2 = addSnipPage(l1, snipPage);
+    expect(l2.snipPages).toEqual([snipPage]);
+    expect(l2.pages).toEqual(l1.pages);
+  });
+
+  it('removeSnipPage drops the matching satellite page only', () => {
+    const l1 = addSnipPage(createLesson(), snipPage);
+    const other: LessonPage = { ...snipPage, id: 'sp2' };
+    const l2 = addSnipPage(l1, other);
+    const l3 = removeSnipPage(l2, 'sp1');
+    expect(l3.snipPages).toEqual([other]);
+  });
+
+  it('addObjectToSnipPage adds to the specified satellite page only', () => {
+    const l1 = addSnipPage(createLesson(), snipPage);
+    const other: LessonPage = { ...snipPage, id: 'sp2' };
+    const l2 = addSnipPage(l1, other);
+    const l3 = addObjectToSnipPage(l2, 'sp1', rect);
+    expect(l3.snipPages.find((p) => p.id === 'sp1')!.objects).toEqual([rect]);
+    expect(l3.snipPages.find((p) => p.id === 'sp2')!.objects).toEqual([]);
+  });
+
+  it('updateObjectInSnipPage replaces the object with matching id', () => {
+    const l1 = addObjectToSnipPage(addSnipPage(createLesson(), snipPage), 'sp1', rect);
+    const moved: RectObject = { ...rect, x: 99 };
+    const l2 = updateObjectInSnipPage(l1, 'sp1', rect.id, moved);
+    expect(l2.snipPages[0]!.objects).toEqual([moved]);
+  });
+
+  it('removeObjectFromSnipPage removes the object with matching id', () => {
+    const l1 = addObjectToSnipPage(addSnipPage(createLesson(), snipPage), 'sp1', rect);
+    const l2 = removeObjectFromSnipPage(l1, 'sp1', rect.id);
+    expect(l2.snipPages[0]!.objects).toEqual([]);
+  });
+
+  it('replaceSnipPageObjects wholesale-replaces the objects array (used by the modal undo stack)', () => {
+    const l1 = addObjectToSnipPage(addSnipPage(createLesson(), snipPage), 'sp1', rect);
+    const l2 = replaceSnipPageObjects(l1, 'sp1', []);
+    expect(l2.snipPages[0]!.objects).toEqual([]);
+    const l3 = replaceSnipPageObjects(l2, 'sp1', [rect]);
+    expect(l3.snipPages[0]!.objects).toEqual([rect]);
   });
 });

@@ -21,6 +21,7 @@ function baseLesson(): Lesson {
     createdAt: 't0',
     updatedAt: 't0',
     pages: [page('p1', [rect('r1'), rect('r2')]), page('p2', [], { background: { type: 'color', color: '#fff' } })],
+    snipPages: [],
   };
 }
 const clone = <T>(v: T): T => structuredClone(v);
