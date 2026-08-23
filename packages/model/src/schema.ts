@@ -21,7 +21,7 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 4;
+export const CHALK_FORMAT_VERSION = 6;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -149,6 +149,11 @@ export const pageBackgroundSchema = z.discriminatedUnion('type', [
     assetId: z.string(),
     pageNumber: z.number(),
     renderedImageAssetId: z.string().optional(),
+    /** A small (~240px) always-inlined preview, separate from the full-res
+     *  `renderedImageAssetId` — which is resolved lazily and may not be
+     *  locally resident. Lets the page panel show an instant thumbnail
+     *  without ever needing the full-res image. */
+    thumbnailAssetId: z.string().optional(),
   }),
 ]);
 
@@ -184,6 +189,11 @@ export const lessonSchema = z.object({
   pages: z.array(lessonPageSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** An explicit cover image, overriding the default "use page 1" fallback.
+   *  Not tied to any one page — a property of the book itself, so a
+   *  publisher can supply a full-resolution custom cover distinct from the
+   *  literal first page's content. */
+  coverAssetId: z.string().optional(),
 });
 
 export type RectObject = z.infer<typeof rectObjectSchema>;

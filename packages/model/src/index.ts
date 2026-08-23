@@ -35,7 +35,12 @@ export {
   type LessonValidation,
 } from './schema.js';
 export { migrateToLatest, MIGRATIONS, type Migration } from './migrate.js';
-export { referencedAssetIds, overlayReferencedAssetIds } from './assets.js';
+export {
+  referencedAssetIds,
+  overlayReferencedAssetIds,
+  pageRenderAssetIds,
+  pageThumbnailAssetIds,
+} from './assets.js';
 export {
   composeOverlay,
   diffLesson,

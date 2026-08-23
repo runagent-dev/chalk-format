@@ -7,8 +7,12 @@ function backgroundAssetIds(bg: PageBackground): string[] {
     case 'blank':
     case 'color':
       return [];
-    case 'pdf_page':
-      return bg.renderedImageAssetId ? [bg.assetId, bg.renderedImageAssetId] : [bg.assetId];
+    case 'pdf_page': {
+      const ids = [bg.assetId];
+      if (bg.renderedImageAssetId) ids.push(bg.renderedImageAssetId);
+      if (bg.thumbnailAssetId) ids.push(bg.thumbnailAssetId);
+      return ids;
+    }
   }
 }
 
@@ -49,6 +53,7 @@ function objectAssetIds(obj: LessonObject): string[] {
  */
 export function referencedAssetIds(lesson: Lesson): string[] {
   const seen = new Set<string>();
+  if (lesson.coverAssetId) seen.add(lesson.coverAssetId);
   for (const page of lesson.pages) {
     for (const id of backgroundAssetIds(page.background)) seen.add(id);
     for (const obj of page.objects) {
@@ -56,6 +61,42 @@ export function referencedAssetIds(lesson: Lesson): string[] {
     }
   }
   return [...seen];
+}
+
+/**
+ * Every page-background full-resolution render id in a lesson —
+ * `renderedImageAssetId`, not the thumbnail or the raw PDF. These
+ * resolve via the local media-cache independent of any configured API
+ * (see `apps/web`'s `pdf-import.ts`'s `cacheFullResPageRenders`), unlike
+ * other content-addressed ids which need `VITE_API_URL`. Used by the
+ * missing-asset classifier so it doesn't over-warn on a page background
+ * simply not having been viewed (hence warmed) yet — the normal case
+ * now, not an exceptional one.
+ */
+export function pageRenderAssetIds(lesson: Lesson): string[] {
+  const ids: string[] = [];
+  for (const page of lesson.pages) {
+    if (page.background.type === 'pdf_page' && page.background.renderedImageAssetId) {
+      ids.push(page.background.renderedImageAssetId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Every page-background thumbnail id in a lesson — small, always meant to
+ * stay inline. Used to build a thin bundle's `alwaysInline` set (see
+ * `packages/format`'s `PackOptions.alwaysInline`) so the page-thumbnail
+ * strip works instantly even when full-res renders externalize.
+ */
+export function pageThumbnailAssetIds(lesson: Lesson): string[] {
+  const ids: string[] = [];
+  for (const page of lesson.pages) {
+    if (page.background.type === 'pdf_page' && page.background.thumbnailAssetId) {
+      ids.push(page.background.thumbnailAssetId);
+    }
+  }
+  return ids;
 }
 
 /**

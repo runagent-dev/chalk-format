@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { referencedAssetIds } from './assets.js';
+import { pageRenderAssetIds, pageThumbnailAssetIds, referencedAssetIds } from './assets.js';
 import { createLesson } from './helpers.js';
 import type { Lesson } from './lesson.js';
 
@@ -18,6 +18,24 @@ describe('referencedAssetIds', () => {
       },
     ]);
     expect(referencedAssetIds(l).sort()).toEqual(['sha256:pdf', 'sha256:r']);
+  });
+
+  it('collects a pdf_page background thumbnail asset alongside the rendered image', () => {
+    const l = lessonWith([
+      {
+        id: 'p1',
+        title: 'P',
+        background: {
+          type: 'pdf_page',
+          assetId: 'sha256:pdf',
+          pageNumber: 1,
+          renderedImageAssetId: 'sha256:r',
+          thumbnailAssetId: 'sha256:t',
+        },
+        objects: [],
+      },
+    ]);
+    expect(referencedAssetIds(l).sort()).toEqual(['sha256:pdf', 'sha256:r', 'sha256:t']);
   });
 
   it('collects image object assets', () => {
@@ -71,5 +89,87 @@ describe('referencedAssetIds', () => {
       },
     ]);
     expect(referencedAssetIds(l)).toEqual([]);
+  });
+
+  it('includes the lesson-level coverAssetId when set', () => {
+    const l: Lesson = {
+      ...lessonWith([{ id: 'p1', title: 'P', background: { type: 'blank' }, objects: [] }]),
+      coverAssetId: 'sha256:cover',
+    };
+    expect(referencedAssetIds(l)).toEqual(['sha256:cover']);
+  });
+});
+
+describe('pageRenderAssetIds', () => {
+  it('collects each pdf_page background\'s renderedImageAssetId, not the pdf or thumbnail', () => {
+    const l = lessonWith([
+      {
+        id: 'p1',
+        title: 'P1',
+        background: {
+          type: 'pdf_page',
+          assetId: 'sha256:pdf',
+          pageNumber: 1,
+          renderedImageAssetId: 'sha256:r1',
+          thumbnailAssetId: 'sha256:t1',
+        },
+        objects: [],
+      },
+      {
+        id: 'p2',
+        title: 'P2',
+        background: {
+          type: 'pdf_page',
+          assetId: 'sha256:pdf',
+          pageNumber: 2,
+          renderedImageAssetId: 'sha256:r2',
+          thumbnailAssetId: 'sha256:t2',
+        },
+        objects: [],
+      },
+    ]);
+    expect(pageRenderAssetIds(l)).toEqual(['sha256:r1', 'sha256:r2']);
+  });
+
+  it('returns [] for a lesson with no pdf_page backgrounds', () => {
+    const l = lessonWith([{ id: 'p1', title: 'P', background: { type: 'blank' }, objects: [] }]);
+    expect(pageRenderAssetIds(l)).toEqual([]);
+  });
+});
+
+describe('pageThumbnailAssetIds', () => {
+  it('collects each pdf_page background\'s thumbnailAssetId, not the pdf or full render', () => {
+    const l = lessonWith([
+      {
+        id: 'p1',
+        title: 'P1',
+        background: {
+          type: 'pdf_page',
+          assetId: 'sha256:pdf',
+          pageNumber: 1,
+          renderedImageAssetId: 'sha256:r1',
+          thumbnailAssetId: 'sha256:t1',
+        },
+        objects: [],
+      },
+      {
+        id: 'p2',
+        title: 'P2',
+        background: {
+          type: 'pdf_page',
+          assetId: 'sha256:pdf',
+          pageNumber: 2,
+          renderedImageAssetId: 'sha256:r2',
+          thumbnailAssetId: 'sha256:t2',
+        },
+        objects: [],
+      },
+    ]);
+    expect(pageThumbnailAssetIds(l)).toEqual(['sha256:t1', 'sha256:t2']);
+  });
+
+  it('returns [] for a lesson with no pdf_page backgrounds', () => {
+    const l = lessonWith([{ id: 'p1', title: 'P', background: { type: 'blank' }, objects: [] }]);
+    expect(pageThumbnailAssetIds(l)).toEqual([]);
   });
 });

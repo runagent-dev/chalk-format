@@ -27,6 +27,14 @@ export const MIGRATIONS: Record<number, Migration> = {
   // document has none, which is already valid under v4 (absent means
   // 'full', the same rendering v3 always had), so identity again.
   3: (doc) => doc,
+  // v4 → v5: pdf_page backgrounds gained an optional `thumbnailAssetId`.
+  // A v4 document has none, which is already valid under v5 (the page
+  // panel falls back to having no thumbnail to show), so identity again.
+  4: (doc) => doc,
+  // v5 → v6: the lesson gained an optional top-level `coverAssetId`. A v5
+  // document has none, which is already valid under v6 (the derived
+  // "use page 1" fallback still applies), so identity again.
+  5: (doc) => doc,
 };
 
 /**

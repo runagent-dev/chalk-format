@@ -93,8 +93,8 @@ describe('CHALK_FORMAT_VERSION', () => {
     expect(CHALK_FORMAT_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 4 now that image/embed objects carry a displayMode', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(4);
+  it('is 6 now that a lesson carries an optional top-level coverAssetId', () => {
+    expect(CHALK_FORMAT_VERSION).toBe(6);
   });
 });
 

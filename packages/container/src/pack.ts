@@ -36,6 +36,13 @@ export interface PackOptions {
    * would make the bundle permanently unrenderable.
    */
   mode?: 'fat' | 'thin';
+  /**
+   * Content-addressed ids to inline even under `mode: 'thin'` — e.g. a
+   * catalog book's small page thumbnails, so a thin bundle still opens with
+   * something to show instantly while its (large) full-res page renders
+   * externalize. Ignored in `fat` mode, where everything already inlines.
+   */
+  alwaysInline?: ReadonlySet<string>;
 }
 
 /**
@@ -65,7 +72,7 @@ export async function packLesson(
 
   const zip = new JSZip();
 
-  const assetEntries = writeAssetsToZip(zip, assets, thin);
+  const assetEntries = writeAssetsToZip(zip, assets, thin, options?.alwaysInline);
 
   // Referenced content-addressed assets whose bytes were not provided are
   // intentional cloud references (media lives in the object store + client
@@ -89,6 +96,7 @@ export async function packLesson(
     id: lesson.id,
     title: lesson.title,
     locale: lesson.locale,
+    ...(lesson.coverAssetId ? { coverAssetId: lesson.coverAssetId } : {}),
     pages: lesson.pages.map((page, index) => ({
       id: page.id,
       file: `pages/page-${index + 1}.json`,
@@ -122,13 +130,15 @@ export async function packLesson(
 /**
  * Write an asset bundle into a ZIP and return the manifest entries. In
  * `thin` mode a content-addressed asset is externalized (entry only, no
- * bytes) so it can be re-fetched by id; everything else is inlined. Shared
- * by packLesson and packOverlay so both write assets identically.
+ * bytes) so it can be re-fetched by id — unless it's in `alwaysInline`.
+ * Everything else is inlined. Shared by packLesson and packOverlay so both
+ * write assets identically.
  */
 export function writeAssetsToZip(
   zip: JSZip,
   assets: AssetBundle | undefined,
   thin: boolean,
+  alwaysInline?: ReadonlySet<string>,
 ): ManifestAssetEntry[] {
   const assetEntries: ManifestAssetEntry[] = [];
   if (!assets) return assetEntries;
@@ -144,7 +154,7 @@ export function writeAssetsToZip(
       );
     }
     pathToId.set(path, id);
-    const inline = !thin || !isSha256AssetId(id);
+    const inline = !thin || !isSha256AssetId(id) || (alwaysInline?.has(id) ?? false);
     // STORE, not DEFLATE: asset bytes (images/PDFs/video/3D) are already
     // compressed formats — re-deflating them costs CPU for near-zero gain.
     if (inline) zip.file(path, payload.bytes, { compression: 'STORE' });
@@ -171,4 +181,18 @@ function safeAssetPath(id: string): string {
  */
 export function assetStorageKey(id: string): string {
   return `assets/${safeAssetPath(id)}`;
+}
+
+/**
+ * Deterministic key for a book's thin variant, derived from the FAT
+ * source's own content hash — not the thin bytes' own hash, which would be
+ * non-reproducible (JSZip stamps each entry with the current time when no
+ * explicit `date` option is given, so two packs of identical content
+ * produce different zip bytes). Same source → same key, every republish; a
+ * content change changes `chalkAssetId`, which changes this key too, so it
+ * can never point at stale bytes. `assetStorageKey`'s output never
+ * contains a dot, so this suffix can't collide with a real asset key.
+ */
+export function thinBundleStorageKey(chalkAssetId: string): string {
+  return `${assetStorageKey(chalkAssetId)}.thin`;
 }
