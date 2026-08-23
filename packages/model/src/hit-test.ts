@@ -7,9 +7,10 @@ import type {
   LessonObject,
   LineObject,
   RectObject,
+  SnipObject,
   TextObject,
 } from './lesson.js';
-import { objectBBox } from './object-transform.js';
+import { objectBBox, SNIP_ICON_SIZE } from './object-transform.js';
 
 /** Point is inside an axis-aligned box defined by x/y/width/height, grown
  *  by `tolerance` on each side (0 = exact box, matching every pre-existing
@@ -41,6 +42,12 @@ export function hitRect(rect: RectObject, x: number, y: number, tolerance = 0): 
  *  derives from `objectBBox`). */
 export function hitImage(image: ImageObject | EmbedObject, x: number, y: number, tolerance = 0): boolean {
   return hitBox(objectBBox(image), x, y, tolerance);
+}
+
+/** Point is inside a region-snip icon's fixed SNIP_ICON_SIZE box, grown by
+ *  `tolerance`. */
+export function hitSnip(snip: SnipObject, x: number, y: number, tolerance = 0): boolean {
+  return hitBox({ x: snip.x, y: snip.y, width: SNIP_ICON_SIZE, height: SNIP_ICON_SIZE }, x, y, tolerance);
 }
 
 /** Point is inside the ellipse inscribed in the object's box, grown by
@@ -153,6 +160,8 @@ export function hitObject(obj: LessonObject, x: number, y: number, tolerance?: n
       // Render-only for now: a vector carries no bounds, so we can't
       // hit-test it without parsing its path. Not selectable yet.
       return false;
+    case 'snip':
+      return hitSnip(obj, x, y, tolerance);
   }
 }
 
@@ -179,6 +188,7 @@ export function stackingRank(type: LessonObject['type']): number {
     case 'arrow':
     case 'vector':
     case 'embed':
+    case 'snip':
       return 1;
   }
 }

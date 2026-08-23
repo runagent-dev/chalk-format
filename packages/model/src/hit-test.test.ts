@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { hitInk, hitObject, hitRect, hitTest, hitText } from './hit-test.js';
-import { MEDIA_ICON_SIZE } from './object-transform.js';
+import { hitInk, hitObject, hitRect, hitSnip, hitTest, hitText, stackingRank } from './hit-test.js';
+import { MEDIA_ICON_SIZE, SNIP_ICON_SIZE } from './object-transform.js';
 import type { InkObject, RectObject, TextObject } from './lesson.js';
 
 const rect: RectObject = {
@@ -151,6 +151,21 @@ describe('hitObject — rich item types (v3)', () => {
   it('does not hit-test vector objects yet (render-only until they carry bounds)', () => {
     const vec = { id: 'v', x: 0, y: 0, type: 'vector' as const, path: 'M0 0 L10 10' };
     expect(hitObject(vec, 5, 5)).toBe(false);
+  });
+
+  it('hits a snip icon within its fixed SNIP_ICON_SIZE box, misses outside', () => {
+    const snip = { id: 's', x: 10, y: 20, type: 'snip' as const, snipPageId: 'sp1' };
+    expect(hitObject(snip, 10, 20)).toBe(true);
+    expect(hitObject(snip, 10 + SNIP_ICON_SIZE / 2, 20 + SNIP_ICON_SIZE / 2)).toBe(true);
+    expect(hitObject(snip, 10 + SNIP_ICON_SIZE + 10, 20)).toBe(false);
+    expect(hitSnip(snip, 10, 20)).toBe(true);
+  });
+});
+
+describe('stackingRank', () => {
+  it('gives snip the same rank as image/embed (contentLayer)', () => {
+    expect(stackingRank('snip')).toBe(1);
+    expect(stackingRank('snip')).toBe(stackingRank('image'));
   });
 });
 

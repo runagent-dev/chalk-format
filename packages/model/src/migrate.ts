@@ -31,10 +31,15 @@ export const MIGRATIONS: Record<number, Migration> = {
   // A v4 document has none, which is already valid under v5 (the page
   // panel falls back to having no thumbnail to show), so identity again.
   4: (doc) => doc,
-  // v5 → v6: the lesson gained an optional top-level `coverAssetId`. A v5
-  // document has none, which is already valid under v6 (the derived
-  // "use page 1" fallback still applies), so identity again.
+  // v5 → v6: lessons gained snipPages (region-snip satellite pages), a
+  // 'snip' object type, and an 'image' page-background variant. A v5
+  // document has none of these; snipPages defaults to [] at parse time
+  // (see schema.ts's z.default), so this is identity again.
   5: (doc) => doc,
+  // v6 → v7: the lesson gained an optional top-level `coverAssetId`. A v6
+  // document has none, which is already valid under v7 (the derived
+  // "use page 1" fallback still applies), so identity again.
+  6: (doc) => doc,
 };
 
 /**

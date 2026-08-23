@@ -78,6 +78,29 @@ describe('thin bundles', () => {
     expect(out.assets.has('local-x')).toBe(true);
   });
 
+  it('thin mode externalizes a snip satellite page\'s capture asset too (not just lesson.pages)', async () => {
+    let lesson = createLesson('Snip Thin Test');
+    lesson = {
+      ...lesson,
+      snipPages: [
+        {
+          id: 'sp1',
+          title: 'Snip',
+          background: { type: 'image', assetId: SHA_A },
+          objects: [],
+        },
+      ],
+    };
+    lesson = addObject(lesson, lesson.pages[0]!.id, { id: 's1', x: 0, y: 0, type: 'snip', snipPageId: 'sp1' });
+    const bundle: AssetBundle = new Map([[SHA_A, { type: 'image/png', bytes: pngBytes }]]);
+
+    const out = await unpackLesson(await packLesson(lesson, bundle, { mode: 'thin' }));
+    expect(out.bundling).toBe('thin');
+    expect(out.assets.has(SHA_A)).toBe(false);
+    expect(out.missingAssetIds).toEqual([SHA_A]);
+    expect(out.lesson.snipPages[0]!.background).toEqual({ type: 'image', assetId: SHA_A });
+  });
+
   it('a packed thin bundle passes the public validator', async () => {
     const lesson = lessonWithImage(SHA_A);
     const bundle: AssetBundle = new Map([[SHA_A, { type: 'image/png', bytes: pngBytes }]]);

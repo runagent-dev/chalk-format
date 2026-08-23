@@ -140,6 +140,26 @@ export async function unpackLesson(
     }
   }
 
+  // Satellite pages backing region-snip objects — absent in files written
+  // before this field existed, same backward-compat contract as `pages`.
+  const rawSnipPages: unknown[] = [];
+  for (const entry of manifest.snipPages ?? []) {
+    if (entry.file.includes('..')) {
+      throw new Error(`unsafe path in manifest: ${entry.file}`);
+    }
+    const pageFile = zip.file(entry.file);
+    if (!pageFile) {
+      throw new Error(`missing snip page file: ${entry.file}`);
+    }
+    const pageText = await pageFile.async('string');
+    countBytes(pageText.length, entry.file);
+    try {
+      rawSnipPages.push(JSON.parse(pageText));
+    } catch (err) {
+      throw new Error(`invalid JSON in ${entry.file}: ${(err as Error).message}`);
+    }
+  }
+
   const { assets, missingAssetIds } = await readAssetsFromZip(
     zip,
     manifest.assets ?? [],
@@ -155,6 +175,7 @@ export async function unpackLesson(
     title: manifest.title,
     locale: manifest.locale,
     pages: rawPages,
+    snipPages: rawSnipPages,
     createdAt: manifest.metadata.createdAt,
     updatedAt: manifest.metadata.updatedAt,
     ...(manifest.coverAssetId ? { coverAssetId: manifest.coverAssetId } : {}),

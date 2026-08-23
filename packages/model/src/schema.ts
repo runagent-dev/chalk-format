@@ -21,7 +21,7 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 6;
+export const CHALK_FORMAT_VERSION = 7;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -129,6 +129,20 @@ export const embedObjectSchema = z.object({
   displayMode: mediaDisplayModeSchema.optional(),
 });
 
+/**
+ * A small, fixed-size clickable marker on a page, pointing at a satellite
+ * page (in `lesson.snipPages`) that holds a frozen, fully-composited
+ * capture of some page region as its background, plus whatever the
+ * teacher has annotated on top of it. Carries no asset id of its own —
+ * the capture lives on the satellite page, reached only via `snipPageId`.
+ * Not resizable (schema v6): see `SNIP_ICON_SIZE` in object-transform.ts.
+ */
+export const snipObjectSchema = z.object({
+  ...objectBase,
+  type: z.literal('snip'),
+  snipPageId: z.string(),
+});
+
 export const lessonObjectSchema = z.discriminatedUnion('type', [
   rectObjectSchema,
   inkObjectSchema,
@@ -139,6 +153,7 @@ export const lessonObjectSchema = z.discriminatedUnion('type', [
   arrowObjectSchema,
   vectorObjectSchema,
   embedObjectSchema,
+  snipObjectSchema,
 ]);
 
 export const pageBackgroundSchema = z.discriminatedUnion('type', [
@@ -155,6 +170,8 @@ export const pageBackgroundSchema = z.discriminatedUnion('type', [
      *  without ever needing the full-res image. */
     thumbnailAssetId: z.string().optional(),
   }),
+  // schema v6: a frozen raster capture (region-snip) as a page background.
+  z.object({ type: z.literal('image'), assetId: z.string() }),
 ]);
 
 /**
@@ -187,6 +204,12 @@ export const lessonSchema = z.object({
   title: z.string(),
   locale: z.string(),
   pages: z.array(lessonPageSchema),
+  /** Satellite pages backing region-snip objects (schema v6). Ordinary
+   *  `LessonPage`s, reusing the full page rendering/hit-test/tool
+   *  machinery, but NOT part of page navigation/count — never rendered,
+   *  turned, or thumbnailed as a normal page; only ever opened via a
+   *  `snip` object's modal. */
+  snipPages: z.array(lessonPageSchema).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
   /** An explicit cover image, overriding the default "use page 1" fallback.
@@ -206,6 +229,7 @@ export type ArrowObject = z.infer<typeof arrowObjectSchema>;
 export type VectorObject = z.infer<typeof vectorObjectSchema>;
 export type EmbedObject = z.infer<typeof embedObjectSchema>;
 export type EmbedKind = EmbedObject['embed'];
+export type SnipObject = z.infer<typeof snipObjectSchema>;
 export type MediaDisplayMode = z.infer<typeof mediaDisplayModeSchema>;
 export type LessonObject = z.infer<typeof lessonObjectSchema>;
 export type PageBackground = z.infer<typeof pageBackgroundSchema>;

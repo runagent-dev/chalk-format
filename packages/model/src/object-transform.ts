@@ -20,6 +20,12 @@ export const MAX_TEXT_FONT_SIZE = 800;
  *  "how big is this on screen" has exactly one source of truth. */
 export const MEDIA_ICON_SIZE = 56;
 
+/** Fixed page-space footprint (square) a region-snip object renders and
+ *  hit-tests at — kept as its own symbol rather than reusing
+ *  MEDIA_ICON_SIZE so the glyph size can be tuned independently later.
+ *  Not resizable in v1 (see scaleObjectAbout below). */
+export const SNIP_ICON_SIZE = 56;
+
 export function textBox(text: TextObject): ObjectBox {
   const width = Math.max(1, text.text.length) * text.fontSize * TEXT_WIDTH_PER_CHAR;
   return { x: text.x, y: text.y, width, height: text.fontSize };
@@ -70,6 +76,8 @@ export function objectBBox(obj: LessonObject): ObjectBox {
       return inkBox(obj);
     case 'vector':
       return { x: obj.x, y: obj.y, width: 0, height: 0 };
+    case 'snip':
+      return { x: obj.x, y: obj.y, width: SNIP_ICON_SIZE, height: SNIP_ICON_SIZE };
   }
 }
 
@@ -82,6 +90,7 @@ export function moveObjectBy(obj: LessonObject, dx: number, dy: number): LessonO
     case 'ellipse':
     case 'vector':
     case 'embed':
+    case 'snip':
       return { ...obj, x: obj.x + dx, y: obj.y + dy };
     case 'line':
     case 'arrow':
@@ -148,6 +157,8 @@ export function scaleObjectAbout(
       return { ...obj, points: scaled, size: obj.size * factor };
     }
     case 'vector':
+    case 'snip':
+      // Not resizable in v1 — a snip's icon is always SNIP_ICON_SIZE.
       return obj;
   }
 }

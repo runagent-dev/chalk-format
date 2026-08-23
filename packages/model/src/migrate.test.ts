@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHALK_FORMAT_VERSION } from './schema.js';
+import { CHALK_FORMAT_VERSION, parseLesson } from './schema.js';
 import { migrateToLatest } from './migrate.js';
 
 describe('migrateToLatest', () => {
@@ -77,10 +77,9 @@ describe('migrateToLatest', () => {
     expect(() => migrateToLatest(v4, 4)).not.toThrow();
   });
 
-  it('upgrades a v5 document (no coverAssetId) to the latest without throwing', () => {
-    // A v5 lesson has no top-level `coverAssetId` — the v5→v6 migration
-    // leaves it absent (optional), so the upgraded doc is valid under v6
-    // and simply falls back to the derived "use page 1" cover.
+  it('upgrades a v5 document (no snipPages, no snip objects) to the latest and defaults snipPages to []', () => {
+    // A v5 lesson has no snipPages field at all — the v5→v6 migration is
+    // identity, and schema.ts's z.default([]) fills it in at parse time.
     const v5 = {
       id: 'l',
       title: 'Legacy',
@@ -89,6 +88,23 @@ describe('migrateToLatest', () => {
       updatedAt: '2026-01-01T00:00:00Z',
       pages: [{ id: 'p', title: 'Page 1', background: { type: 'blank' }, objects: [] }],
     };
-    expect(() => migrateToLatest(v5, 5)).not.toThrow();
+    const migrated = migrateToLatest(v5, 5);
+    expect(() => parseLesson(migrated)).not.toThrow();
+    expect(parseLesson(migrated).snipPages).toEqual([]);
+  });
+
+  it('upgrades a v6 document (no coverAssetId) to the latest without throwing', () => {
+    // A v6 lesson has no top-level `coverAssetId` — the v6→v7 migration
+    // leaves it absent (optional), so the upgraded doc is valid under v7
+    // and simply falls back to the derived "use page 1" cover.
+    const v6 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      pages: [{ id: 'p', title: 'Page 1', background: { type: 'blank' }, objects: [] }],
+    };
+    expect(() => migrateToLatest(v6, 6)).not.toThrow();
   });
 });
