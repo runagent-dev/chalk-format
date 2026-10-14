@@ -1,5 +1,5 @@
 {
-  "name": "@chalkbook/format",
+  "name": "@chalk-format/container",
   "version": "0.0.0",
   "description": ".chalk ZIP package format: pack, unpack, validate.",
   "license": "Apache-2.0",
@@ -16,7 +16,7 @@
     "build": "echo 'no build for source-exported package'"
   },
   "dependencies": {
-    "@chalkbook/core": "workspace:*",
+    "@chalk-format/model": "workspace:*",
     "jszip": "^3.10.1"
   },
   "devDependencies": {

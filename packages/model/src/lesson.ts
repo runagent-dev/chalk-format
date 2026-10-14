@@ -1,6 +1,6 @@
 // The lesson/document model types are inferred from the single Zod
 // schema in schema.ts (the source of truth) and re-exported here so the
-// public import surface (`@chalkbook/core`) is unchanged. This file adds
+// public import surface (`@chalk-format/model`) is unchanged. This file adds
 // the page-size helpers that aren't part of the serialized shape.
 export type {
   RectObject,

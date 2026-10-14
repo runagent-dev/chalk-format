@@ -1,6 +1,6 @@
-import { createLesson } from '@chalkbook/core';
-import { buildPdfLesson } from '@chalkbook/pdf-engine/staging';
-import { packLesson } from '@chalkbook/format';
+import { createLesson } from '@chalk-format/model';
+import { buildPdfLesson } from '@chalk-format/pdf-engine/staging';
+import { packLesson } from '@chalk-format/container';
 import { renderPdfToPages } from './node-pdf.js';
 import type { ConvertOptions, ConvertResult, SourceConverter } from './registry.js';
 

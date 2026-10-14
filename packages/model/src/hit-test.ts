@@ -173,7 +173,7 @@ export function hitObject(obj: LessonObject, x: number, y: number, tolerance?: n
  *   ink                       → annotationLayer (rank 2)
  *   everything else           → contentLayer     (rank 1)
  *
- * Kept here in @chalkbook/core so hit-test doesn't depend on
+ * Kept here in @chalk-format/model so hit-test doesn't depend on
  * canvas-konva. When new object types land, add them to this switch.
  */
 export function stackingRank(type: LessonObject['type']): number {

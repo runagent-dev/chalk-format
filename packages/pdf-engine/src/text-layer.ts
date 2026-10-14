@@ -1,4 +1,4 @@
-import type { TextRun } from '@chalkbook/core';
+import type { TextRun } from '@chalk-format/model';
 import type { PdfDocument } from './loader.js';
 
 type Matrix = [number, number, number, number, number, number];

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addObject, addPage, createLesson, type Lesson } from '@chalkbook/core';
+import { addObject, addPage, createLesson, type Lesson } from '@chalk-format/model';
 import { packLesson, type AssetBundle } from './pack.js';
 import { unpackLesson, type UnpackResult } from './unpack.js';
 import { validateLessonPackage } from './validate.js';

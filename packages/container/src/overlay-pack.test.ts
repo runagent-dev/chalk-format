@@ -7,7 +7,7 @@ import {
   type Lesson,
   type LessonObject,
   type OverlayBaseRef,
-} from '@chalkbook/core';
+} from '@chalk-format/model';
 import { packOverlay, unpackOverlay } from './overlay-pack.js';
 import { packLesson, type AssetBundle } from './pack.js';
 import { unpackLesson } from './unpack.js';

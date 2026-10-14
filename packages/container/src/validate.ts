@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { lessonPageSchema } from '@chalkbook/core';
+import { lessonPageSchema } from '@chalk-format/model';
 import { CHALKBOOK_FORMAT } from './manifest.js';
 import { checkEntryCount, type UnpackInput, type UnpackLimits } from './unpack.js';
 

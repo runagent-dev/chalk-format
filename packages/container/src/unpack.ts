@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { migrateToLatest, parseLesson, type Lesson } from '@chalkbook/core';
+import { migrateToLatest, parseLesson, type Lesson } from '@chalk-format/model';
 import { CHALKBOOK_FORMAT, type Manifest, type ManifestAssetEntry } from './manifest.js';
 import type { AssetBundle, AssetPayload } from './pack.js';
 

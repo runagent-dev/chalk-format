@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.env.local
+.turbo/
+# converted output and source documents used for local testing (conformance fixtures are the exception)
+*.chalk
+*.pdf
+!conformance/**/*.chalk

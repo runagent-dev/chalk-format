@@ -12,10 +12,10 @@ import {
   type PdfPageProxy,
   type PdfTextContentItem,
 } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { mapTextItemToRun } from '@chalkbook/pdf-engine/text-layer';
-import { THUMBNAIL_QUALITY, THUMBNAIL_TARGET_WIDTH, resolveRenderFormat } from '@chalkbook/pdf-engine/renderer';
-import type { RenderedPdfPage } from '@chalkbook/pdf-engine/staging';
-import type { TextRun } from '@chalkbook/core';
+import { mapTextItemToRun } from '@chalk-format/pdf-engine/text-layer';
+import { THUMBNAIL_QUALITY, THUMBNAIL_TARGET_WIDTH, resolveRenderFormat } from '@chalk-format/pdf-engine/renderer';
+import type { RenderedPdfPage } from '@chalk-format/pdf-engine/staging';
+import type { TextRun } from '@chalk-format/model';
 
 // NOTE: @napi-rs/canvas MUST be pinned to the SAME version PDF.js depends on
 // (^0.1.100). PDF.js renders vector paths as `ctx.fill(new Path2D(...))` and
@@ -109,7 +109,7 @@ export async function renderPdfToPages(
 
         // Downscale the already-rendered canvas for the always-inlined
         // preview — no second PDF rasterization pass needed. Mirrors the
-        // browser renderer's `renderThumbnail` (@chalkbook/pdf-engine/renderer).
+        // browser renderer's `renderThumbnail` (@chalk-format/pdf-engine/renderer).
         const thumbScale = THUMBNAIL_TARGET_WIDTH / width;
         const thumbWidth = Math.max(1, Math.round(width * thumbScale));
         const thumbHeight = Math.max(1, Math.round(height * thumbScale));

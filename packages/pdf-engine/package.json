@@ -1,5 +1,5 @@
 {
-  "name": "@chalkbook/pdf-engine",
+  "name": "@chalk-format/pdf-engine",
   "version": "0.1.0",
   "description": "PDF.js wrappers, page rendering, and PDF-page-to-lesson-page mapping. Browser-only (uses canvas).",
   "license": "Apache-2.0",
@@ -19,7 +19,7 @@
     "build": "echo 'no build for source-exported package'"
   },
   "dependencies": {
-    "@chalkbook/core": "workspace:*",
+    "@chalk-format/model": "workspace:*",
     "pdfjs-dist": "^5.4.149"
   },
   "devDependencies": {

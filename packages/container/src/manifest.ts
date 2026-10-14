@@ -1,4 +1,4 @@
-import type { OverlayBaseRef } from '@chalkbook/core';
+import type { OverlayBaseRef } from '@chalk-format/model';
 
 export const CHALKBOOK_FORMAT = 'chalkbook.lesson' as const;
 export const CHALKBOOK_VERSION = '0.1.0' as const;
@@ -49,7 +49,7 @@ export type Manifest = {
   pages: ManifestPageEntry[];
   /**
    * Satellite pages backing region-snip objects (see
-   * `@chalkbook/core`'s `lesson.snipPages`). Absent = [] — files written
+   * `@chalk-format/model`'s `lesson.snipPages`). Absent = [] — files written
    * before this field existed have none, so this is backward compatible.
    */
   snipPages?: ManifestPageEntry[];

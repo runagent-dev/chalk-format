@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { convertPdfToChalk, titleFromFilename } from '@chalkbook/doc-convert';
+import { convertPdfToChalk, titleFromFilename } from '@chalk-format/convert-pdf';
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
   const positional: string[] = [];

@@ -1,5 +1,5 @@
 {
-  "name": "@chalkbook/doc-convert",
+  "name": "@chalk-format/convert-pdf",
   "version": "0.1.0",
   "description": "Server-side document \u2192 .chalk conversion. Node-only (rasterizes with @napi-rs/canvas); shared by the API's conversion service and the CLI.",
   "license": "Apache-2.0",
@@ -17,9 +17,9 @@
     "build": "echo 'no build for source-exported package'"
   },
   "dependencies": {
-    "@chalkbook/core": "workspace:*",
-    "@chalkbook/format": "workspace:*",
-    "@chalkbook/pdf-engine": "workspace:*",
+    "@chalk-format/model": "workspace:*",
+    "@chalk-format/container": "workspace:*",
+    "@chalk-format/pdf-engine": "workspace:*",
     "@napi-rs/canvas": "^0.1.100",
     "pdfjs-dist": "^5.7.284"
   },

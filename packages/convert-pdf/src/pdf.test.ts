@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseLesson } from '@chalkbook/core';
-import { unpackLesson } from '@chalkbook/format';
+import { parseLesson } from '@chalk-format/model';
+import { unpackLesson } from '@chalk-format/container';
 import { convertPdf } from './pdf.js';
 import { tinyPdf } from './testing.js';
 

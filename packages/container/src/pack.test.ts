@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { createLesson, type Lesson } from '@chalkbook/core';
+import { createLesson, type Lesson } from '@chalk-format/model';
 import { packLesson } from './pack.js';
 import { unpackLesson } from './unpack.js';
 import { validateLessonPackage } from './validate.js';

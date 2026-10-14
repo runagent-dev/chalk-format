@@ -5,7 +5,7 @@ import {
   referencedAssetIds,
   validateLessonModel,
   type Lesson,
-} from '@chalkbook/core';
+} from '@chalk-format/model';
 import {
   CHALKBOOK_FORMAT,
   CHALKBOOK_VERSION,

@@ -1,5 +1,5 @@
 /**
- * Test-only helpers, exported at `@chalkbook/doc-convert/testing` so the
+ * Test-only helpers, exported at `@chalk-format/convert-pdf/testing` so the
  * server's conversion tests exercise a real document without a fixture binary
  * (and without two hand-written PDFs drifting apart).
  */

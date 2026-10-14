@@ -1,4 +1,4 @@
-import { generateId, hashBytes, type LessonPage, type TextRun } from '@chalkbook/core';
+import { generateId, hashBytes, type LessonPage, type TextRun } from '@chalk-format/model';
 
 /**
  * A page already rendered to an image + its extracted text. Produced by

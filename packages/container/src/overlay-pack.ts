@@ -4,7 +4,7 @@ import {
   overlayReferencedAssetIds,
   parseOverlay,
   type Overlay,
-} from '@chalkbook/core';
+} from '@chalk-format/model';
 import {
   CHALKBOOK_FORMAT,
   CHALKBOOK_VERSION,

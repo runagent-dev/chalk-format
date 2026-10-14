@@ -69,7 +69,7 @@ describe('buildPdfLesson', () => {
   });
 
   it('produces a lesson that validates against the format', async () => {
-    const { parseLesson, createLesson } = await import('@chalkbook/core');
+    const { parseLesson, createLesson } = await import('@chalk-format/model');
     const staged = await buildPdfLesson(pdfBytes, rendered(), { title: 'Book' });
     const lesson = { ...createLesson('Book'), pages: staged.pages };
     expect(() => parseLesson(lesson)).not.toThrow();

@@ -45,7 +45,7 @@ const DEFAULT_QUALITY = 0.82;
  *  that a whole book's worth of them stays cheap to keep resident (see
  *  `THUMBNAIL_QUALITY`), unlike the full-resolution page renders that are
  *  resolved lazily. Shared by the browser renderer (this file) and the
- *  Node one (`@chalkbook/doc-convert`'s `node-pdf.ts`) so both platforms
+ *  Node one (`@chalk-format/convert-pdf`'s `node-pdf.ts`) so both platforms
  *  produce identically-sized thumbnails. */
 export const THUMBNAIL_TARGET_WIDTH = 240;
 /** Lossy WebP quality for thumbnails — lower than the full-render default

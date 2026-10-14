@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { CHALK_FORMAT_VERSION, addObject, createLesson, type Lesson } from '@chalkbook/core';
+import { CHALK_FORMAT_VERSION, addObject, createLesson, type Lesson } from '@chalk-format/model';
 import { packLesson } from './pack.js';
 import { unpackLesson } from './unpack.js';
 import { CHALKBOOK_FORMAT, CHALKBOOK_VERSION } from './manifest.js';

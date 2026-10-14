@@ -1,5 +1,5 @@
 {
-  "name": "@chalkbook/pdf-cli",
+  "name": "@chalk-format/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@chalkbook/doc-convert": "workspace:*"
+    "@chalk-format/convert-pdf": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
