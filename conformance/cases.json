@@ -1,0 +1,74 @@
+[
+  {
+    "file": "valid/minimal.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "covers": "one blank page, fat bundle, no assets"
+  },
+  {
+    "file": "valid/all-features.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "covers": "every object type, every background type, text layer (Bengali), snip page, cover, inline + external assets"
+  },
+  {
+    "file": "valid/thin.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "covers": "thin bundle: sha256 asset listed with inline:false and no bytes"
+  },
+  {
+    "file": "valid/legacy-no-format-version.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "covers": "files written before formatVersion/snipPages existed are read as version 1 and migrated"
+  },
+  {
+    "file": "valid/overlay.chalk",
+    "valid": true,
+    "kind": "overlay",
+    "covers": "overlay package (kind: overlay) over a base lesson"
+  },
+  {
+    "file": "invalid/no-manifest.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "manifest.json missing"
+  },
+  {
+    "file": "invalid/wrong-format-id.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "manifest.format is not chalkbook.lesson"
+  },
+  {
+    "file": "invalid/path-traversal.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "page path escapes the package"
+  },
+  {
+    "file": "invalid/missing-page-file.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "manifest lists a page file that is not in the ZIP"
+  },
+  {
+    "file": "invalid/bad-page-json.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "page file is not JSON"
+  },
+  {
+    "file": "invalid/unknown-object-type.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "object type outside the 1.0 set (1.0 readers reject; see spec §Compatibility for the planned fallback rule)"
+  },
+  {
+    "file": "invalid/missing-inline-asset.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "covers": "asset declared inline but its bytes are absent"
+  }
+]
