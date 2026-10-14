@@ -40,3 +40,25 @@ describe('packLesson: cloud (unbundled) refs', () => {
     expect(manifest.assets.find((a) => a.id === 'local-1')).toBeUndefined();
   });
 });
+
+describe('packLesson: metadata', () => {
+  async function manifestOf(chalk: Uint8Array): Promise<Manifest> {
+    const zip = await JSZip.loadAsync(chalk);
+    return JSON.parse(await zip.file('manifest.json')!.async('string')) as Manifest;
+  }
+
+  it('does not invent a license or author', async () => {
+    const { metadata } = await manifestOf(await packLesson(createLesson('No rights info')));
+    expect(metadata.license).toBeUndefined();
+    expect(metadata.author).toBeUndefined();
+  });
+
+  it('records the license and author it is given', async () => {
+    const chalk = await packLesson(createLesson('Rights'), undefined, {
+      metadata: { license: 'All rights reserved', author: 'NCTB' },
+    });
+    const { metadata } = await manifestOf(chalk);
+    expect(metadata.license).toBe('All rights reserved');
+    expect(metadata.author).toBe('NCTB');
+  });
+});

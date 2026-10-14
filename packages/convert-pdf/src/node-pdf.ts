@@ -79,8 +79,11 @@ export async function renderPdfToPages(
     ...(options.quality !== undefined ? { quality: options.quality } : {}),
   });
 
+  // PDF.js takes ownership of (detaches) the buffer it is given. Hand it a
+  // copy, as pdf-engine's browser loader does, so the caller's bytes survive
+  // to be hashed and stored as the book's original PDF.
   const doc = await getDocument({
-    data: pdfBytes,
+    data: new Uint8Array(pdfBytes),
     canvasFactory: new NodeCanvasFactory(),
     standardFontDataUrl: standardFontDataUrl(),
     isEvalSupported: false,

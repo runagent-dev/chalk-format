@@ -4,6 +4,9 @@ import { packLesson } from '@chalk-format/container';
 import { renderPdfToPages } from './node-pdf.js';
 import type { ConvertOptions, ConvertResult, SourceConverter } from './registry.js';
 
+
+/** Language tag: 2–3 letter primary subtag, optional subtags (BCP 47, simplified). */
+const BCP47 = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 /**
  * Convert a PDF into a `.chalk` document: render every page (Node
  * rasterizer), extract its text layer, build the lesson model (shared
@@ -15,6 +18,8 @@ export async function convertPdf(
   options: ConvertOptions = {},
 ): Promise<ConvertResult> {
   const title = options.title?.trim() || 'Untitled document';
+  const locale = options.locale ?? 'en';
+  if (!BCP47.test(locale)) throw new Error(`invalid locale "${locale}": expected a BCP 47 tag such as "bn" or "en"`);
   const rendered = await renderPdfToPages(pdfBytes, {
     ...(options.targetWidth !== undefined ? { targetWidth: options.targetWidth } : {}),
     ...(options.format ? { format: options.format } : {}),
@@ -22,7 +27,7 @@ export async function convertPdf(
     ...(options.onProgress ? { onProgress: options.onProgress } : {}),
   });
   const staged = await buildPdfLesson(pdfBytes, rendered, { title });
-  const lesson = { ...createLesson(title), pages: staged.pages };
+  const lesson = { ...createLesson(title), locale, pages: staged.pages };
 
   // The first page's rendered raster is the cover. Returned alongside the
   // bundle so a caller never has to re-open the ZIP to find one.
@@ -31,7 +36,12 @@ export async function convertPdf(
   const coverPayload = coverId ? staged.assets.get(coverId) : undefined;
 
   return {
-    chalk: await packLesson(lesson, staged.assets),
+    chalk: await packLesson(lesson, staged.assets, {
+      metadata: {
+        ...(options.author ? { author: options.author } : {}),
+        ...(options.license ? { license: options.license } : {}),
+      },
+    }),
     title,
     pageCount: staged.pages.length,
     cover: coverPayload ? { bytes: coverPayload.bytes, type: coverPayload.type } : null,

@@ -43,6 +43,12 @@ export interface PackOptions {
    * externalize. Ignored in `fat` mode, where everything already inlines.
    */
   alwaysInline?: ReadonlySet<string>;
+  /**
+   * Rights information written to `manifest.metadata`. Only what is given is
+   * recorded: the packer never assumes a license, since a wrong one is worse
+   * than none.
+   */
+  metadata?: { author?: string; license?: string };
 }
 
 /**
@@ -110,7 +116,8 @@ export async function packLesson(
     metadata: {
       createdAt: lesson.createdAt,
       updatedAt: lesson.updatedAt,
-      license: 'CC BY 4.0',
+      ...(options?.metadata?.author ? { author: options.metadata.author } : {}),
+      ...(options?.metadata?.license ? { license: options.metadata.license } : {}),
     },
   };
 

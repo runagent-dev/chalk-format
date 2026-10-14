@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLesson } from '@chalk-format/model';
+import { hashBytes, parseLesson } from '@chalk-format/model';
 import { unpackLesson } from '@chalk-format/container';
 import { convertPdf } from './pdf.js';
 import { tinyPdf } from './testing.js';
@@ -37,6 +37,38 @@ describe('convertPdf', () => {
       expect(run.x).toBeLessThanOrEqual(400);
     }
   }, 30_000);
+
+  it('keeps the original PDF, addressed by the hash of its real bytes', async () => {
+    const pdf = tinyPdf();
+    const expectedId = await hashBytes(pdf);
+    const { chalk } = await convertPdf(pdf, { title: 'Tiny', targetWidth: 200 });
+    const { lesson, assets } = await unpackLesson(chalk);
+
+    const background = lesson.pages[0]!.background;
+    if (background.type !== 'pdf_page') throw new Error('expected a pdf_page background');
+    expect(background.assetId).toBe(expectedId);
+    const stored = assets.get(expectedId);
+    expect(stored?.type).toBe('application/pdf');
+    expect(stored?.bytes).toEqual(tinyPdf());
+  }, 30_000);
+
+  it("does not consume the caller's buffer", async () => {
+    const pdf = tinyPdf();
+    const before = pdf.byteLength;
+    await convertPdf(pdf, { title: 'Tiny', targetWidth: 120 });
+    expect(pdf.byteLength).toBe(before);
+  }, 30_000);
+
+  it('sets the locale it is given and defaults to en', async () => {
+    const bn = await convertPdf(tinyPdf(), { title: 'Tiny', targetWidth: 120, locale: 'bn' });
+    expect((await unpackLesson(bn.chalk)).lesson.locale).toBe('bn');
+    const plain = await convertPdf(tinyPdf(), { title: 'Tiny', targetWidth: 120 });
+    expect((await unpackLesson(plain.chalk)).lesson.locale).toBe('en');
+  }, 30_000);
+
+  it('rejects a locale that is not a BCP 47 tag', async () => {
+    await expect(convertPdf(tinyPdf(), { title: 'Tiny', locale: 'bangla!' })).rejects.toThrow(/locale/);
+  });
 
   it('honours png output', async () => {
     const result = await convertPdf(tinyPdf(), { title: 'Tiny', format: 'png', targetWidth: 120 });

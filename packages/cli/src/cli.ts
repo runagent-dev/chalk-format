@@ -28,7 +28,11 @@ const USAGE = `chalkbook-pdf — convert a PDF into a .chalk lesson
 
 Usage:
   chalkbook-pdf convert <file.pdf> [-o <out.chalk>] [--title <title>] \\
+      [--locale <bcp47>] [--author <name>] [--license <text>] \\
       [--width <px>] [--format webp|png] [--quality 0-1]
+
+  --locale   language of the book, e.g. bn or en (default en)
+  --license  recorded as-is in the manifest; nothing is assumed when omitted
 
 Renders each page (WebP by default), extracts its text layer, and packs
 a portable .chalk document. Runs entirely in Node — no browser.`;
@@ -54,6 +58,9 @@ async function main(): Promise<void> {
 
   const pdfBytes = new Uint8Array(await readFile(input));
   const chalk = await convertPdfToChalk(pdfBytes, title, {
+    ...(flags.locale ? { locale: flags.locale } : {}),
+    ...(flags.author ? { author: flags.author } : {}),
+    ...(flags.license ? { license: flags.license } : {}),
     ...(flags.width ? { targetWidth: Number(flags.width) } : {}),
     ...(flags.format === 'png' || flags.format === 'webp' ? { format: flags.format } : {}),
     ...(flags.quality ? { quality: Number(flags.quality) } : {}),

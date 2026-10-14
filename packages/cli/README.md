@@ -16,7 +16,7 @@ pnpm --filter @chalk-format/cli start convert ./book.pdf
 # → book.chalk
 
 pnpm --filter @chalk-format/cli start convert ./book.pdf \
-    -o out.chalk --title "Physics" --width 1600 --format webp --quality 0.85
+    -o out.chalk --title "Physics" --locale bn --license "All rights reserved" --width 1600 --format webp --quality 0.85
 ```
 
 Open the resulting `.chalk` in the app (Open .chalk) or publish it with

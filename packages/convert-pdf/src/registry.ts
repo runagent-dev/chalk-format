@@ -3,6 +3,11 @@ export type SourceFormat = 'pdf';
 export interface ConvertOptions {
   /** Overrides the title derived from the document/filename. */
   title?: string;
+  /** BCP 47 language tag of the document, e.g. `bn`, `en`, `bn-BD`. Default `en`. */
+  locale?: string;
+  /** Rights metadata recorded in the manifest. Omitted when not given. */
+  author?: string;
+  license?: string;
   targetWidth?: number;
   format?: 'webp' | 'png';
   quality?: number;
