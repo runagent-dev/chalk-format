@@ -104,7 +104,7 @@ export const arrowObjectSchema = z.object({
 export const vectorObjectSchema = z.object({
   ...objectBase,
   type: z.literal('vector'),
-  /** SVG path data in page coordinates (from structured import). */
+  /** SVG path data in page units, drawn offset by (x, y) (from structured import). */
   path: z.string(),
   fill: z.string().optional(),
   stroke: z.string().optional(),
