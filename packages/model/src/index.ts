@@ -1,7 +1,5 @@
 export * from './lesson.js';
 export * from './helpers.js';
-export * from './hit-test.js';
-export * from './ink-trim.js';
 export * from './hash.js';
 export {
   sniffMediaType,
