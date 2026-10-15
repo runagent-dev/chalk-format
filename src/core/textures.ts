@@ -76,9 +76,29 @@ export function knurlTexture(repeatX: number, repeatY: number) {
 /** Wait for the UI/scale fonts before painting any canvas text (a canvas painted early never repaints). */
 export async function fontsReady() {
   await Promise.all([
+    document.fonts.load('700 40px "Noto Sans"'),
     document.fonts.load('600 40px "Noto Sans"'),
     document.fonts.load('500 40px "Noto Sans"'),
     document.fonts.load('600 40px "Noto Sans Bengali"'),
   ]).catch(() => undefined);
   await document.fonts.ready;
+}
+
+/** Dark knurled grip with light diamond ridges (colour map), like a printed instrument drawing. */
+export function knurlColorTexture(repeatX: number, repeatY: number, base = '#454b46', ridge = '#c9cfc6') {
+  const t = canvasTexture(256, 256, (g) => {
+    g.fillStyle = base;
+    g.fillRect(0, 0, 256, 256);
+    for (const [w, c] of [[16, ridge], [6, '#f4f7f2']] as const) {
+      g.strokeStyle = c;
+      g.lineWidth = w;
+      for (const d of [-256, 0, 256]) {
+        g.beginPath(); g.moveTo(d, 0); g.lineTo(d + 256, 256); g.stroke();
+        g.beginPath(); g.moveTo(d + 256, 0); g.lineTo(d, 256); g.stroke();
+      }
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  return t;
 }
