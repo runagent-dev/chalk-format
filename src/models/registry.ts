@@ -22,4 +22,14 @@ export const MODELS: GalleryModel[] = [
     poster: '/posters/screw-gauge.jpg',
     mount: async (host) => (await import('./screw-gauge/page')).mountScrewGauge(host),
   },
+  {
+    id: 'vernier-caliper',
+    title: 'Vernier caliper',
+    titleBn: 'ভার্নিয়ার ক্যালিপার্স',
+    subject: 'physics',
+    level: 'SSC · HSC',
+    summary: 'Slide the jaws to measure outside, inside and depth; find the coinciding division and correct the zero error.',
+    poster: '/posters/vernier-caliper.jpg',
+    mount: async (host) => (await import('./vernier/page')).mountVernier(host),
+  },
 ];

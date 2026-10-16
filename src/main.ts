@@ -27,7 +27,7 @@ function gallery() {
           <h2>${m.title} <span class="bn">${m.titleBn}</span></h2>
           <p>${m.summary}</p>
         </a></li>`).join('')}
-      <li class="soon"><div class="card"><h2>Coming next</h2><p>Vernier calipers, pendulum, optical bench, molecules, DNA, the human heart.</p></div></li>
+      <li class="soon"><div class="card"><h2>Coming next</h2><p>Pendulum, optical bench, metre bridge, molecules, DNA, the human heart.</p></div></li>
     </ul>
   </main>`;
 }

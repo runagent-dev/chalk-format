@@ -96,6 +96,14 @@ export class Viewer {
     return this.raycaster.intersectObjects(objects, true);
   }
 
+  /** Where a pointer ray meets a plane (world units), or null. */
+  pointOnPlane(event: PointerEvent, plane: THREE.Plane) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((event.clientX - r.left) / r.width) * 2 - 1, -((event.clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    return this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+  }
+
   dispose() {
     cancelAnimationFrame(this.raf);
     this.resize.disconnect();

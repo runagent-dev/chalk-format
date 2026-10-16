@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { applyPose, buildTray as buildTrayBox, pose, type Pose } from '../../core/specimen';
+
+export { applyPose, type Pose };
 
 // Small objects to measure, and the tray they sit in. Millimetres, same frame as the gauge:
 // the anvil face is the plane x = 0 and the measured dimension always lies along +X when held.
@@ -24,40 +27,11 @@ export const SPECIMENS: SpecimenInfo[] = [
   { kind: 'cube', label: 'Metal cube', labelBn: 'ধাতব ঘনক', measures: 'side', range: [4, 9.5] },
 ];
 
-export interface Pose {
-  position: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-}
-
-const pose = (x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): Pose => ({
-  position: new THREE.Vector3(x, y, z),
-  quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
-});
-
 // ── tray ──────────────────────────────────────────────────────────────────
 export const TRAY = { x0: 52, x1: 132, z0: -18, z1: 20, floor: -42 };
 const FLOOR_TOP = TRAY.floor + 1.2;
 
-export function buildTray() {
-  const g = new THREE.Group();
-  g.name = 'part:tray';
-  const felt = new THREE.MeshStandardMaterial({ color: 0x1d2b33, roughness: 0.95, metalness: 0 });
-  const rim = new THREE.MeshStandardMaterial({ color: 0x3a4a52, roughness: 0.6, metalness: 0.2 });
-  const w = TRAY.x1 - TRAY.x0, d = TRAY.z1 - TRAY.z0, cx = (TRAY.x0 + TRAY.x1) / 2, cz = (TRAY.z0 + TRAY.z1) / 2;
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 1.2, d), felt);
-  floor.position.set(cx, TRAY.floor + 0.6, cz);
-  g.add(floor);
-  const wall = (sx: number, sz: number, x: number, z: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 4.5, sz), rim);
-    m.position.set(x, TRAY.floor + 2.25, z);
-    g.add(m);
-  };
-  wall(w + 3, 1.5, cx, TRAY.z0 - 0.75);
-  wall(w + 3, 1.5, cx, TRAY.z1 + 0.75);
-  wall(1.5, d, TRAY.x0 - 0.75, cz);
-  wall(1.5, d, TRAY.x1 + 0.75, cz);
-  return g;
-}
+export const buildTray = () => buildTrayBox(TRAY);
 
 // ── objects ───────────────────────────────────────────────────────────────
 const copper = () => new THREE.MeshStandardMaterial({ color: 0xc8753a, metalness: 1, roughness: 0.3 });
@@ -122,9 +96,4 @@ export function buildSpecimen(info: SpecimenInfo, size: number): Specimen {
       return { info, size, object: o, tray: pose(106, FLOOR_TOP + r, -6, 0, 0.35, 0), held: pose(r, 0, 0) };
     }
   }
-}
-
-export function applyPose(o: THREE.Object3D, p: Pose) {
-  o.position.copy(p.position);
-  o.quaternion.copy(p.quaternion);
 }
