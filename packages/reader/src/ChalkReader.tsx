@@ -1,12 +1,15 @@
 import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { LessonPage } from '@chalk-format/model';
+import { getPageSize, isLabObject, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
 import { num, strings } from './i18n.js';
 import { Dock } from './Dock.js';
 import { Viewer, type ViewerHandle } from './Viewer.js';
 import { EmbedCard, IconMarker, embedIcon, imageGlyph, snipGlyph } from './render/Markers.js';
-import type { HtmlObjectRenderer } from './render/PageView.js';
+import { PageView, type HtmlObjectRenderer } from './render/PageView.js';
+import { AudioEmbed, LabFrame, ModelViewer, VideoEmbed, localLabStorage, type LabStorage } from './render/Embeds.js';
+import { Modal } from './render/Modal.js';
+import { useAssetUrl } from './render/assets.js';
 import { Panel } from './panels/Panel.js';
 import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
@@ -21,6 +24,10 @@ export type ChalkReaderProps = {
   config?: ReaderConfigInput;
   /** 0-based page index, whenever it changes. */
   onPageChange?: (index: number, page: LessonPage) => void;
+  /** A lab reported progress (Host API `progress`). */
+  onLabProgress?: (progress: { step?: { done: number; total: number }; score?: number; completed?: boolean }, where: { objectId: string; labId: string; page: number }) => void;
+  /** Where labs keep their saved state. Default: this browser (config.persistence 'local'), or nowhere ('none'). */
+  labStorage?: LabStorage;
   className?: string;
   style?: CSSProperties;
 };
@@ -91,6 +98,10 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [query, setQuery] = useState('');
   const [hit, setHit] = useState(0);
   const deferredQuery = useDeferredValue(query);
+  // one live embed at a time (a running lab or a 3D viewer), and at most one dialog
+  const [active, setActive] = useState<{ id: string; page: number } | null>(null);
+  const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject } | null>(null);
+  const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
   const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(book.lesson, deferredQuery) : []), [book.lesson, deferredQuery, panel]);
   useEffect(() => setHit(0), [deferredQuery]);
 
@@ -138,12 +149,42 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     else if (k === '0') { e.preventDefault(); viewer.current?.zoomTo(1); }
   };
 
-  const renderHtmlObject: HtmlObjectRenderer = useCallback((o) => {
-    if (o.type === 'snip') return config.features.snips ? <IconMarker x={o.x} y={o.y} kind="snip" glyph={snipGlyph} label={t.openSnip} /> : null;
-    if (o.type === 'image') return <IconMarker x={o.x} y={o.y} kind="media" glyph={imageGlyph} label="" />;
-    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={embedIcon(o, 26)} label={o.lab?.title ?? o.embed} />;
-    return <EmbedCard book={book} o={o} caption={o.lab?.title} label={o.lab?.title ?? o.embed} />;
-  }, [book, config.features.snips, t]);
+  const onLabProgress = props.onLabProgress;
+  const renderHtmlObject: HtmlObjectRenderer = useCallback((o, pg) => {
+    const f = config.features, pi = pages.indexOf(pg);
+    if (o.type === 'snip') return f.snips ? <IconMarker x={o.x} y={o.y} kind="snip" glyph={snipGlyph} label={t.openSnip} onActivate={() => setModal({ kind: 'snip', pageId: o.snipPageId })} /> : null;
+    if (o.type === 'image') return <IconMarker x={o.x} y={o.y} kind="media" glyph={imageGlyph} label="" onActivate={() => setModal({ kind: 'media', o })} />;
+    const lab = isLabObject(o) ? o : null;
+    const canRun = lab ? f.labs : o.embed === 'model3d' ? f.model3d : o.embed === 'video' || o.embed === 'audio' ? f.media : false;
+    const label = lab?.lab.title ?? (o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : t.unsupported);
+    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={embedIcon(o, 26)} label={label} onActivate={canRun ? () => setModal({ kind: 'media', o }) : undefined} />;
+    if (!canRun) return <EmbedCard book={book} o={o} caption={o.embed === 'plugin' && !lab ? t.unsupported : lab?.lab.title} label={label} />;
+    if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} />;
+    if (o.embed === 'audio') return <AudioEmbed book={book} o={o} locale={locale} />;
+    // in its box on the page, unless that box is too small on this screen to use: then a larger view
+    const start = (el: HTMLElement) => { const r = el.getBoundingClientRect(); if (r.width < 440 || r.height < 260) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); };
+    return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} />;
+  }, [book, config.features, t, locale, pages]);
+
+  // the live embed on a page, drawn in screen pixels above it
+  const pageActive = useCallback((pg: LessonPage, i: number, scale: number) => {
+    if (!active || active.page !== i) return undefined;
+    const o = pg.objects.find((x) => x.id === active.id);
+    if (!o || o.type !== 'embed') return undefined;
+    const style = { left: o.x * scale, top: o.y * scale, width: o.width * scale, height: o.height * scale };
+    if (isLabObject(o)) return <LabFrame book={book} o={o} style={style} locale={locale} theme={dark} storage={storage}
+      onProgress={(p) => onLabProgress?.(p, { objectId: o.id, labId: o.lab.id, page: i })} onStop={() => setActive(null)} />;
+    return <ModelViewer book={book} o={o} style={style} />;
+  }, [active, book, locale, dark, storage, onLabProgress]);
+
+  // a live embed stops once its page is well out of view (it would be off screen, using the phone's power)
+  useEffect(() => { if (active && Math.abs(active.page - page) > 1) setActive(null); }, [page, active]);
+  // labs.autoStart: the first lab on the page you arrive at starts by itself
+  useEffect(() => {
+    if (!config.labs.autoStart || !config.features.labs) return;
+    const lab = pages[page]?.objects.find((x) => isLabObject(x) && x.displayMode !== 'icon');
+    if (lab && active?.id !== lab.id) setActive({ id: lab.id, page });
+  }, [page, config.labs.autoStart, config.features.labs]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
 
@@ -167,8 +208,16 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
-        textLayer={config.features.textSelection} gestures pageLabel={pageLabel} highlights={highlights}
+        textLayer={config.features.textSelection} gestures pageLabel={pageLabel} highlights={highlights} pageActive={pageActive}
       />
+      {modal && (
+        <Modal title={modal.kind === 'snip' ? (book.lesson.snipPages.find((p) => p.id === modal.pageId)?.title ?? t.openSnip) : modalTitle(modal.o, t)}
+          closeLabel={t.close} onClose={() => setModal(null)} container={root.current} wide={modal.kind === 'snip' || (modal.o.type === 'embed' && modal.o.embed !== 'audio')}>
+          {modal.kind === 'snip'
+            ? <SnipView book={book} pageId={modal.pageId} renderHtmlObject={renderHtmlObject} />
+            : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={() => setModal(null)} />}
+        </Modal>
+      )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
           <Thumbnails book={book} pages={pages} current={page} locale={locale} renderHtmlObject={renderHtmlObject}
@@ -187,11 +236,49 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
           actions={{
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
-            fit: () => { setFit((f) => (f === 'width' ? 'page' : 'width')); viewer.current?.zoomTo(1); }, setLayout,
+            fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,
             theme: () => setTheme(dark === 'dark' ? 'light' : 'dark'), language: () => setLocale((l) => (l === 'bn' ? 'en' : 'bn')), fullscreen: toggleFullscreen,
           }}
         />
       )}
+    </div>
+  );
+}
+
+const modalTitle = (o: LessonObject, t: ReturnType<typeof strings>) =>
+  o.type === 'embed' ? (isLabObject(o) ? o.lab.title : o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : o.embed) : '';
+
+/** A snip page (spec 1.0 §3.4), fitted to the dialog. */
+function SnipView({ book, pageId, renderHtmlObject }: { book: Book; pageId: string; renderHtmlObject: HtmlObjectRenderer }) {
+  const pg = book.lesson.snipPages.find((p) => p.id === pageId);
+  const box = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => { const e = box.current; if (!e) return; const ro = new ResizeObserver(() => setW(e.clientWidth)); ro.observe(e); return () => ro.disconnect(); }, []);
+  if (!pg) return null;
+  const size = getPageSize(pg), scale = w ? Math.min(w / size.width, (window.innerHeight * 0.7) / size.height) : 0;
+  return <div ref={box} className="chalk-snip">{scale > 0 && <PageView book={book} page={pg} scale={scale} live renderHtmlObject={renderHtmlObject} />}</div>;
+}
+
+/** Icon-mode media opened in the dialog, at a comfortable size. */
+function MediaInModal({ book, o, locale, theme, storage, onClose }: { book: Book; o: LessonObject; locale: Locale; theme: 'light' | 'dark'; storage: LabStorage | null; onClose: () => void }) {
+  const url = useAssetUrl(book, o.type === 'image' ? o.assetId : o.type === 'embed' ? o.assetId : undefined);
+  if (o.type === 'image') return url ? <img className="chalk-modal-media" src={url} alt="" /> : null;
+  if (o.type !== 'embed') return null;
+  const big = { position: 'relative' as const, width: '100%', aspectRatio: o.embed === 'model3d' ? '4 / 3' : '16 / 9' };
+  if (isLabObject(o)) return <LabFrame book={book} o={o as LabObject} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 'min(70vh, 560px)' }} locale={locale} theme={theme} storage={storage} onStop={onClose} />;
+  if (o.embed === 'model3d') return <ModelViewer book={book} o={o} style={big} />;
+  if (o.embed === 'video') return url ? <video className="chalk-modal-media" src={url} controls autoPlay playsInline /> : null;
+  if (o.embed === 'audio') return <ModalAudio book={book} o={o} locale={locale} />;
+  return null;
+}
+
+function ModalAudio({ book, o, locale }: { book: Book; o: EmbedObject; locale: Locale }) {
+  // the in-page player, at a fixed size inside the dialog
+  return (
+    <div className="chalk-modal-audio">
+      <div className="chalk-page-units" style={{ position: 'relative', width: 480, height: 96, transform: 'none' }}>
+        <AudioEmbed book={book} o={{ ...o, x: 0, y: 0, width: 480, height: 96 }} locale={locale} />
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ const STRINGS = {
     theme: 'Dark mode', language: 'বাংলা', fullscreen: 'Full screen', close: 'Close',
     play: 'Play', startLab: 'Start the lab', labStopped: 'The lab stopped', unsupported: 'This reader cannot show this item',
     openSnip: 'Open the snip', textPrompt: 'Type your note',
+    model3d: '3D model', video: 'Video', audio: 'Sound',
   },
   bn: {
     loading: 'বইটি খোলা হচ্ছে…', failed: 'বইটি খোলা গেল না', page: 'পৃষ্ঠা', of: '/',
@@ -29,6 +30,7 @@ const STRINGS = {
     theme: 'অন্ধকার মোড', language: 'English', fullscreen: 'পূর্ণ পর্দা', close: 'বন্ধ করো',
     play: 'চালাও', startLab: 'ল্যাব শুরু করো', labStopped: 'ল্যাবটি বন্ধ হয়ে গেছে', unsupported: 'এই রিডার এটি দেখাতে পারে না',
     openSnip: 'অংশটি খোলো', textPrompt: 'তোমার নোট লেখো',
+    model3d: 'ত্রিমাত্রিক মডেল', video: 'ভিডিও', audio: 'শব্দ',
   },
 } as const;
 

@@ -6,6 +6,7 @@ import { PageView, type HtmlObjectRenderer } from './render/PageView.js';
 
 const GAP = 16;   // px between pages and rows
 const PAD = 16;   // px around the column
+const READING_WIDTH = 900;   // fit 'auto': widest a page is drawn at zoom 1, in CSS px
 
 export type ViewerHandle = {
   /** Scroll to a page (0-based). */
@@ -35,6 +36,7 @@ export type ViewerProps = {
   gestures: boolean;
   highlights?: (pageIndex: number) => { x: number; y: number; width: number; height: number; current?: boolean }[] | undefined;
   pageOverlay?: (page: LessonPage, index: number, scale: number) => ReactNode;
+  pageActive?: (page: LessonPage, index: number, scale: number) => ReactNode;
   pageLabel: (index: number) => string;
 };
 
@@ -76,6 +78,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
     for (const g of groups) {
       const sizes = g.map((i) => getPageSize(p.pages[i]!));
       fit = Math.min(fit, (box.w - 2 * PAD - (g.length - 1) * GAP) / sizes.reduce((a, s) => a + s.width, 0));
+      if (p.fit === 'auto') fit = Math.min(fit, READING_WIDTH / Math.max(...sizes.map((s) => s.width)));
       if (p.fit === 'page' && box.h) fit = Math.min(fit, (box.h - 2 * PAD) / Math.max(...sizes.map((s) => s.height)));
     }
     return Math.max(0.01, fit);
@@ -197,7 +200,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
               <PageView
                 key={p.pages[i]!.id} book={p.book} page={p.pages[i]!} scale={scale} live={near(r)}
                 renderHtmlObject={p.renderHtmlObject} textLayer={p.textLayer} highlights={p.highlights?.(i)}
-                overlay={p.pageOverlay?.(p.pages[i]!, i, scale)} label={p.pageLabel(i)}
+                overlay={p.pageOverlay?.(p.pages[i]!, i, scale)} active={p.pageActive?.(p.pages[i]!, i, scale)} label={p.pageLabel(i)}
               />
             ))}
           </div>

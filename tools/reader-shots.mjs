@@ -3,7 +3,7 @@
 //   node tools/reader-shots.mjs <outDir> [url] [--steps steps.json]
 //
 // Shoots desktop (1280×800) and phone (390×844, touch) views of the page, after an optional list of steps
-// ({ name, eval?: "js run in the page", click?: "selector", wait?: ms }), one PNG per step and viewport.
+// ({ name, waitFor?: "selector", eval?: "js run in the page", click?: "selector", wait?: ms }), one PNG per step and viewport.
 // Prints page errors. Uses the Chromium that Playwright has installed (npx playwright install chromium).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +19,7 @@ for (const [vp, opts] of [['desktop', { viewport: { width: 1280, height: 800 } }
   const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 200)); });
   await p.goto(URL, { waitUntil: 'networkidle' });
   for (const s of steps) {
+    if (s.waitFor) await p.waitForSelector(s.waitFor, { timeout: 30000 });
     if (s.click) await p.click(s.click);
     if (s.eval) await p.evaluate(s.eval);
     await p.waitForTimeout(s.wait ?? 600);

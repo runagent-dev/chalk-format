@@ -243,3 +243,55 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-result:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: -2px; }
 .chalk-result[aria-current="true"] { background: var(--chalk-accent-soft); }
 .chalk-result mark { background: var(--chalk-hit); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+/* ---------- live embeds: video and audio in the page, labs and 3D in screen pixels above it ---------- */
+.chalk-page-active { position: absolute; inset: 0; pointer-events: none; }
+.chalk-live { position: absolute; pointer-events: auto; overflow: hidden; border-radius: 8px; background: var(--chalk-placeholder); box-shadow: 0 0 0 1px var(--chalk-line); }
+.chalk-live:fullscreen { border-radius: 0; }
+.chalk-live > .chalk-spinner { position: absolute; left: 50%; top: 50%; margin: -14px 0 0 -14px; }
+.chalk-model { background: oklch(95% 0.006 240); }
+.chalk-lab-frame, .chalk-lab-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.chalk-lab-wait { position: absolute; inset: 0; display: grid; place-items: center; background: var(--chalk-placeholder); }
+.chalk-lab-wait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.7; }
+.chalk-lab-wait .chalk-spinner { position: relative; }
+.chalk-video { overflow: hidden; border-radius: 8px; background: oklch(15% 0 0); }
+.chalk-video video { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+/* the audio bar, in page units: everything sized from the box height */
+.chalk-audio { display: flex; align-items: center; }
+.chalk-audio-bar {
+  --u: calc(var(--h) / 4);
+  display: flex; align-items: center; gap: calc(var(--u) * 0.6); width: 100%; height: 100%; padding: 0 calc(var(--u) * 0.6);
+  border-radius: calc(var(--u) * 0.5); background: oklch(97% 0.008 255); box-shadow: inset 0 0 0 calc(var(--u) * 0.06) oklch(82% 0.03 255); color: oklch(30% 0.05 255);
+}
+.chalk-audio-play {
+  flex: none; display: grid; place-items: center; width: calc(var(--u) * 2.4); height: calc(var(--u) * 2.4); padding: 0; border: 0; border-radius: 50%;
+  background: oklch(48% 0.13 255); color: oklch(99% 0 0); cursor: pointer; font-size: calc(var(--u) * 1.1);
+  transition: background-color var(--chalk-dur-fast) var(--chalk-ease-out);
+}
+.chalk-audio-play:hover { background: oklch(42% 0.13 255); }
+.chalk-audio-play:active { transform: scale(0.95); }
+.chalk-audio-play:focus-visible { outline: calc(var(--u) * 0.12) solid var(--chalk-focus); outline-offset: calc(var(--u) * 0.1); }
+.chalk-audio-seek { flex: 1; min-width: 0; height: calc(var(--u) * 1); accent-color: oklch(48% 0.13 255); cursor: pointer; }
+.chalk-audio-time { flex: none; font-size: calc(var(--u) * 0.85); font-variant-numeric: tabular-nums; }
+
+/* ---------- dialogs ---------- */
+.chalk-modal-back { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: var(--chalk-space-lg); background: oklch(20% 0.02 260 / 0.45); }
+.chalk-modal {
+  display: flex; flex-direction: column; width: min(520px, 100%); max-height: 100%; overflow: hidden;
+  background: var(--chalk-surface); color: var(--chalk-ink); border-radius: var(--chalk-radius-md); box-shadow: var(--chalk-float-shadow);
+}
+.chalk-modal.is-wide { width: min(980px, 100%); }
+.chalk-modal-body { min-height: 0; overflow: auto; padding: var(--chalk-space-md); }
+.chalk-modal-media { display: block; width: 100%; max-height: 72vh; object-fit: contain; border-radius: var(--chalk-radius-sm); background: oklch(15% 0 0); }
+.chalk-modal-audio { display: grid; place-items: center; padding: var(--chalk-space-lg) 0; }
+.chalk-snip { display: grid; place-items: center; }
+.chalk-snip .chalk-page { box-shadow: 0 0 0 1px var(--chalk-line); }
+.chalk-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* on phone-width readers a wide dialog takes the whole reader: a lab or a model needs the room */
+@container chalk (max-width: 719px) {
+  .chalk-modal-back { padding: 0; }
+  .chalk-modal.is-wide { width: 100%; height: 100%; border-radius: 0; }
+  .chalk-modal.is-wide .chalk-modal-body { flex: 1; display: flex; flex-direction: column; padding: 0; }
+  .chalk-modal.is-wide .chalk-modal-body > .chalk-live { flex: 1; border-radius: 0; box-shadow: none; }
+}

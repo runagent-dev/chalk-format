@@ -15,12 +15,15 @@ export const embedIcon = (o: EmbedObject, size = 28): ReactNode => {
 };
 
 /** Positioned at an object's box, in page units. */
+/** Called with the activated element, so the reader can see how big it is on screen. */
+export type Activate = (el: HTMLElement) => void;
+
 export function Box({ x, y, width, height, className, children, label, onActivate }: {
-  x: number; y: number; width: number; height: number; className?: string | undefined; children?: ReactNode; label?: string | undefined; onActivate?: (() => void) | undefined;
+  x: number; y: number; width: number; height: number; className?: string | undefined; children?: ReactNode; label?: string | undefined; onActivate?: Activate | undefined;
 }) {
   const style = { left: x, top: y, width, height };
   return onActivate
-    ? <button type="button" className={`chalk-box ${className ?? ''}`} style={style} aria-label={label} onClick={onActivate}>{children}</button>
+    ? <button type="button" className={`chalk-box ${className ?? ''}`} style={style} aria-label={label} onClick={(e) => onActivate(e.currentTarget)}>{children}</button>
     : <div className={`chalk-box ${className ?? ''}`} style={style} aria-label={label}>{children}</div>;
 }
 
@@ -28,7 +31,7 @@ export function Box({ x, y, width, height, className, children, label, onActivat
  * A media card: the poster scaled to cover the box (or a neutral tile), the kind's glyph and an optional
  * caption. What a reader draws for an embed before it plays, and for a plugin it cannot run (spec 1.1 §2.2).
  */
-export function EmbedCard({ book, o, caption, onActivate, label }: { book: Book; o: EmbedObject; caption?: string | undefined; onActivate?: (() => void) | undefined; label?: string | undefined }) {
+export function EmbedCard({ book, o, caption, onActivate, label }: { book: Book; o: EmbedObject; caption?: string | undefined; onActivate?: Activate | undefined; label?: string | undefined }) {
   const poster = useAssetUrl(book, o.poster);
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-card" label={label} {...(onActivate ? { onActivate } : {})}>
@@ -42,7 +45,7 @@ export function EmbedCard({ book, o, caption, onActivate, label }: { book: Book;
 }
 
 /** A 56 × 56 marker at the object's x, y (icon display mode, and snips: spec 1.0 §3.4). */
-export function IconMarker({ x, y, kind, glyph, label, onActivate }: { x: number; y: number; kind: 'media' | 'snip'; glyph: ReactNode; label: string; onActivate?: (() => void) | undefined }) {
+export function IconMarker({ x, y, kind, glyph, label, onActivate }: { x: number; y: number; kind: 'media' | 'snip'; glyph: ReactNode; label: string; onActivate?: Activate | undefined }) {
   const s = kind === 'snip' ? SNIP_ICON_SIZE : MEDIA_ICON_SIZE;
   return <Box x={x} y={y} width={s} height={s} className={`chalk-marker is-${kind}`} label={label} {...(onActivate ? { onActivate } : {})}>{glyph}</Box>;
 }

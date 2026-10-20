@@ -23,6 +23,8 @@ export type PageViewProps = {
   highlights?: { x: number; y: number; width: number; height: number; current?: boolean }[] | undefined;
   /** Drawn above everything (the annotation surface). */
   overlay?: ReactNode | undefined;
+  /** Live embeds (a running lab, a 3D viewer) in screen pixels above the page, so they stay sharp at any zoom. */
+  active?: ReactNode | undefined;
   label?: string | undefined;
 };
 
@@ -51,6 +53,7 @@ export const PageView = memo(function PageView(p: PageViewProps) {
           {p.overlay}
         </div>
       )}
+      {p.live && p.active && <div className="chalk-page-active">{p.active}</div>}
     </div>
   );
 });

@@ -69,7 +69,7 @@ export function Dock(p: DockProps) {
       } : null;
       case 'zoomOut': return btn('zoomOut', t.zoomOut, <MinusIcon size={20} weight="bold" />, a.zoomOut, { disabled: p.zoom <= p.config.zoom.min });
       case 'zoomIn': return btn('zoomIn', t.zoomIn, <PlusIcon size={20} weight="bold" />, a.zoomIn, { disabled: p.zoom >= p.config.zoom.max });
-      case 'fit': return btn('fit', p.fit === 'width' ? t.fitPage : t.fitWidth, p.fit === 'width' ? <ArrowsInIcon size={20} /> : <ArrowsOutIcon size={20} />, a.fit);
+      case 'fit': return btn('fit', p.fit === 'page' ? t.fitWidth : t.fitPage, p.fit === 'page' ? <ArrowsOutIcon size={20} /> : <ArrowsInIcon size={20} />, a.fit);
       case 'layout': return a.setLayout ? btn('layout', `${t.layout}: ${t[p.layout]}`, p.layout === 'spread' ? <BookOpenIcon size={20} /> : p.layout === 'single' ? <FileIcon size={20} /> : <RowsIcon size={20} />,
         () => a.setLayout!(p.layout === 'continuous' ? 'single' : p.layout === 'single' ? 'spread' : 'continuous')) : null;
       case 'thumbnails': return f.thumbnails ? btn('thumbnails', t.thumbnails, <SquaresFourIcon size={20} />, a.thumbnails, { pressed: !!p.open?.thumbnails }) : null;

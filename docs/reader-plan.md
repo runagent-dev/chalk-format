@@ -20,12 +20,12 @@ The reference web reader for `.chalk` books: what every app that shows a Chalk b
 
 ## Phases
 
-- [ ] **1. Pages.** Open a book (file, bytes, URL; thin assets via a resolver). Render every background and
+- [x] **1. Pages.** Open a book (file, bytes, URL; thin assets via a resolver). Render every background and
   object type per the spec. Continuous scroll with page virtualisation, zoom (fit width, fit page, pinch,
   ctrl+wheel), keyboard. Showcase app shell.
-- [ ] **2. Navigation.** The dock. Thumbnails, search (text layer + text objects, highlighted), go to page,
+- [x] **2. Navigation.** The dock. Thumbnails, search (text layer + text objects, highlighted), go to page,
   fullscreen, theme, language.
-- [ ] **3. Media and labs.** Video, audio, 3D (`<model-viewer>`, loaded on demand), icon-mode markers, snip
+- [x] **3. Media and labs.** Video, audio, 3D (`<model-viewer>`, loaded on demand), icon-mode markers, snip
   pages, unknown plugins as fallback cards, labs through `@chalk-format/lab` (poster, tap to start, one at a
   time, paused off screen, state saved).
 - [ ] **4. Annotations.** Pen, highlighter, eraser, text, shapes, select/move/delete, undo/redo, colours and

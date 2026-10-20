@@ -21,14 +21,15 @@ export type DockItemId =
 export type CustomDockItem = { id: string; label: string; icon: ReactNode; onClick: () => void; active?: boolean };
 
 export type Layout = 'continuous' | 'single' | 'spread';
-export type Fit = 'width' | 'page';
+export type Fit = 'auto' | 'width' | 'page';
 export type ThemeChoice = 'light' | 'dark' | 'system';
 export type Locale = 'bn' | 'en';
 
 export type ReaderConfig = {
   /** Pages one under another (default), one at a time, or two side by side on wide screens. */
   layout: Layout;
-  /** What zoom 100 % means: the page's width fills the view, or the whole page fits. */
+  /** What zoom 100 % means: the page's width fills the view ('width'), the whole page fits ('page'), or the
+   *  width fills the view but no page is drawn wider than a comfortable reading width ('auto', default). */
   fit: Fit;
   zoom: { min: number; max: number; step: number };
   theme: ThemeChoice;
@@ -77,7 +78,7 @@ export type ReaderConfig = {
 
 export const DEFAULT_CONFIG: ReaderConfig = {
   layout: 'continuous',
-  fit: 'width',
+  fit: 'auto',
   zoom: { min: 0.25, max: 5, step: 1.25 },
   theme: 'system',
   locale: 'bn',

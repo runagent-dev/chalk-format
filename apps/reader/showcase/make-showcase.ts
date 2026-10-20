@@ -27,7 +27,7 @@ type Box = { page: number; x: number; y: number; w: number; h: number };   // mm
 const tmp = path.join(here, '.tmp-chapter.html');
 writeFileSync(tmp, readFileSync(path.join(here, 'chapter.html'), 'utf8').replace('</head>', `<style>${FONTS}</style></head>`));
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 794, height: 1123 } });
+const page = await browser.newPage({ viewport: { width: 794, height: 1123 }, deviceScaleFactor: 2 });   // 2×: the snip is a picture
 // tsx compiles named functions with a __name helper; functions sent into the page need it there too
 await page.addInitScript({ content: 'window.__name = (f) => f' });
 await page.goto('file://' + tmp);
