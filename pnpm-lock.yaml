@@ -57,6 +57,15 @@ importers:
         specifier: ^19.1.0
         version: 19.3.1(react@19.3.1)
     devDependencies:
+      '@chalk-format/container':
+        specifier: workspace:*
+        version: link:../../packages/container
+      '@chalk-format/convert-pdf':
+        specifier: workspace:*
+        version: link:../../packages/convert-pdf
+      '@chalk-format/model':
+        specifier: workspace:*
+        version: link:../../packages/model
       '@types/react':
         specifier: ^19.1.0
         version: 19.3.0

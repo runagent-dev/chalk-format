@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
@@ -7,6 +7,10 @@ import { Dock } from './Dock.js';
 import { Viewer, type ViewerHandle } from './Viewer.js';
 import { EmbedCard, IconMarker, embedIcon, imageGlyph, snipGlyph } from './render/Markers.js';
 import type { HtmlObjectRenderer } from './render/PageView.js';
+import { Panel } from './panels/Panel.js';
+import { Search } from './panels/Search.js';
+import { Thumbnails } from './panels/Thumbnails.js';
+import { searchBook } from './search.js';
 
 export type ChalkReaderProps = {
   /** The book: bytes, a File/Blob or a URL. Or pass an already opened `book`. */
@@ -83,6 +87,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [theme, setTheme] = useState<'light' | 'dark' | null>(config.theme === 'system' ? null : config.theme);
   const [locale, setLocale] = useState<Locale>(config.locale);
   const [fullscreen, setFullscreen] = useState(false);
+  const [panel, setPanel] = useState<'thumbnails' | 'search' | null>(null);
+  const [query, setQuery] = useState('');
+  const [hit, setHit] = useState(0);
+  const deferredQuery = useDeferredValue(query);
+  const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(book.lesson, deferredQuery) : []), [book.lesson, deferredQuery, panel]);
+  useEffect(() => setHit(0), [deferredQuery]);
 
   // a host changing its config takes effect (the playground does this)
   useEffect(() => setLayout(config.layout), [config.layout]);
@@ -118,6 +128,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
     const k = e.key, mod = e.ctrlKey || e.metaKey;
+    if (mod && k.toLowerCase() === 'f' && config.features.search) { e.preventDefault(); setPanel('search'); return; }
     if (k === 'PageDown' || (k === 'ArrowRight' && !mod) || (k === ' ' && layout === 'single')) { e.preventDefault(); next(); }
     else if (k === 'PageUp' || (k === 'ArrowLeft' && !mod)) { e.preventDefault(); prev(); }
     else if (k === 'Home') { e.preventDefault(); goTo(0); }
@@ -136,18 +147,46 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
 
+  // search hits on each page; the current one marked
+  const byPage = useMemo(() => {
+    const m = new Map<number, { x: number; y: number; width: number; height: number; current?: boolean }[]>();
+    hits.forEach((h, i) => { const l = m.get(h.page) ?? []; l.push({ x: h.x, y: h.y, width: h.width, height: h.height, current: i === hit }); m.set(h.page, l); });
+    return m;
+  }, [hits, hit]);
+  const highlights = useCallback((i: number) => byPage.get(i), [byPage]);
+  const showHit = useCallback((i: number) => {
+    const h = hits[i]; if (!h) return;
+    setHit(i); viewer.current?.reveal(h.page, h.x + h.width / 2, h.y);
+  }, [hits]);
+  const stepHit = useCallback((d: 1 | -1) => { if (hits.length) showHit((hit + d + hits.length) % hits.length); }, [hits.length, hit, showHit]);
+  const narrow = () => (root.current?.clientWidth ?? 1000) < 720;
+  const togglePanel = (which: 'thumbnails' | 'search') => setPanel((p) => (p === which ? null : which));
+
   return (
-    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={config.dock ? config.dock.position : 'none'} lang={locale} style={props.style} onKeyDown={onKey}>
+    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={config.dock ? config.dock.position : 'none'} data-panel={panel ?? undefined} lang={locale} style={props.style} onKeyDown={onKey}>
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
-        textLayer={config.features.textSelection} gestures pageLabel={pageLabel}
+        textLayer={config.features.textSelection} gestures pageLabel={pageLabel} highlights={highlights}
       />
+      {panel === 'thumbnails' && config.features.thumbnails && (
+        <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
+          <Thumbnails book={book} pages={pages} current={page} locale={locale} renderHtmlObject={renderHtmlObject}
+            onPick={(i) => { goTo(i); if (narrow()) setPanel(null); }} />
+        </Panel>
+      )}
+      {panel === 'search' && config.features.search && (
+        <Panel title={t.search} closeLabel={t.close} onClose={() => setPanel(null)}>
+          <Search locale={locale} query={query} onQuery={setQuery} hits={hits} current={hit}
+            onPick={(i) => { showHit(i); if (narrow()) setPanel(null); }} onStep={stepHit} />
+        </Panel>
+      )}
       {config.dock && (
         <Dock
           config={config} dock={config.dock} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
+          open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
           actions={{
-            prev, next, goTo, zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
+            prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'width' ? 'page' : 'width')); viewer.current?.zoomTo(1); }, setLayout,
             theme: () => setTheme(dark === 'dark' ? 'light' : 'dark'), language: () => setLocale((l) => (l === 'bn' ? 'en' : 'bn')), fullscreen: toggleFullscreen,
           }}

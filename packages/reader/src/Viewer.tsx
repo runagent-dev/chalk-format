@@ -10,6 +10,8 @@ const PAD = 16;   // px around the column
 export type ViewerHandle = {
   /** Scroll to a page (0-based). */
   goTo(index: number, smooth?: boolean): void;
+  /** Scroll so a point on a page (page units) is in view, a third of the way down (search hits). */
+  reveal(index: number, x: number, y: number): void;
   /** Zoom to an absolute factor, keeping the point at (clientX, clientY), or the view's centre, still. */
   zoomTo(zoom: number, anchor?: { clientX: number; clientY: number }): void;
   /** The scroll element (for the reader's keyboard and gesture handling). */
@@ -128,6 +130,14 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
       const row = rows.find((r) => r.pages.includes(index)); if (!row) return;
       e.scrollTo({ top: row.top - PAD, behavior: smooth ? 'smooth' : 'auto' });
     },
+    reveal(index, x, y) {
+      const e = el.current; if (!e) return;
+      if (p.layout === 'single' && index !== p.page) p.onPage(index);
+      const row = rows.find((r) => r.pages.includes(index)) ?? rows[0]; if (!row) return;
+      let left = Math.max(PAD, (contentW - row.width) / 2);
+      for (const i of row.pages) { if (i === index) break; left += getPageSize(p.pages[i]!).width * scale + GAP; }
+      e.scrollTo({ top: row.top + y * scale - e.clientHeight / 3, left: left + x * scale - e.clientWidth / 2, behavior: 'smooth' });
+    },
     zoomTo(z, at) {
       const e = el.current; if (!e) return;
       const nz = Math.min(p.zoomRange.max, Math.max(p.zoomRange.min, z));
@@ -137,7 +147,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
       anchor.current = { fx: (e.scrollLeft + ax) / contentW, fy: (e.scrollTop + ay) / Math.max(1, contentH), ax, ay };
       p.onZoom(nz);
     },
-  }), [rows, contentW, contentH, p]);
+  }), [rows, contentW, contentH, scale, p]);
 
   // ctrl/⌘ + wheel (and trackpad pinch, which browsers send as ctrl + wheel) zooms at the pointer
   useEffect(() => {

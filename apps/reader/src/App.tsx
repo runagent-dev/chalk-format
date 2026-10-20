@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ChalkReader, type BookSource } from '@chalk-format/reader';
 
 const SAMPLES = [
+  { id: 'showcase', label: 'পদার্থবিজ্ঞান · Physics sample', url: '/samples/showcase.chalk' },
   { id: 'all-features', label: 'Every object type', url: '/samples/all-features.chalk' },
   { id: 'lab', label: 'A lab', url: '/samples/lab.chalk' },
 ];
