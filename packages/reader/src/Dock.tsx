@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsInIcon, ArrowsOutIcon, BookOpenIcon, CaretLeftIcon, CaretRightIcon,
-  DotsThreeIcon, DownloadSimpleIcon, MagnifyingGlassIcon, MinusIcon, MoonIcon, PlusIcon, RowsIcon, SquaresFourIcon, SunIcon, TranslateIcon, FileIcon,
+  DotsThreeIcon, DownloadSimpleIcon, FolderOpenIcon, MagnifyingGlassIcon, MinusIcon, MoonIcon, PlusIcon, RowsIcon, SquaresFourIcon, SunIcon, TranslateIcon, FileIcon,
 } from '@phosphor-icons/react';
 import type { CustomDockItem, DockItemId, Fit, Layout, Locale, ReaderConfig } from './config.js';
 import { num, strings } from './i18n.js';
@@ -10,7 +10,7 @@ export type DockActions = Partial<{
   prev: () => void; next: () => void; goTo: (index: number) => void;
   zoomIn: () => void; zoomOut: () => void; fit: () => void; setLayout: (l: Layout) => void;
   thumbnails: () => void; search: () => void;
-  undo: () => void; redo: () => void; exportNotes: () => void;
+  undo: () => void; redo: () => void; exportNotes: () => void; importNotes: () => void;
   theme: () => void; language: () => void; fullscreen: () => void;
 }>;
 
@@ -30,6 +30,12 @@ export type DockProps = {
 
 const WIDTH: Record<string, number> = { page: 96, '|': 13, more: 40 };
 const itemWidth = (id: string) => WIDTH[id] ?? 40;
+/** How much an item is needed on a small screen: higher stays in the dock longer. Custom items sit mid-way. */
+const NEED: Record<string, number> = {
+  tools: 100, page: 95, next: 90, prev: 89, undo: 80, search: 70, thumbnails: 65, redo: 60, zoomIn: 40, zoomOut: 39, fit: 35, layout: 30,
+  export: 20, import: 19, theme: 15, language: 14, fullscreen: 10,
+};
+const need = (id: string) => NEED[id] ?? 50;
 
 /** The floating dock. Items, order and position come from `config.dock`; what does not fit goes in "more". */
 export function Dock(p: DockProps) {
@@ -78,6 +84,7 @@ export function Dock(p: DockProps) {
       case 'undo': return f.annotations ? btn('undo', t.undo, <ArrowCounterClockwiseIcon size={20} />, a.undo, { disabled: !p.canUndo }) : null;
       case 'redo': return f.annotations ? btn('redo', t.redo, <ArrowClockwiseIcon size={20} />, a.redo, { disabled: !p.canRedo }) : null;
       case 'export': return f.export && f.annotations ? btn('export', t.export, <DownloadSimpleIcon size={20} />, a.exportNotes) : null;
+      case 'import': return f.export && f.annotations ? btn('import', t.import, <FolderOpenIcon size={20} />, a.importNotes) : null;
       case 'theme': return f.themeToggle ? btn('theme', t.theme, p.dark ? <SunIcon size={20} /> : <MoonIcon size={20} />, a.theme, { pressed: p.dark }) : null;
       case 'language': return f.languageToggle ? btn('language', t.language, <TranslateIcon size={20} />, a.language) : null;
       case 'fullscreen': return f.fullscreen && typeof document !== 'undefined' && document.fullscreenEnabled ? btn('fullscreen', t.fullscreen, p.fullscreen ? <ArrowsInIcon size={20} /> : <ArrowsOutIcon size={20} />, a.fullscreen, { pressed: p.fullscreen }) : null;
@@ -94,14 +101,18 @@ export function Dock(p: DockProps) {
   }
   while (items.length && items[items.length - 1]!.id === '|') items.pop();
 
-  // overflow: keep items in order while they fit, leaving room for the "more" button
+  // overflow: what does not fit goes in "more", least needed first (a phone keeps tools and page turning),
+  // and what stays keeps its order
   const total = items.reduce((s, i) => s + itemWidth(i.id), 12);
   let shown = items, hidden: Item[] = [];
   if (total > room) {
-    let used = 12 + WIDTH.more!, k = 0;
-    while (k < items.length && used + itemWidth(items[k]!.id) <= room) used += itemWidth(items[k++]!.id);
-    while (k > 0 && items[k - 1]!.id === '|') k--;
-    shown = items.slice(0, k); hidden = items.slice(k).filter((i) => i.id !== '|');
+    const keep = new Set(items), byNeed = items.filter((i) => i.id !== '|').sort((x, y) => need(x.id) - need(y.id));
+    const width = () => [...keep].reduce((s, i) => s + itemWidth(i.id), 12 + WIDTH.more!);
+    for (const i of byNeed) { if (width() <= room) break; keep.delete(i); }
+    shown = items.filter((i) => keep.has(i));
+    // no leading, trailing or doubled dividers once items are gone
+    shown = shown.filter((i, k) => i.id !== '|' || (k > 0 && k < shown.length - 1 && shown[k - 1]!.id !== '|'));
+    hidden = items.filter((i) => !keep.has(i) && i.id !== '|');
   }
 
   return (

@@ -28,7 +28,7 @@ The reference web reader for `.chalk` books: what every app that shows a Chalk b
 - [x] **3. Media and labs.** Video, audio, 3D (`<model-viewer>`, loaded on demand), icon-mode markers, snip
   pages, unknown plugins as fallback cards, labs through `@chalk-format/lab` (poster, tap to start, one at a
   time, paused off screen, state saved).
-- [ ] **4. Annotations.** Pen, highlighter, eraser, text, shapes, select/move/delete, undo/redo, colours and
+- [x] **4. Annotations.** Pen, highlighter, eraser, text, shapes, select/move/delete, undo/redo, colours and
   sizes; the overlay saved (local storage by default, or the host's callback), exported and imported as a
   `.chalk` overlay.
 - [ ] **5. Showcase.** A sample book that uses every feature (bilingual physics pages from a real PDF, video,

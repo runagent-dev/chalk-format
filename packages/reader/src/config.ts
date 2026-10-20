@@ -14,7 +14,7 @@ export type DockItemId =
   | 'zoomOut' | 'fit' | 'zoomIn' | 'layout'
   | 'thumbnails' | 'search'
   | 'tools' | 'undo' | 'redo'
-  | 'export' | 'theme' | 'language' | 'fullscreen'
+  | 'export' | 'import' | 'theme' | 'language' | 'fullscreen'
   | '|';
 
 /** A dock button of the host's own. */
@@ -90,7 +90,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   },
   dock: {
     position: 'bottom',
-    items: ['thumbnails', 'search', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'tools', 'undo', 'redo', '|', 'export', 'theme', 'language', 'fullscreen'],
+    items: ['thumbnails', 'search', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'tools', 'undo', 'redo', '|', 'export', 'import', 'theme', 'language', 'fullscreen'],
   },
   annotations: {
     tools: ['pan', 'pen', 'highlighter', 'eraser', 'text', 'rect', 'ellipse', 'arrow', 'select'],

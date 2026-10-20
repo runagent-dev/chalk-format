@@ -295,3 +295,55 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   .chalk-modal.is-wide .chalk-modal-body { flex: 1; display: flex; flex-direction: column; padding: 0; }
   .chalk-modal.is-wide .chalk-modal-body > .chalk-live { flex: 1; border-radius: 0; box-shadow: none; }
 }
+
+/* ---------- annotations ---------- */
+.chalk-surface { position: absolute; left: 0; top: 0; touch-action: none; cursor: crosshair; z-index: 2; }
+.chalk-surface.is-eraser { cursor: cell; }
+.chalk-surface.is-select { cursor: default; }
+.chalk-surface.is-text { cursor: text; }
+.chalk-selection { fill: oklch(55% 0.17 255 / 0.06); stroke: var(--chalk-focus); }
+.chalk-selection-delete {
+  position: absolute; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
+  background: var(--chalk-danger); color: oklch(99% 0 0); cursor: pointer; box-shadow: 0 1px 4px oklch(20% 0.02 260 / 0.35);
+}
+.chalk-selection-delete:hover { background: oklch(46% 0.17 28); }
+.chalk-selection-delete:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 2px; }
+.chalk-note-input {
+  position: absolute; margin: 0; padding: 0.1em 0.2em; border: 2px dashed var(--chalk-focus); border-radius: 4px; background: oklch(100% 0 0 / 0.85);
+  font-family: var(--chalk-font); line-height: 1.2; resize: none; field-sizing: content; outline: none; overflow: hidden;
+}
+
+.chalk-tools { position: relative; display: flex; }
+.chalk-tools-dot { position: absolute; right: 7px; bottom: 7px; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 2px var(--chalk-surface); }
+.chalk-popover {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 25; width: max-content; max-width: min(340px, calc(100cqw - 24px));
+  display: flex; flex-direction: column; gap: var(--chalk-space-md); padding: var(--chalk-space-md);
+  background: var(--chalk-surface); color: var(--chalk-ink); border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-md); box-shadow: var(--chalk-float-shadow);
+}
+.chalk-popover.is-up { bottom: calc(100% + 12px); }
+.chalk-popover.is-down { top: calc(100% + 12px); }
+.chalk-tool-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--chalk-space-xs); }
+.chalk-tool {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 56px; padding: 6px 4px; border: 0; border-radius: var(--chalk-radius-sm);
+  background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.chalk-tool span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chalk-tool:hover { background: var(--chalk-surface-2); }
+.chalk-tool:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: -2px; }
+.chalk-tool[aria-checked="true"] { background: var(--chalk-accent-soft); color: var(--chalk-accent); }
+.chalk-swatches, .chalk-sizes { display: flex; gap: var(--chalk-space-sm); align-items: center; justify-content: center; }
+.chalk-swatch { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.15); }
+.chalk-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--chalk-surface), 0 0 0 4px var(--chalk-accent); }
+.chalk-swatch:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 4px; }
+.chalk-size { display: grid; place-items: center; width: 40px; height: 36px; padding: 0; border: 0; border-radius: var(--chalk-radius-sm); background: transparent; cursor: pointer; }
+.chalk-size span { display: block; border-radius: 50%; }
+.chalk-size:hover { background: var(--chalk-surface-2); }
+.chalk-size[aria-checked="true"] { background: var(--chalk-accent-soft); }
+.chalk-size:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: -2px; }
+
+.chalk-toast {
+  position: absolute; left: 50%; top: var(--chalk-space-lg); transform: translateX(-50%); z-index: 50; max-width: calc(100% - 32px);
+  padding: 10px 16px; border-radius: var(--chalk-radius-md); background: var(--chalk-ink); color: var(--chalk-surface);
+  font-size: var(--chalk-text-sm); box-shadow: var(--chalk-float-shadow); animation: chalk-fade-in var(--chalk-dur) var(--chalk-ease-out);
+}
+@keyframes chalk-fade-in { from { opacity: 0; } to { opacity: 1; } }

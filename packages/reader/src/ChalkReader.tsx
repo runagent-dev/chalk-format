@@ -10,6 +10,12 @@ import { PageView, type HtmlObjectRenderer } from './render/PageView.js';
 import { AudioEmbed, LabFrame, ModelViewer, VideoEmbed, localLabStorage, type LabStorage } from './render/Embeds.js';
 import { Modal } from './render/Modal.js';
 import { useAssetUrl } from './render/assets.js';
+import { packOverlay, unpackOverlay } from '@chalk-format/container';
+import type { Overlay } from '@chalk-format/model';
+import { useAnnotations } from './annotate/state.js';
+import { Surface, type Pen } from './annotate/Surface.js';
+import { ToolsMenu } from './annotate/ToolsMenu.js';
+import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
@@ -28,6 +34,11 @@ export type ChalkReaderProps = {
   onLabProgress?: (progress: { step?: { done: number; total: number }; score?: number; completed?: boolean }, where: { objectId: string; labId: string; page: number }) => void;
   /** Where labs keep their saved state. Default: this browser (config.persistence 'local'), or nowhere ('none'). */
   labStorage?: LabStorage;
+  /** The student's notes (a Chalk overlay). Pass it to control them; else they start from defaultOverlay or this browser. */
+  overlay?: Overlay;
+  defaultOverlay?: Overlay;
+  /** After every change to the notes. */
+  onOverlayChange?: (overlay: Overlay) => void;
   className?: string;
   style?: CSSProperties;
 };
@@ -77,7 +88,9 @@ function useSystemDark() {
 
 function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: ReaderConfig; handleRef: React.ForwardedRef<ReaderHandle> }) {
   const { book, config } = props;
-  const pages = book.lesson.pages;
+  const ann = useAnnotations(book.lesson, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
+  const lesson = ann.lesson;
+  const pages = lesson.pages;
   const viewer = useRef<ViewerHandle>(null);
   const root = useRef<HTMLDivElement>(null);
   const systemDark = useSystemDark();
@@ -102,7 +115,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [active, setActive] = useState<{ id: string; page: number } | null>(null);
   const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject } | null>(null);
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
-  const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(book.lesson, deferredQuery) : []), [book.lesson, deferredQuery, panel]);
+  const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(lesson, deferredQuery) : []), [lesson, deferredQuery, panel]);
+  // the pen: tool, colours and size
+  const A = config.annotations;
+  const [tool, setTool] = useState<ToolId>(A.defaultTool);
+  const [color, setColor] = useState(A.colors[0] ?? '#1f2a44');
+  const [highlight, setHighlight] = useState(A.highlighterColors[0] ?? '#ffe066');
+  const [size, setSize] = useState(A.sizes[Math.min(1, A.sizes.length - 1)] ?? 4);
+  const drawing = config.features.annotations && tool !== 'pan';
+  const pen: Pen = useMemo(() => ({ tool, color, highlight, size, textSize: [24, 34, 48][Math.max(0, A.sizes.indexOf(size))] ?? 30 }), [tool, color, highlight, size, A.sizes]);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 3500); return () => clearTimeout(id); }, [toast]);
+  const notesFile = useRef<HTMLInputElement>(null);
   useEffect(() => setHit(0), [deferredQuery]);
 
   // a host changing its config takes effect (the playground does this)
@@ -140,6 +164,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
     const k = e.key, mod = e.ctrlKey || e.metaKey;
     if (mod && k.toLowerCase() === 'f' && config.features.search) { e.preventDefault(); setPanel('search'); return; }
+    if (config.features.annotations && mod && (k.toLowerCase() === 'z' || k.toLowerCase() === 'y')) {
+      e.preventDefault(); if (k.toLowerCase() === 'y' || e.shiftKey) ann.redo(); else ann.undo(); return;
+    }
     if (k === 'PageDown' || (k === 'ArrowRight' && !mod) || (k === ' ' && layout === 'single')) { e.preventDefault(); next(); }
     else if (k === 'PageUp' || (k === 'ArrowLeft' && !mod)) { e.preventDefault(); prev(); }
     else if (k === 'Home') { e.preventDefault(); goTo(0); }
@@ -201,6 +228,24 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [hits]);
   const stepHit = useCallback((d: 1 | -1) => { if (hits.length) showHit((hit + d + hits.length) % hits.length); }, [hits.length, hit, showHit]);
   const narrow = () => (root.current?.clientWidth ?? 1000) < 720;
+
+  const editableOn = useCallback((pageId: string) => (o: LessonObject) => A.editBase || ann.isOwn(pageId, o), [A.editBase, ann.isOwn]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const pageOverlay = useCallback((pg: LessonPage, _i: number, scale: number) =>
+    drawing ? <Surface page={pg} scale={scale} pen={pen} editable={editableOn(pg.id)} apply={ann.apply} textPrompt={t.textPrompt} /> : undefined,
+  [drawing, pen, editableOn, ann.apply, t.textPrompt]);
+
+  const exportNotes = useCallback(async () => {
+    const bytes = await packOverlay(ann.overlay);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
+    a.download = `${book.lesson.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'} · notes.chalk`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setToast(t.notesSaved);
+  }, [ann.overlay, book.lesson.title, t]);
+  const importNotes = useCallback(async (f: File) => {
+    try { const { overlay } = await unpackOverlay(new Uint8Array(await f.arrayBuffer())); ann.load(overlay); setToast(t.notesOpened); }
+    catch (e) { setToast(`${t.notesFailed}: ${e instanceof Error ? e.message : String(e)}`); }
+  }, [ann, t]);
   const togglePanel = (which: 'thumbnails' | 'search') => setPanel((p) => (p === which ? null : which));
 
   return (
@@ -208,7 +253,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
-        textLayer={config.features.textSelection} gestures pageLabel={pageLabel} highlights={highlights} pageActive={pageActive}
+        textLayer={config.features.textSelection && !drawing} gestures={!drawing} pageLabel={pageLabel} highlights={highlights} pageActive={pageActive} pageOverlay={pageOverlay}
       />
       {modal && (
         <Modal title={modal.kind === 'snip' ? (book.lesson.snipPages.find((p) => p.id === modal.pageId)?.title ?? t.openSnip) : modalTitle(modal.o, t)}
@@ -230,11 +275,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             onPick={(i) => { showHit(i); if (narrow()) setPanel(null); }} onStep={stepHit} />
         </Panel>
       )}
+      <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
+      {toast && <div className="chalk-toast" role="status">{toast}</div>}
       {config.dock && (
         <Dock
           config={config} dock={config.dock} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
+          canUndo={ann.canUndo} canRedo={ann.canRedo}
+          tools={A.tools.length > 1 ? <ToolsMenu config={A} locale={locale} tool={tool} color={color} highlight={highlight} size={size}
+            onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={config.dock.position !== 'top'} /> : undefined}
           actions={{
+            undo: ann.undo, redo: ann.redo, exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,
             theme: () => setTheme(dark === 'dark' ? 'light' : 'dark'), language: () => setLocale((l) => (l === 'bn' ? 'en' : 'bn')), fullscreen: toggleFullscreen,
