@@ -1,0 +1,25 @@
+{
+  "name": "@chalk-format/lab",
+  "version": "0.0.0",
+  "description": "Chalk labs (spec 1.1): the Host API for readers that run labs and for the labs themselves.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "build": "echo 'no build for source-exported package'"
+  },
+  "dependencies": {
+    "@chalk-format/model": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}
