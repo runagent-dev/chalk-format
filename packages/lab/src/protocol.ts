@@ -21,8 +21,11 @@ export type ErrorCode = 'denied' | 'not_found' | 'too_large' | 'invalid' | 'unkn
 
 export type Progress = { step?: { done: number; total: number }; score?: number; completed?: boolean };
 
-// lab → host
+// lab → host, on the window
 export type Hello = { chalk: 1; type: 'hello'; api: number[]; lab: { id: string; version: string } };
+/** Sent by the guard the host puts ahead of the lab's code when the lab's document goes away (spec 1.1 §3.3). */
+export type Gone = { chalk: 1; type: 'gone' };
+// lab → host, on the channel
 export type ReadyNotice = { chalk: 1; type: 'ready' };
 export type ProgressNotice = { chalk: 1; type: 'progress' } & Progress;
 export type StateSave = { chalk: 1; type: 'state.save'; id: number; state: unknown };
@@ -30,10 +33,12 @@ export type AssetGet = { chalk: 1; type: 'asset.get'; id: number; assetId: strin
 export type UiFullscreen = { chalk: 1; type: 'ui.fullscreen'; id: number; on: boolean };
 export type LabRequest = StateSave | AssetGet | UiFullscreen;
 
-// host → lab
+// host → lab: init on the window, carrying the channel's port; everything else on the channel
 export type Init = {
   chalk: 1; type: 'init'; api: number; params: Record<string, unknown>; locale: string; theme: Theme;
   reducedMotion: boolean; granted: Capability[]; state: unknown; mode: LabMode;
+  /** Whether the lab is on screen now; until a `visibility` event says otherwise. */
+  visible: boolean;
 };
 export type Reply =
   | { chalk: 1; type: 'reply'; id: number; ok: true; result: unknown }
@@ -74,7 +79,8 @@ export function jsonBytes(value: unknown): number | null {
 export type PostTarget = {
   postMessage(message: unknown, targetOrigin: string, transfer?: Transferable[]): void;
 };
+export type WindowMessage = { data: unknown; source: unknown; ports?: readonly MessagePort[] };
 export type MessageEvents = {
-  addEventListener(type: 'message', listener: (e: { data: unknown; source: unknown }) => void): void;
-  removeEventListener(type: 'message', listener: (e: { data: unknown; source: unknown }) => void): void;
+  addEventListener(type: 'message', listener: (e: WindowMessage) => void): void;
+  removeEventListener(type: 'message', listener: (e: WindowMessage) => void): void;
 };

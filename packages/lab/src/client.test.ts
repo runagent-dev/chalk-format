@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { hashBytes, type Lab } from '@chalk-format/model';
 import { connectLab, LabError } from './client.js';
-import { createLabHost } from './host.js';
-import { prepareLabDocument, verifyLabEntry, LAB_CSP } from './document.js';
+import { createLabHost, type LabHost } from './host.js';
+import { labGuard, prepareLabDocument, verifyLabEntry, LAB_CSP } from './document.js';
 import { tick, windowPair } from './testing.js';
 
 // The client against the reference host: the two halves of the protocol together.
@@ -13,16 +13,20 @@ const desc = (extra: Partial<Lab> = {}): Lab => ({
   params: { acid: 'HCl' }, capabilities: ['state', 'progress', 'assets'], assets: [glbId], ...extra,
 });
 
-function connected(lab: Lab = desc(), saved: unknown = null) {
+const hosts: LabHost[] = [];
+afterEach(() => { hosts.splice(0).forEach((h) => h.dispose()); });
+
+function connected(lab: Lab = desc(), saved: unknown = null, visible = true) {
   const w = windowPair();
   const store = new Map<string, unknown>([['org.example.titration@2', saved]]);
   const progress: unknown[] = [];
   const host = createLabHost({
-    lab, frame: w.frame, events: w.hostWindow, locale: 'en', theme: 'dark', reducedMotion: true,
+    lab, frame: w.frame, events: w.hostWindow, nonce: 'nonce-for-tests', locale: 'en', theme: 'dark', reducedMotion: true, visible,
     loadState: (k) => store.get(`${k.labId}@${k.major}`) ?? null, saveState: (k, s) => { store.set(`${k.labId}@${k.major}`, s); },
     getAsset: async (id) => (id === glbId ? { type: 'model/gltf-binary', bytes: GLB.slice().buffer } : null),
     onProgress: (p) => progress.push(p),
   });
+  hosts.push(host);
   const session = connectLab({ id: lab.id, version: lab.version }, { self: w.lab, helloEveryMs: 20, timeoutMs: 500 });
   return { w, host, store, progress, session };
 }
@@ -30,8 +34,13 @@ function connected(lab: Lab = desc(), saved: unknown = null) {
 describe('connectLab', () => {
   it('starts with what the host sends', async () => {
     const s = await connected(desc(), { added: 12.5 }).session;
-    expect(s).toMatchObject({ api: 1, params: { acid: 'HCl' }, locale: 'en', theme: 'dark', reducedMotion: true, state: { added: 12.5 }, mode: 'interactive' });
+    expect(s).toMatchObject({ api: 1, params: { acid: 'HCl' }, locale: 'en', theme: 'dark', reducedMotion: true, state: { added: 12.5 }, mode: 'interactive', visible: true });
     expect(s.has('state') && s.has('assets') && s.has('progress')).toBe(true);
+  });
+
+  it('starts hidden when the host says so', async () => {
+    const s = await connected(desc(), null, false).session;
+    expect(s.visible).toBe(false);
   });
 
   it('saves, reports progress and loads assets', async () => {
@@ -43,6 +52,15 @@ describe('connectLab', () => {
     expect(c.progress).toEqual([{ step: { done: 3, total: 4 } }]);
     const a = await s.getAsset(glbId);
     expect(new Uint8Array(a.bytes)).toEqual(GLB);
+  });
+
+  it('gives the same blob: URL for the same asset, and frees it on release', async () => {
+    const s = await connected().session;
+    const u1 = await s.assetUrl(glbId), u2 = await s.assetUrl(glbId);
+    expect(u1).toBe(u2);
+    expect(u1.startsWith('blob:')).toBe(true);
+    s.releaseAsset(glbId); await tick(5);
+    expect(await s.assetUrl(glbId)).not.toBe(u1);
   });
 
   it('works with nothing granted, and refuses locally what is not granted', async () => {
@@ -72,23 +90,32 @@ describe('connectLab', () => {
   it('listens only to its parent', async () => {
     const w = windowPair();
     const session = connectLab({ id: 'x.y', version: '1' }, { self: w.lab, helloEveryMs: 20, timeoutMs: 120 });
-    w.toLabFromStranger({ chalk: 1, type: 'init', api: 1, params: { evil: true }, locale: 'en', theme: 'light', granted: ['state'], state: null, mode: 'interactive' });
+    const { port1, port2 } = new MessageChannel();
+    w.toLabFromStranger({ chalk: 1, type: 'init', api: 1, params: { evil: true }, locale: 'en', theme: 'light', granted: ['state'], state: null, mode: 'interactive', visible: true }, [port2]);
     await expect(session).rejects.toMatchObject({ code: 'failed' });
+    port1.close();
   });
 });
 
 describe('the lab document', () => {
   const html = '<!DOCTYPE html>\n<html lang="bn"><head><script>fetch("https://x")</script></head><body></body></html>';
 
-  it('puts the CSP before any of the lab\'s markup', () => {
-    const out = prepareLabDocument(new TextEncoder().encode('﻿' + html));
-    expect(out.startsWith(`<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="${LAB_CSP}">`)).toBe(true);
-    expect(out.indexOf('Content-Security-Policy')).toBeLessThan(out.indexOf('<script>'));
+  it("puts the CSP and then this mount's guard before any of the lab's markup", () => {
+    const out = prepareLabDocument(new TextEncoder().encode('\uFEFF' + html), 'mount-nonce-1');
+    const guard = labGuard('mount-nonce-1');
+    expect(out.startsWith(`<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="${LAB_CSP}">${guard}`)).toBe(true);
+    expect(out.indexOf(guard)).toBeLessThan(out.indexOf('<script>fetch'));
     expect(LAB_CSP).toContain("connect-src 'none'");
+    expect(guard).toContain("'pagehide'");
+    expect(guard).toContain("nonce:'mount-nonce-1'");
+  });
+
+  it('refuses a nonce that could break out of the guard script', () => {
+    expect(() => labGuard("x'});alert(1);({a:'")).toThrow();
   });
 
   it('adds a doctype when the lab has none', () => {
-    expect(prepareLabDocument('<html><body>x</body></html>').startsWith('<!doctype html><meta http-equiv="Content-Security-Policy"')).toBe(true);
+    expect(prepareLabDocument('<html><body>x</body></html>', 'mount-nonce-1').startsWith('<!doctype html><meta http-equiv="Content-Security-Policy"')).toBe(true);
   });
 
   it('checks the entry bytes against the id', async () => {
