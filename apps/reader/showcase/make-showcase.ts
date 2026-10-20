@@ -131,5 +131,19 @@ const out = path.join(repo, 'apps/reader/public/samples');
 mkdirSync(out, { recursive: true });
 const bytes = await packLesson(lesson, assets);
 writeFileSync(path.join(out, 'showcase.chalk'), bytes);
+// the same book with only the PDF: no rendered page images, so the reader draws each page with pdf.js
+{
+  const pdfOnly = structuredClone(lesson), dropped = new Set<string>();
+  pdfOnly.id = 'chalk-showcase-physics-pdf-only'; pdfOnly.title += ' (PDF)';
+  for (const p of pdfOnly.pages) if (p.background.type === 'pdf_page') {
+    const bg = p.background;
+    if (bg.renderedImageAssetId) dropped.add(bg.renderedImageAssetId);
+    if (bg.thumbnailAssetId) dropped.add(bg.thumbnailAssetId);
+    p.background = { type: 'pdf_page', assetId: bg.assetId, pageNumber: bg.pageNumber };
+  }
+  const kept = new Map([...assets].filter(([id]) => !dropped.has(id)));
+  writeFileSync(path.join(out, 'pdf-only.chalk'), await packLesson(pdfOnly, kept));
+  console.log(`pdf-only.chalk: ${dropped.size} rendered images left out`);
+}
 const runs = lesson.pages.reduce((n, p) => n + (p.textLayer?.length ?? 0), 0);
 console.log(`showcase.chalk: ${(bytes.length / 1024 / 1024).toFixed(2)} MB, ${lesson.pages.length} pages, ${runs} text runs, ${assets.size} assets`);

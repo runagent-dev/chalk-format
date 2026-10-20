@@ -199,6 +199,9 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   .chalk-reader[data-panel] .chalk-viewer { margin-left: 312px; }
   .chalk-reader[data-panel][data-dock="left"] .chalk-viewer { margin-right: 312px; }
   .chalk-reader[data-panel][data-dock="right"] .chalk-viewer { margin-left: 312px; }
+  /* the dock centres on the pages, not under the panel */
+  .chalk-reader[data-panel] .chalk-dock.is-bottom, .chalk-reader[data-panel] .chalk-dock.is-top { left: calc(50% + 156px); }
+  .chalk-reader[data-panel][data-dock="left"] .chalk-dock.is-bottom, .chalk-reader[data-panel][data-dock="left"] .chalk-dock.is-top { left: calc(50% - 156px); }
 }
 @container chalk (max-width: 719px) {
   .chalk-panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(62%, 560px); border-radius: 16px 16px 0 0; border-bottom: 0; }

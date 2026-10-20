@@ -74,6 +74,9 @@ export type ReaderConfig = {
   };
   /** Where annotations are kept when the host does not handle them: this browser, or nowhere. */
   persistence: 'local' | 'none';
+  /** pdf.js's worker script (a URL), to draw PDF pages that carry no rendered image. Unset: a placeholder.
+   *  With Vite: `import src from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`. */
+  pdfWorkerSrc: string | null;
 };
 
 export const DEFAULT_CONFIG: ReaderConfig = {
@@ -102,6 +105,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   },
   labs: { autoStart: false },
   persistence: 'local',
+  pdfWorkerSrc: null,
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };

@@ -1,9 +1,14 @@
 import { useRef, useState } from 'react';
 import { ChalkReader, DEFAULT_CONFIG, type BookSource, type ReaderConfig } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
+// pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
+import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+const BASE: ReaderConfig = { ...DEFAULT_CONFIG, pdfWorkerSrc };
 
 const SAMPLES = [
   { id: 'showcase', label: 'পদার্থবিজ্ঞান · Physics sample', url: '/samples/showcase.chalk' },
+  { id: 'pdf-only', label: 'Pages drawn from the PDF', url: '/samples/pdf-only.chalk' },
   { id: 'all-features', label: 'Every object type', url: '/samples/all-features.chalk' },
   { id: 'lab', label: 'A lab', url: '/samples/lab.chalk' },
 ];
@@ -12,7 +17,7 @@ const SAMPLES = [
 export function App() {
   const [source, setSource] = useState<{ key: string; src: BookSource }>({ key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
   const file = useRef<HTMLInputElement>(null);
-  const [config, setConfig] = useState<ReaderConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<ReaderConfig>(BASE);
   const [configuring, setConfiguring] = useState(false);
   return (
     <div className="app">
@@ -32,7 +37,7 @@ export function App() {
       </header>
       <main className="app-main">
         <ChalkReader key={source.key} source={source.src} config={config} />
-        {configuring && <Playground config={config} onChange={setConfig} onClose={() => setConfiguring(false)} />}
+        {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>
   );

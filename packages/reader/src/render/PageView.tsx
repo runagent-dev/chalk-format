@@ -4,6 +4,8 @@ import type { Book } from '../book.js';
 import { useAssetUrl } from './assets.js';
 import { inkPath } from './ink.js';
 import { TextLayer } from './TextLayer.js';
+import { renderPdfPage } from './pdf.js';
+import { useEffect, useState } from 'react';
 
 /** Objects drawn as HTML by the reader (media, labs, snips, icon-mode markers): it plugs in their behaviour. */
 export type HtmlObject = Extract<LessonObject, { type: 'embed' | 'snip' | 'image' }>;
@@ -21,6 +23,8 @@ export type PageViewProps = {
   textLayer?: boolean | undefined;
   /** Search hits to highlight, in page units. */
   highlights?: { x: number; y: number; width: number; height: number; current?: boolean }[] | undefined;
+  /** pdf.js's worker, to draw PDF pages without a rendered image (config.pdfWorkerSrc). */
+  pdfWorkerSrc?: string | null | undefined;
   /** Drawn above everything (the annotation surface). */
   overlay?: ReactNode | undefined;
   /** Live embeds (a running lab, a 3D viewer) in screen pixels above the page, so they stay sharp at any zoom. */
@@ -39,7 +43,7 @@ export const PageView = memo(function PageView(p: PageViewProps) {
     <div className="chalk-page" style={{ width: width * p.scale, height: height * p.scale }} aria-label={p.label} role="img">
       {p.live && (
         <div className="chalk-page-units" style={{ width, height, transform: `scale(${p.scale})` }}>
-          <Background book={p.book} bg={p.page.background} width={width} height={height} />
+          <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc} />
           {runs(p.page.objects).map((run, i) =>
             run.kind === 'svg'
               ? <svg key={i} className="chalk-layer" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>{run.items.map((o) => <VectorObject key={o.id} o={o} book={p.book} />)}</svg>
@@ -70,14 +74,25 @@ function runs(objects: readonly LessonObject[]): Run[] {
   return out;
 }
 
-function Background({ book, bg, width, height }: { book: Book; bg: PageBackground; width: number; height: number }) {
+function Background({ book, bg, width, height, scale, pdfWorkerSrc }: { book: Book; bg: PageBackground; width: number; height: number; scale: number; pdfWorkerSrc?: string | null | undefined }) {
   const imageId = bg.type === 'image' ? bg.assetId : bg.type === 'pdf_page' ? bg.renderedImageAssetId : undefined;
   const url = useAssetUrl(book, imageId);
+  // a PDF page with no rendered image: draw it from the PDF, at the width it is shown (rounded up to 400 px steps)
+  const pdf = bg.type === 'pdf_page' && !imageId && pdfWorkerSrc ? bg : null;
+  const want = pdf ? Math.min(2400, Math.ceil((width * scale * (globalThis.devicePixelRatio || 1)) / 400) * 400) : 0;
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pdf || !pdfWorkerSrc) return;
+    let live = true;
+    void renderPdfPage(book, pdf.assetId, pdf.pageNumber, want, pdfWorkerSrc).then((u) => { if (live && u) setPdfUrl(u); });
+    return () => { live = false; };
+  }, [book, pdf?.assetId, pdf?.pageNumber, want, pdfWorkerSrc]);   // eslint-disable-line react-hooks/exhaustive-deps
   const color = bg.type === 'color' ? bg.color : '#fff';
   return (
     <div className="chalk-bg" style={{ width, height, background: color }}>
       {imageId && url && <img src={url} alt="" draggable={false} width={width} height={height} decoding="async" />}
-      {bg.type === 'pdf_page' && !imageId && <div className="chalk-bg-missing">PDF</div>}
+      {pdfUrl && <img src={pdfUrl} alt="" draggable={false} width={width} height={height} decoding="async" />}
+      {bg.type === 'pdf_page' && !imageId && !pdfUrl && <div className="chalk-bg-missing">PDF</div>}
     </div>
   );
 }

@@ -21,6 +21,7 @@ for (const [vp, opts] of [['desktop', { viewport: { width: 1280, height: 800 } }
   await p.goto(URL, { waitUntil: 'networkidle' });
   for (const s of steps) {
     if (s.waitFor) await p.waitForSelector(s.waitFor, { timeout: 30000 });
+    if (s.select) await p.selectOption(s.select[0], s.select[1]);
     if (s.click) await p.click(s.click);
     if (s.eval) await p.evaluate(s.eval);   // before any pointer input, which may close what it opened
     const k = vp === 'phone' ? 390 / 1280 : 1, pt = ([x, y]) => [x * k, y * (vp === 'phone' ? 844 / 800 : 1)];

@@ -198,6 +198,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} />;
   }, [book, config.features, t, locale, pages]);
 
+  // previews (thumbnails, snips inside a dialog): the same cards and markers, but inert
+  const renderPreview: HtmlObjectRenderer = useCallback((o) => {
+    if (o.type === 'snip') return <IconMarker x={o.x} y={o.y} kind="snip" glyph={snipGlyph} label={t.openSnip} />;
+    if (o.type === 'image') return <IconMarker x={o.x} y={o.y} kind="media" glyph={imageGlyph} label="" />;
+    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={embedIcon(o, 26)} label="" />;
+    return <EmbedCard book={book} o={o} caption={isLabObject(o) ? o.lab.title : undefined} />;
+  }, [book, t]);
+
   // the live embed on a page, drawn in screen pixels above it
   const pageActive = useCallback((pg: LessonPage, i: number, scale: number) => {
     if (!active || active.page !== i) return undefined;
@@ -258,7 +266,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
-        textLayer={config.features.textSelection && !drawing} gestures={!drawing} pageLabel={pageLabel} highlights={highlights} pageActive={pageActive} pageOverlay={pageOverlay}
+        textLayer={config.features.textSelection && !drawing} gestures={!drawing} pageLabel={pageLabel} highlights={highlights} pageActive={pageActive} pageOverlay={pageOverlay} pdfWorkerSrc={config.pdfWorkerSrc}
       />
       {modal && (
         <Modal title={modal.kind === 'snip' ? (book.lesson.snipPages.find((p) => p.id === modal.pageId)?.title ?? t.openSnip) : modalTitle(modal.o, t)}
@@ -270,7 +278,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
-          <Thumbnails book={book} pages={pages} current={page} locale={locale} renderHtmlObject={renderHtmlObject}
+          <Thumbnails book={book} pages={pages} current={page} locale={locale} renderHtmlObject={renderPreview} pdfWorkerSrc={config.pdfWorkerSrc}
             onPick={(i) => { goTo(i); if (narrow()) setPanel(null); }} />
         </Panel>
       )}

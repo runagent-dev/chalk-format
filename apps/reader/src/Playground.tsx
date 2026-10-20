@@ -27,7 +27,7 @@ const js = (v: unknown, ind = 2): string => {
 };
 
 /** The configuration playground: change the reader live, and see the code for what you set. */
-export function Playground({ config, onChange, onClose }: { config: ReaderConfig; onChange: (c: ReaderConfig) => void; onClose: () => void }) {
+export function Playground({ config, base, onChange, onClose }: { config: ReaderConfig; base: ReaderConfig; onChange: (c: ReaderConfig) => void; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const set = (patch: Partial<ReaderConfig>) => onChange({ ...config, ...patch });
   const dock = config.dock || { position: 'bottom' as const, items: [] };
@@ -39,14 +39,15 @@ export function Playground({ config, onChange, onClose }: { config: ReaderConfig
     for (const x of on) if (!next.includes(x)) next.push(x);   // items not in the default dock go at the end
     set({ dock: { ...dock, items: next } });
   };
-  const diff = changed(config, DEFAULT_CONFIG) as ReaderConfigInput | undefined;
+  // the app's own setting (the pdf.js worker URL) is not something to copy
+  const diff = changed({ ...config, pdfWorkerSrc: null }, DEFAULT_CONFIG) as ReaderConfigInput | undefined;
   const code = `<ChalkReader\n  source="/books/physics.chalk"${diff ? `\n  config={${js(diff, 2)}}` : ''}\n/>`;
 
   return (
     <aside className="pg" aria-label="Configure the reader">
       <header className="pg-head">
         <h2>Configure</h2>
-        <button type="button" className="app-btn" onClick={() => onChange(DEFAULT_CONFIG)}>Reset</button>
+        <button type="button" className="app-btn" onClick={() => onChange(base)}>Reset</button>
         <button type="button" className="pg-close" aria-label="Close" onClick={onClose}>×</button>
       </header>
       <div className="pg-body">

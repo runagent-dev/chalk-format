@@ -20,13 +20,14 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@chalk-format/container": "workspace:*",
+    "@chalk-format/convert-pdf": "workspace:*",
+    "@chalk-format/model": "workspace:*",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.1.0",
+    "pdfjs-dist": "^5.7.284",
     "vite": "^7.1.0",
-    "vitest": "^2.1.8",
-    "@chalk-format/container": "workspace:*",
-    "@chalk-format/convert-pdf": "workspace:*",
-    "@chalk-format/model": "workspace:*"
+    "vitest": "^2.1.8"
   }
 }

@@ -33,5 +33,6 @@ The reference web reader for `.chalk` books: what every app that shows a Chalk b
   `.chalk` overlay.
 - [ ] **5. Showcase.** A sample book that uses every feature (bilingual physics pages from a real PDF, video,
   audio, a 3D model, labs, a snip page). The configuration playground.
-- [ ] **6. Polish.** PDF rendering when a page has no rendered image, accessibility pass, performance on a
-  cheap phone, docs, deployment.
+- [ ] **6. Polish.** Done: PDF pages drawn with pdf.js when they carry no rendered image, the package README.
+  Left: an accessibility audit with a screen reader, performance measured on a cheap Android phone, a smaller
+  first download (the format's validation and the ZIP reader load up front), deployment of the showcase.

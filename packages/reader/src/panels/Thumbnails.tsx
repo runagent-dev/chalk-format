@@ -9,8 +9,10 @@ import { PageView, type HtmlObjectRenderer } from '../render/PageView.js';
 const THUMB_W = 116;
 
 /** Every page as a small picture: the book's own thumbnail when it has one, else the page drawn small. */
-export function Thumbnails({ book, pages, current, locale, onPick, renderHtmlObject }: {
-  book: Book; pages: readonly LessonPage[]; current: number; locale: Locale; onPick: (i: number) => void; renderHtmlObject: HtmlObjectRenderer;
+export function Thumbnails({ book, pages, current, locale, onPick, renderHtmlObject, pdfWorkerSrc }: {
+  book: Book; pages: readonly LessonPage[]; current: number; locale: Locale; onPick: (i: number) => void;
+  /** Must draw inert previews: a thumbnail is itself a button. */
+  renderHtmlObject: HtmlObjectRenderer; pdfWorkerSrc?: string | null | undefined;
 }) {
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-index="${current}"]`)?.scrollIntoView({ block: 'nearest' }); }, [current]);
@@ -20,7 +22,7 @@ export function Thumbnails({ book, pages, current, locale, onPick, renderHtmlObj
       {pages.map((p, i) => (
         <li key={p.id}>
           <button type="button" data-index={i} className="chalk-thumb" aria-current={i === current ? 'page' : undefined} aria-label={`${t.page} ${num(locale, i + 1)}`} onClick={() => onPick(i)}>
-            <Thumb book={book} page={p} renderHtmlObject={renderHtmlObject} />
+            <Thumb book={book} page={p} renderHtmlObject={renderHtmlObject} pdfWorkerSrc={pdfWorkerSrc} />
             <span className="chalk-thumb-no">{num(locale, i + 1)}</span>
           </button>
         </li>
@@ -29,7 +31,7 @@ export function Thumbnails({ book, pages, current, locale, onPick, renderHtmlObj
   );
 }
 
-const Thumb = memo(function Thumb({ book, page, renderHtmlObject }: { book: Book; page: LessonPage; renderHtmlObject: HtmlObjectRenderer }) {
+const Thumb = memo(function Thumb({ book, page, renderHtmlObject, pdfWorkerSrc }: { book: Book; page: LessonPage; renderHtmlObject: HtmlObjectRenderer; pdfWorkerSrc?: string | null | undefined }) {
   const box = useRef<HTMLSpanElement>(null);
   const [seen, setSeen] = useState(false);
   useEffect(() => {
@@ -46,7 +48,7 @@ const Thumb = memo(function Thumb({ book, page, renderHtmlObject }: { book: Book
     <span ref={box} className="chalk-thumb-pic" style={{ width: THUMB_W, height: Math.round(height * scale) }}>
       {seen && (thumbId
         ? url && <img src={url} alt="" draggable={false} />
-        : <PageView book={book} page={page} scale={scale} live renderHtmlObject={renderHtmlObject} textLayer={false} />)}
+        : <PageView book={book} page={page} scale={scale} live renderHtmlObject={renderHtmlObject} textLayer={false} pdfWorkerSrc={pdfWorkerSrc} />)}
     </span>
   );
 });

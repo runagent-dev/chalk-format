@@ -21,6 +21,8 @@ interactive **labs**: simulations that run offline in a sandbox), with a searcha
 | `packages/container` | ZIP pack / unpack / validate, fat and thin bundles, safety limits |
 | `packages/pdf-engine` | PDF page → lesson page mapping (PDF.js), shared by browser and Node |
 | `packages/convert-pdf` | PDF → `.chalk` in Node |
+| [`packages/reader`](packages/reader) | **The reference reader**: `<ChalkReader>`, a configurable React component (pages, search, media, 3D, labs, the student's notes as an overlay) |
+| [`apps/reader`](apps/reader) | The reader's showcase site: a bilingual sample book and a configuration playground (`pnpm --filter @chalk-format/reader-app dev`) |
 | `packages/lab` | Running labs: `mountLab` / `createLabHost` for readers, `connectLab` for labs, the sandbox and CSP |
 | [`examples/labs`](examples/labs) | Example labs (one self-contained HTML file each) |
 | `packages/cli` | Command line: `convert` |
