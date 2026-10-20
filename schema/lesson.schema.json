@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v7/lesson.schema.json",
+  "$id": "https://chalk-format.dev/schema/v8/lesson.schema.json",
   "title": "Chalk lesson (assembled model)",
-  "x-chalk-format-version": 7,
+  "x-chalk-format-version": 8,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
@@ -472,6 +472,58 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "plugin": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+                    },
+                    "lab": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "version": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string",
+                          "pattern": "^sha256:[0-9a-f]{64}$"
+                        },
+                        "assets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^sha256:[0-9a-f]{64}$"
+                          }
+                        },
+                        "params": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version",
+                        "title",
+                        "entry"
+                      ]
                     }
                   },
                   "required": [
@@ -482,6 +534,56 @@
                     "embed",
                     "width",
                     "height"
+                  ],
+                  "allOf": [
+                    {
+                      "if": {
+                        "required": [
+                          "plugin"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "embed": {
+                            "const": "plugin"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "plugin"
+                        ],
+                        "properties": {
+                          "plugin": {
+                            "const": "chalk.lab"
+                          }
+                        }
+                      },
+                      "then": {
+                        "required": [
+                          "lab"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "lab"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "plugin"
+                        ],
+                        "properties": {
+                          "plugin": {
+                            "const": "chalk.lab"
+                          }
+                        }
+                      }
+                    }
                   ]
                 },
                 {
@@ -1019,6 +1121,58 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "plugin": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+                    },
+                    "lab": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "version": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string",
+                          "pattern": "^sha256:[0-9a-f]{64}$"
+                        },
+                        "assets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^sha256:[0-9a-f]{64}$"
+                          }
+                        },
+                        "params": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version",
+                        "title",
+                        "entry"
+                      ]
                     }
                   },
                   "required": [
@@ -1029,6 +1183,56 @@
                     "embed",
                     "width",
                     "height"
+                  ],
+                  "allOf": [
+                    {
+                      "if": {
+                        "required": [
+                          "plugin"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "embed": {
+                            "const": "plugin"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "plugin"
+                        ],
+                        "properties": {
+                          "plugin": {
+                            "const": "chalk.lab"
+                          }
+                        }
+                      },
+                      "then": {
+                        "required": [
+                          "lab"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "lab"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "plugin"
+                        ],
+                        "properties": {
+                          "plugin": {
+                            "const": "chalk.lab"
+                          }
+                        }
+                      }
+                    }
                   ]
                 },
                 {

@@ -69,6 +69,24 @@ describe('referencedAssetIds', () => {
     expect(referencedAssetIds(l).sort()).toEqual(['sha256:m', 'sha256:p']);
   });
 
+  it('collects a lab entry, its assets and its poster (spec 1.1)', () => {
+    const sha = (c: string) => 'sha256:' + c.repeat(64);
+    const l = lessonWith([
+      {
+        id: 'p1',
+        title: 'P',
+        background: { type: 'blank' },
+        objects: [
+          {
+            id: 'lab', x: 0, y: 0, type: 'embed', embed: 'plugin', plugin: 'chalk.lab', width: 10, height: 10, poster: sha('a'),
+            lab: { id: 'org.example.pendulum', version: '1.0.0', title: 'Pendulum', entry: sha('b'), assets: [sha('c'), sha('d')] },
+          },
+        ],
+      },
+    ]);
+    expect(referencedAssetIds(l).sort()).toEqual([sha('a'), sha('b'), sha('c'), sha('d')]);
+  });
+
   it('dedups ids referenced by multiple pages/objects', () => {
     const bg = { type: 'pdf_page' as const, assetId: 'sha256:pdf', pageNumber: 1, renderedImageAssetId: 'sha256:r1' };
     const l = lessonWith([

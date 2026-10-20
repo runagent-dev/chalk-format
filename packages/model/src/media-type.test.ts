@@ -51,7 +51,8 @@ describe('sniffMediaType', () => {
   it('rejects anything unrecognised, including a truncated header', () => {
     expect(sniffMediaType(bytes('PK', [3, 4]))).toBeNull(); // zip
     expect(sniffMediaType(bytes('%PDF-1.7'))).toBeNull();
-    expect(sniffMediaType(bytes('<html>'))).toBeNull();
+    expect(sniffMediaType(bytes('<htm'))).toBeNull();
+    expect(sniffMediaType(bytes('<svg xmlns="http://www.w3.org/2000/svg">'))).toBeNull();
     expect(sniffMediaType(new Uint8Array([0x89]))).toBeNull();
     expect(sniffMediaType(new Uint8Array())).toBeNull();
   });
@@ -76,5 +77,27 @@ describe('3D models', () => {
     // A .gltf JSON references external buffers; OBJ/STL have no materials.
     expect(sniffMediaType(new Uint8Array([...'{"asset":{'].map((c) => c.charCodeAt(0))))).toBeNull();
     expect(sniffMediaType(new Uint8Array([...'solid cube'].map((c) => c.charCodeAt(0))))).toBeNull();
+  });
+});
+
+describe('lab entries (spec 1.1)', () => {
+  it('identifies an HTML document by its doctype or <html>, case-insensitively', () => {
+    expect(sniffMediaType(bytes('<!doctype html><title>x</title>'))).toBe('text/html');
+    expect(sniffMediaType(bytes('<!DOCTYPE HTML>\n<html>'))).toBe('text/html');
+    expect(sniffMediaType(bytes('<html lang="bn">'))).toBe('text/html');
+    expect(mediaKindOf('text/html')).toBe('lab');
+  });
+
+  it('skips a UTF-8 BOM and leading whitespace', () => {
+    expect(sniffMediaType(bytes([0xef, 0xbb, 0xbf], '\r\n  <!doctype html>'))).toBe('text/html');
+  });
+
+  it('does not take other markup or text for HTML', () => {
+    expect(sniffMediaType(bytes('<?xml version="1.0"?><html>'))).toBeNull();
+    expect(sniffMediaType(bytes('hello <html>'))).toBeNull();
+  });
+
+  it('never shadows a binary signature', () => {
+    expect(sniffMediaType(bytes('glTF', [2, 0, 0, 0], '<html>'))).toBe('model/gltf-binary');
   });
 });

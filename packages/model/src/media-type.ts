@@ -24,14 +24,21 @@ export const AUDIO_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/ogg'] as const;
  * and would need a conversion step we do not have.
  */
 export const MODEL_TYPES = ['model/gltf-binary'] as const;
+/**
+ * Lab entries (spec 1.1 §3.1): one self-contained HTML file, scripts and
+ * styles inlined. Accepted only as a lab's entry and only ever run in the
+ * lab sandbox, never rendered as a document.
+ */
+export const LAB_TYPES = ['text/html'] as const;
 
 export type ImageType = (typeof IMAGE_TYPES)[number];
 export type VideoType = (typeof VIDEO_TYPES)[number];
 export type AudioType = (typeof AUDIO_TYPES)[number];
 export type ModelType = (typeof MODEL_TYPES)[number];
-export type MediaType = ImageType | VideoType | AudioType | ModelType;
+export type LabType = (typeof LAB_TYPES)[number];
+export type MediaType = ImageType | VideoType | AudioType | ModelType | LabType;
 
-export type MediaKind = 'image' | 'video' | 'audio' | 'model3d';
+export type MediaKind = 'image' | 'video' | 'audio' | 'model3d' | 'lab';
 
 const at = (b: Uint8Array, offset: number, ascii: string): boolean => {
   if (b.length < offset + ascii.length) return false;
@@ -86,13 +93,29 @@ export function sniffMediaType(bytes: Uint8Array): MediaType | null {
   if (at(bytes, 0, 'ID3')) return 'audio/mpeg';
   if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0) return 'audio/mpeg';
 
+  if (looksLikeHtml(bytes)) return 'text/html';
+
   return null;
+}
+
+/**
+ * HTML has no magic bytes, only a leading `<!doctype html>` / `<html>`,
+ * so it is checked after every binary signature above and can never shadow
+ * one. An optional UTF-8 BOM and leading whitespace are skipped: authoring
+ * tools and hand edits commonly produce both.
+ */
+function looksLikeHtml(b: Uint8Array): boolean {
+  let i = bytesAt(b, 0, [0xef, 0xbb, 0xbf]) ? 3 : 0;
+  while (i < b.length && (b[i] === 0x20 || b[i] === 0x09 || b[i] === 0x0a || b[i] === 0x0d)) i++;
+  const head = String.fromCharCode(...b.slice(i, i + 15)).toLowerCase();
+  return head.startsWith('<!doctype html') || head.startsWith('<html');
 }
 
 export function mediaKindOf(type: MediaType): MediaKind {
   if ((IMAGE_TYPES as readonly string[]).includes(type)) return 'image';
   if ((VIDEO_TYPES as readonly string[]).includes(type)) return 'video';
   if ((MODEL_TYPES as readonly string[]).includes(type)) return 'model3d';
+  if ((LAB_TYPES as readonly string[]).includes(type)) return 'lab';
   return 'audio';
 }
 

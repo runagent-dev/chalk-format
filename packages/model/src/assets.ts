@@ -41,6 +41,8 @@ function objectAssetIds(obj: LessonObject): string[] {
       const ids: string[] = [];
       if (obj.assetId) ids.push(obj.assetId);
       if (obj.poster) ids.push(obj.poster);
+      // a lab's HTML and the assets it may load (spec 1.1 §2)
+      if (obj.lab) ids.push(obj.lab.entry, ...(obj.lab.assets ?? []));
       return ids;
     }
   }

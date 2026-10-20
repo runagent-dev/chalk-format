@@ -13,6 +13,8 @@ export type {
   VectorObject,
   EmbedObject,
   EmbedKind,
+  Lab,
+  LabObject,
   SnipObject,
   MediaDisplayMode,
   LessonObject,

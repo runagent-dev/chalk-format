@@ -9,12 +9,14 @@ export {
   VIDEO_TYPES,
   AUDIO_TYPES,
   MODEL_TYPES,
+  LAB_TYPES,
   type MediaType,
   type MediaKind,
   type ImageType,
   type VideoType,
   type AudioType,
   type ModelType,
+  type LabType,
 } from './media-type.js';
 export * from './object-transform.js';
 // Schema functions/constants only. The model *types* come via lesson.js
@@ -22,6 +24,11 @@ export * from './object-transform.js';
 // `export *` from schema.js to avoid duplicate type exports.
 export {
   CHALK_FORMAT_VERSION,
+  LAB_PLUGIN_ID,
+  LAB_PARAMS_MAX_BYTES,
+  PLUGIN_ID_PATTERN,
+  labSchema,
+  isLabObject,
   lessonSchema,
   lessonPageSchema,
   lessonObjectSchema,
