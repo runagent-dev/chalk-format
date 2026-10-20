@@ -9,14 +9,14 @@ export {
   VIDEO_TYPES,
   AUDIO_TYPES,
   MODEL_TYPES,
-  LAB_TYPES,
+  LAB_ENTRY_TYPE,
+  isLabEntryBytes,
   type MediaType,
   type MediaKind,
   type ImageType,
   type VideoType,
   type AudioType,
   type ModelType,
-  type LabType,
 } from './media-type.js';
 export * from './object-transform.js';
 // Schema functions/constants only. The model *types* come via lesson.js

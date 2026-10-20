@@ -123,9 +123,10 @@ export const LAB_PARAMS_MAX_BYTES = 16 * 1024;
 
 /**
  * An interactive lab (schema v8, spec 1.1): one self-contained HTML file run
- * in a sandbox, talking to the reader only through the Host API.
+ * in a sandbox, talking to the reader only through the Host API. Loose: fields
+ * a later version adds survive a round trip through this one (spec 1.1 §2.2).
  */
-export const labSchema = z.object({
+export const labSchema = z.looseObject({
   /** Stable identity of the lab, reverse-DNS style; the same lab in many books has one id. */
   id: z.string().min(1).max(200),
   /** The lab's own version; saved state is keyed by id + major version. */
@@ -136,7 +137,8 @@ export const labSchema = z.object({
   entry: sha256AssetIdSchema,
   /** Other assets of the book the lab may load through the Host API (`asset.get`). */
   assets: z.array(sha256AssetIdSchema).optional(),
-  /** JSON configuration handed to the lab at start (one lab file, many configurations). */
+  /** JSON configuration handed to the lab at start (one lab file, many configurations).
+   *  At most 16 KiB serialised: a byte limit JSON Schema cannot express, so readers check it (spec 1.1 §2). */
   params: z
     .record(z.string(), z.unknown())
     .refine((p) => new TextEncoder().encode(JSON.stringify(p)).length <= LAB_PARAMS_MAX_BYTES, {
@@ -152,8 +154,11 @@ export const labSchema = z.object({
  * audio, or plugin widget). The bytes live elsewhere — resolved by
  * assetId (content-addressed, via AssetService) or a url — so the
  * document stays small. `poster` is an optional inline thumbnail asset.
+ *
+ * Loose (schema v8): fields this version does not know, such as a plugin's own
+ * configuration, are kept, so writers preserve them (spec 1.1 §2.2).
  */
-export const embedObjectSchema = z.object({
+export const embedObjectSchema = z.looseObject({
   ...objectBase,
   type: z.literal('embed'),
   embed: z.enum(['video', 'model3d', 'audio', 'plugin']),

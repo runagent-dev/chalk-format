@@ -60,6 +60,13 @@ describe('plugin ids (spec 1.1 §2.2)', () => {
     for (const id of ['lab', 'Org.Example', 'org..x', 'org.example.', 'org/example', '']) expect(parse(widget(id)).success, id).toBe(false);
   });
 
+  it('keeps fields it does not know, so a writer preserves a plugin\'s own data', () => {
+    const r = parse({ ...widget('org.example.widget'), widget: { level: 3, tags: ['a'] } });
+    expect(r.success && (r.data as unknown as { widget: unknown }).widget).toEqual({ level: 3, tags: ['a'] });
+    const l = parse(lab({ hints: { bn: 'দোলকটি টানো' } }));
+    expect(l.success && isLabObject(l.data) && (l.data.lab as unknown as { hints: unknown }).hints).toEqual({ bn: 'দোলকটি টানো' });
+  });
+
   it('still accepts a 1.0 plugin embed without an id', () => {
     expect(parse({ id: 'w', type: 'embed', embed: 'plugin', x: 0, y: 0, width: 1, height: 1 }).success).toBe(true);
   });

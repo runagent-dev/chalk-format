@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mediaKindOf, sniffMediaType } from './media-type.js';
+import { isLabEntryBytes, mediaKindOf, sniffMediaType } from './media-type.js';
 
 const bytes = (...parts: (string | number[])[]): Uint8Array => {
   const out: number[] = [];
@@ -51,8 +51,7 @@ describe('sniffMediaType', () => {
   it('rejects anything unrecognised, including a truncated header', () => {
     expect(sniffMediaType(bytes('PK', [3, 4]))).toBeNull(); // zip
     expect(sniffMediaType(bytes('%PDF-1.7'))).toBeNull();
-    expect(sniffMediaType(bytes('<htm'))).toBeNull();
-    expect(sniffMediaType(bytes('<svg xmlns="http://www.w3.org/2000/svg">'))).toBeNull();
+    expect(sniffMediaType(bytes('<html>'))).toBeNull();
     expect(sniffMediaType(new Uint8Array([0x89]))).toBeNull();
     expect(sniffMediaType(new Uint8Array())).toBeNull();
   });
@@ -81,23 +80,25 @@ describe('3D models', () => {
 });
 
 describe('lab entries (spec 1.1)', () => {
-  it('identifies an HTML document by its doctype or <html>, case-insensitively', () => {
-    expect(sniffMediaType(bytes('<!doctype html><title>x</title>'))).toBe('text/html');
-    expect(sniffMediaType(bytes('<!DOCTYPE HTML>\n<html>'))).toBe('text/html');
-    expect(sniffMediaType(bytes('<html lang="bn">'))).toBe('text/html');
-    expect(mediaKindOf('text/html')).toBe('lab');
+  it('are never accepted media: upload paths must not take HTML (stored XSS)', () => {
+    expect(sniffMediaType(bytes('<!doctype html><script>alert(1)</script>'))).toBeNull();
+    expect(sniffMediaType(bytes([0xef, 0xbb, 0xbf], '<html>'))).toBeNull();
   });
 
-  it('skips a UTF-8 BOM and leading whitespace', () => {
-    expect(sniffMediaType(bytes([0xef, 0xbb, 0xbf], '\r\n  <!doctype html>'))).toBe('text/html');
+  it('are recognised by their own check: doctype or <html>, case-insensitively', () => {
+    expect(isLabEntryBytes(bytes('<!doctype html><title>x</title>'))).toBe(true);
+    expect(isLabEntryBytes(bytes('<!DOCTYPE HTML>\n<html>'))).toBe(true);
+    expect(isLabEntryBytes(bytes('<html lang="bn">'))).toBe(true);
   });
 
-  it('does not take other markup or text for HTML', () => {
-    expect(sniffMediaType(bytes('<?xml version="1.0"?><html>'))).toBeNull();
-    expect(sniffMediaType(bytes('hello <html>'))).toBeNull();
+  it('skip a UTF-8 BOM and leading whitespace', () => {
+    expect(isLabEntryBytes(bytes([0xef, 0xbb, 0xbf], '\r\n  <!doctype html>'))).toBe(true);
   });
 
-  it('never shadows a binary signature', () => {
-    expect(sniffMediaType(bytes('glTF', [2, 0, 0, 0], '<html>'))).toBe('model/gltf-binary');
+  it('do not take other markup, text or binary media for HTML', () => {
+    expect(isLabEntryBytes(bytes('<?xml version="1.0"?><html>'))).toBe(false);
+    expect(isLabEntryBytes(bytes('hello <html>'))).toBe(false);
+    expect(isLabEntryBytes(bytes('<svg xmlns="http://www.w3.org/2000/svg">'))).toBe(false);
+    expect(isLabEntryBytes(bytes('glTF', [2, 0, 0, 0], '<html>'))).toBe(false);
   });
 });

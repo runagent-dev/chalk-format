@@ -495,7 +495,9 @@
                     "propertyNames": {
                       "type": "string"
                     },
-                    "additionalProperties": {}
+                    "additionalProperties": {},
+                    "description": "At most 16384 bytes as UTF-8 JSON. Not expressible in JSON Schema: readers MUST check it (spec 1.1 §2).",
+                    "x-chalk-max-bytes": 16384
                   },
                   "capabilities": {
                     "type": "array",
@@ -509,7 +511,8 @@
                   "version",
                   "title",
                   "entry"
-                ]
+                ],
+                "additionalProperties": {}
               }
             },
             "required": [
@@ -521,6 +524,7 @@
               "width",
               "height"
             ],
+            "additionalProperties": {},
             "allOf": [
               {
                 "if": {
