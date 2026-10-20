@@ -89,6 +89,27 @@ export function sniffMediaType(bytes: Uint8Array): MediaType | null {
   return null;
 }
 
+/**
+ * Lab entries (spec 1.1 §3.1) are HTML: one self-contained file, run only
+ * in the lab sandbox. Deliberately NOT part of sniffMediaType: ingest paths
+ * treat any type it returns as accepted media, and HTML accepted as media is
+ * a stored-XSS hole. Only code that is placing a lab asks this.
+ */
+export const LAB_ENTRY_TYPE = 'text/html' as const;
+
+/**
+ * Is this a lab entry? HTML has no magic bytes, only a leading
+ * `<!doctype html>` / `<html>`; an optional UTF-8 BOM and leading whitespace
+ * are skipped (authoring tools and hand edits produce both). Binary media
+ * never matches, since none starts with `<`.
+ */
+export function isLabEntryBytes(b: Uint8Array): boolean {
+  let i = bytesAt(b, 0, [0xef, 0xbb, 0xbf]) ? 3 : 0;
+  while (i < b.length && (b[i] === 0x20 || b[i] === 0x09 || b[i] === 0x0a || b[i] === 0x0d)) i++;
+  const head = String.fromCharCode(...b.slice(i, i + 15)).toLowerCase();
+  return head.startsWith('<!doctype html') || head.startsWith('<html');
+}
+
 export function mediaKindOf(type: MediaType): MediaKind {
   if ((IMAGE_TYPES as readonly string[]).includes(type)) return 'image';
   if ((VIDEO_TYPES as readonly string[]).includes(type)) return 'video';

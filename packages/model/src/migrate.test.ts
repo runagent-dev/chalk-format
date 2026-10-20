@@ -107,4 +107,20 @@ describe('migrateToLatest', () => {
     };
     expect(() => migrateToLatest(v6, 6)).not.toThrow();
   });
+
+  it('upgrades a v7 document (no plugin ids, no labs) to the latest unchanged', () => {
+    const v7 = {
+      id: 'l',
+      title: 'Legacy',
+      locale: 'en',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      snipPages: [],
+      pages: [{ id: 'p', title: 'Page 1', background: { type: 'blank' }, objects: [
+        { id: 'w', x: 0, y: 0, type: 'embed', embed: 'plugin', width: 10, height: 10 },
+      ] }],
+    };
+    expect(migrateToLatest(v7, 7)).toBe(v7);
+    expect(() => parseLesson(migrateToLatest(v7, 7))).not.toThrow();
+  });
 });

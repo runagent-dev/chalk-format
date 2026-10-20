@@ -21,7 +21,7 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 7;
+export const CHALK_FORMAT_VERSION = 8;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -111,13 +111,54 @@ export const vectorObjectSchema = z.object({
   strokeWidth: z.number().optional(),
 });
 
+/** `sha256:` + 64 lowercase hex digits: the only ids a lab entry may use (hosts verify the bytes). */
+const sha256AssetIdSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+
+/** A namespaced plugin id: `chalk.*` is reserved for this spec, others use reverse DNS (spec 1.1 §2.2). */
+export const PLUGIN_ID_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+/** The plugin id of labs (spec 1.1 §2). */
+export const LAB_PLUGIN_ID = 'chalk.lab';
+/** Largest `lab.params`, serialised (spec 1.1 §2). */
+export const LAB_PARAMS_MAX_BYTES = 16 * 1024;
+
+/**
+ * An interactive lab (schema v8, spec 1.1): one self-contained HTML file run
+ * in a sandbox, talking to the reader only through the Host API. Loose: fields
+ * a later version adds survive a round trip through this one (spec 1.1 §2.2).
+ */
+export const labSchema = z.looseObject({
+  /** Stable identity of the lab, reverse-DNS style; the same lab in many books has one id. */
+  id: z.string().min(1).max(200),
+  /** The lab's own version; saved state is keyed by id + major version. */
+  version: z.string().min(1).max(64),
+  /** Human-readable name: the frame's accessible name and the fallback card's label. */
+  title: z.string(),
+  /** The lab's HTML file (content-addressed). */
+  entry: sha256AssetIdSchema,
+  /** Other assets of the book the lab may load through the Host API (`asset.get`). */
+  assets: z.array(sha256AssetIdSchema).optional(),
+  /** JSON configuration handed to the lab at start (one lab file, many configurations).
+   *  At most 16 KiB serialised: a byte limit JSON Schema cannot express, so readers check it (spec 1.1 §2). */
+  params: z
+    .record(z.string(), z.unknown())
+    .refine((p) => new TextEncoder().encode(JSON.stringify(p)).length <= LAB_PARAMS_MAX_BYTES, {
+      message: `lab.params is larger than ${LAB_PARAMS_MAX_BYTES} bytes`,
+    })
+    .optional(),
+  /** Host API capabilities the lab asks for (`state`, `progress`, `assets`); unknown names are ignored. */
+  capabilities: z.array(z.string()).optional(),
+});
+
 /**
  * A reference to external media placed on the page (video, 3D model,
  * audio, or plugin widget). The bytes live elsewhere — resolved by
  * assetId (content-addressed, via AssetService) or a url — so the
  * document stays small. `poster` is an optional inline thumbnail asset.
+ *
+ * Loose (schema v8): fields this version does not know, such as a plugin's own
+ * configuration, are kept, so writers preserve them (spec 1.1 §2.2).
  */
-export const embedObjectSchema = z.object({
+export const embedObjectSchema = z.looseObject({
   ...objectBase,
   type: z.literal('embed'),
   embed: z.enum(['video', 'model3d', 'audio', 'plugin']),
@@ -127,6 +168,18 @@ export const embedObjectSchema = z.object({
   url: z.string().optional(),
   poster: z.string().optional(),
   displayMode: mediaDisplayModeSchema.optional(),
+  /** What runs an `embed: 'plugin'` object (schema v8). A reader without that plugin draws the
+   *  poster card instead and keeps the object (spec 1.1 §2.2). */
+  plugin: z.string().regex(PLUGIN_ID_PATTERN).optional(),
+  /** The lab descriptor, present exactly when `plugin` is `chalk.lab` (schema v8). */
+  lab: labSchema.optional(),
+}).superRefine((o, ctx) => {
+  if (o.plugin !== undefined && o.embed !== 'plugin') {
+    ctx.addIssue({ code: 'custom', path: ['plugin'], message: "'plugin' is only allowed on embed: 'plugin'" });
+  }
+  if ((o.plugin === LAB_PLUGIN_ID) !== (o.lab !== undefined)) {
+    ctx.addIssue({ code: 'custom', path: ['lab'], message: `'lab' is required with plugin '${LAB_PLUGIN_ID}' and allowed only there` });
+  }
 });
 
 /**
@@ -229,6 +282,10 @@ export type ArrowObject = z.infer<typeof arrowObjectSchema>;
 export type VectorObject = z.infer<typeof vectorObjectSchema>;
 export type EmbedObject = z.infer<typeof embedObjectSchema>;
 export type EmbedKind = EmbedObject['embed'];
+export type Lab = z.infer<typeof labSchema>;
+/** An embed that is a lab: `embed: 'plugin'`, `plugin: 'chalk.lab'`, with its descriptor. */
+export type LabObject = EmbedObject & { embed: 'plugin'; plugin: typeof LAB_PLUGIN_ID; lab: Lab };
+export const isLabObject = (o: LessonObject): o is LabObject => o.type === 'embed' && o.plugin === LAB_PLUGIN_ID && o.lab !== undefined;
 export type SnipObject = z.infer<typeof snipObjectSchema>;
 export type MediaDisplayMode = z.infer<typeof mediaDisplayModeSchema>;
 export type LessonObject = z.infer<typeof lessonObjectSchema>;

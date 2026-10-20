@@ -1,7 +1,9 @@
 // Writes the conformance corpus (conformance/valid, conformance/invalid) and cases.json.
 // The files are committed; regenerate only on purpose (pnpm --filter @chalk-format/conformance generate),
-// since every reader implementation is tested against these exact bytes.
-import { mkdirSync, writeFileSync } from 'node:fs';
+// since every reader implementation is tested against these exact bytes. Cases of an earlier spec version are
+// frozen: written only when missing, so a later formatVersion never rewrites them (they must keep opening as
+// they are). Delete a file to regenerate it.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import { hashBytes, type Lesson, type LessonPage, type Overlay } from '@chalk-format/model';
 import { packLesson, packOverlay, type AssetBundle } from '@chalk-format/container';
@@ -11,12 +13,14 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1'; covers: string };
 const cases: Case[] = [];
-const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid'>) => {
+const CURRENT = '1.1';
+const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
+  const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
-  writeFileSync(new URL(`${dir}/${name}`, ROOT), bytes);
-  cases.push({ file: `${dir}/${name}`, valid: dir === 'valid', ...c });
+  if (since === CURRENT || !existsSync(url)) writeFileSync(url, bytes);
+  cases.push({ file: `${dir}/${name}`, valid: dir === 'valid', kind: c.kind, since, covers: c.covers });
 };
 const page = (id: string, extra: Partial<LessonPage> = {}): LessonPage => ({ id, title: id, background: { type: 'blank' }, objects: [], ...extra });
 const lesson = (extra: Partial<Lesson> = {}): Lesson => ({
@@ -80,6 +84,31 @@ write('valid', 'legacy-no-format-version.chalk', await rawZip({
 const overlay: Overlay = { base: { id: 'lesson_conformance', version: 7 }, pages: { p1: { upsertedObjects: [
   { id: 'note', type: 'text', x: 5, y: 5, text: 'teacher note', fontSize: 18, fill: '#c00' }] } }, newPages: [], updatedAt: T };
 write('valid', 'overlay.chalk', await packOverlay(overlay), { kind: 'overlay', covers: 'overlay package (kind: overlay) over a base lesson' });
+
+// ── 1.1: labs ────────────────────────────────────────────────────────────
+// The example lab as entry, a minimal GLB it may load, the PNG as poster; and a widget whose plugin no reader knows.
+const PENDULUM = new Uint8Array(readFileSync(new URL('../../../examples/labs/pendulum.html', import.meta.url)));
+const glbJson = new TextEncoder().encode('{"asset":{"version":"2.0"}}  ');   // padded to 4 bytes
+const GLB = new Uint8Array(12 + 8 + glbJson.length);
+new DataView(GLB.buffer).setUint32(0, 0x46546c67, true); new DataView(GLB.buffer).setUint32(4, 2, true); new DataView(GLB.buffer).setUint32(8, GLB.length, true);
+new DataView(GLB.buffer).setUint32(12, glbJson.length, true); new DataView(GLB.buffer).setUint32(16, 0x4e4f534a, true); GLB.set(glbJson, 20);
+const pendulum = await hashBytes(PENDULUM), glb = await hashBytes(GLB);
+const labAssets: AssetBundle = new Map([...assets, [pendulum, { type: 'text/html', bytes: PENDULUM }], [glb, { type: 'model/gltf-binary', bytes: GLB }]]);
+const labObject = {
+  id: 'lab1', type: 'embed' as const, embed: 'plugin' as const, plugin: 'chalk.lab', x: 100, y: 100, width: 960, height: 540, poster: png,
+  lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0', title: 'Simple pendulum · সরল দোলক', entry: pendulum, assets: [glb],
+    params: { length: 0.8, swings: 10, readings: 3 }, capabilities: ['state', 'progress', 'assets'] },
+};
+write('valid', 'lab.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
+  labObject,
+  { id: 'w1', type: 'embed', embed: 'plugin', plugin: 'org.example.unknown-widget', x: 100, y: 700, width: 320, height: 180, poster: png },
+] })] }), labAssets), { kind: 'lesson', since: '1.1', covers: 'a lab (entry HTML, a GLB it may load, poster, params, capabilities) and a plugin no reader knows (must draw its poster card, spec 1.1 §2.2)' });
+
+const labPage = (lab: Record<string, unknown>, extra: Record<string, unknown> = {}) => JSON.stringify(page('p1', { objects: [{ ...labObject, lab: { ...labObject.lab, ...lab }, ...extra } as never] }));
+write('invalid', 'lab-without-descriptor.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 8 }), 'pages/page-1.json': labPage({}, { lab: undefined }) }),
+  { kind: 'lesson', since: '1.1', covers: "plugin 'chalk.lab' without a lab descriptor" });
+write('invalid', 'lab-entry-not-content-addressed.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 8 }), 'pages/page-1.json': labPage({ entry: 'pendulum.html' }) }),
+  { kind: 'lesson', since: '1.1', covers: 'lab.entry is a file name, not a sha256: id (hosts could not verify what they run)' });
 
 // ── invalid ──────────────────────────────────────────────────────────────
 write('invalid', 'no-manifest.chalk', await rawZip({ 'pages/page-1.json': blankPage }), { kind: 'lesson', covers: 'manifest.json missing' });

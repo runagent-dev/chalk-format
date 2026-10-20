@@ -40,6 +40,10 @@ export const MIGRATIONS: Record<number, Migration> = {
   // document has none, which is already valid under v7 (the derived
   // "use page 1" fallback still applies), so identity again.
   6: (doc) => doc,
+  // v7 → v8: embed objects gained an optional `plugin` id and, for
+  // plugin 'chalk.lab', a `lab` descriptor (spec 1.1). A v7 document has
+  // neither, which is already valid under v8, so identity again.
+  7: (doc) => doc,
 };
 
 /**

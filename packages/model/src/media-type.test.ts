@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mediaKindOf, sniffMediaType } from './media-type.js';
+import { isLabEntryBytes, mediaKindOf, sniffMediaType } from './media-type.js';
 
 const bytes = (...parts: (string | number[])[]): Uint8Array => {
   const out: number[] = [];
@@ -76,5 +76,29 @@ describe('3D models', () => {
     // A .gltf JSON references external buffers; OBJ/STL have no materials.
     expect(sniffMediaType(new Uint8Array([...'{"asset":{'].map((c) => c.charCodeAt(0))))).toBeNull();
     expect(sniffMediaType(new Uint8Array([...'solid cube'].map((c) => c.charCodeAt(0))))).toBeNull();
+  });
+});
+
+describe('lab entries (spec 1.1)', () => {
+  it('are never accepted media: upload paths must not take HTML (stored XSS)', () => {
+    expect(sniffMediaType(bytes('<!doctype html><script>alert(1)</script>'))).toBeNull();
+    expect(sniffMediaType(bytes([0xef, 0xbb, 0xbf], '<html>'))).toBeNull();
+  });
+
+  it('are recognised by their own check: doctype or <html>, case-insensitively', () => {
+    expect(isLabEntryBytes(bytes('<!doctype html><title>x</title>'))).toBe(true);
+    expect(isLabEntryBytes(bytes('<!DOCTYPE HTML>\n<html>'))).toBe(true);
+    expect(isLabEntryBytes(bytes('<html lang="bn">'))).toBe(true);
+  });
+
+  it('skip a UTF-8 BOM and leading whitespace', () => {
+    expect(isLabEntryBytes(bytes([0xef, 0xbb, 0xbf], '\r\n  <!doctype html>'))).toBe(true);
+  });
+
+  it('do not take other markup, text or binary media for HTML', () => {
+    expect(isLabEntryBytes(bytes('<?xml version="1.0"?><html>'))).toBe(false);
+    expect(isLabEntryBytes(bytes('hello <html>'))).toBe(false);
+    expect(isLabEntryBytes(bytes('<svg xmlns="http://www.w3.org/2000/svg">'))).toBe(false);
+    expect(isLabEntryBytes(bytes('glTF', [2, 0, 0, 0], '<html>'))).toBe(false);
   });
 });

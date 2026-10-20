@@ -167,7 +167,8 @@ and replaced `background`/`title`/`width`/`height`; plus `newPages`, an optional
 
 - 1.1 compatibility: must-ignore unknown types with fallbacks; `requires`; extension namespaces.
 - `lab` embeds (self-contained interactive HTML) and the Host API: a message protocol between labs or
-  widgets and the host app (state, progress, data queries, permissions).
+  widgets and the host app (state, progress, data queries, permissions). **Specified in
+  [Chalk 1.1](../1.1/README.md).**
 - Navigation: table of contents, printed page labels, links, bookmarks.
 - Structured, reflowable text (headings, paragraphs, math, tables) for small screens.
 - Quizzes and interactive elements as data; learner-state packages.

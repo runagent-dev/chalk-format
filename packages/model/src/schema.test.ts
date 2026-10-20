@@ -131,8 +131,8 @@ describe('CHALK_FORMAT_VERSION', () => {
     expect(CHALK_FORMAT_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 7 now that lessons carry snipPages and an optional top-level coverAssetId', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(7);
+  it('is 8 now that embeds carry plugin ids and labs (spec 1.1)', () => {
+    expect(CHALK_FORMAT_VERSION).toBe(8);
   });
 });
 

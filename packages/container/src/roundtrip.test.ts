@@ -10,6 +10,18 @@ async function roundTrip(lesson: Lesson, assets?: AssetBundle): Promise<UnpackRe
 }
 
 describe('chalk round-trip', () => {
+  it("keeps a plugin's own fields and a lab's unknown fields (spec 1.1 §2.2: writers preserve them)", async () => {
+    const sha = (c: string) => 'sha256:' + c.repeat(64);
+    const base = createLesson('Plugins');
+    const page = base.pages[0]!;
+    const widget = { id: 'w', type: 'embed', embed: 'plugin', plugin: 'org.example.widget', x: 0, y: 0, width: 10, height: 10, widget: { level: 3 } };
+    const lab = { id: 'l', type: 'embed', embed: 'plugin', plugin: 'chalk.lab', x: 0, y: 20, width: 10, height: 10,
+      lab: { id: 'org.example.lab', version: '1.0.0', title: 'Lab', entry: sha('a'), hints: { bn: 'টানো' } } };
+    const lesson = { ...base, pages: [{ ...page, objects: [widget, lab] }] } as unknown as Lesson;
+    const { lesson: restored } = await roundTrip(lesson);
+    expect(restored.pages[0]!.objects).toEqual([widget, lab]);
+  });
+
   it('preserves a blank lesson', async () => {
     const original = createLesson('Round-Trip Test');
     const { lesson: restored, assets } = await roundTrip(original);

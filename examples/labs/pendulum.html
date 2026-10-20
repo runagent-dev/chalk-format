@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simple pendulum · সরল দোলক</title>
+<!--
+  An example Chalk lab (spec/1.1): one self-contained file that speaks the Host API by hand, no SDK.
+  params: { length (m), g (m/s²), swings (to time per reading), readings (needed to finish) }
+  state:  { readings: [period in s, …] }       progress: one step per reading
+-->
+<style>
+  :root { --bg: #f6f3ea; --ink: #1d2a33; --muted: #6b7680; --accent: #c0392b; --card: #fff; }
+  :root.dark { --bg: #141b20; --ink: #e8eef2; --muted: #93a1ab; --accent: #ff7a6b; --card: #1e272e; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.4 "Noto Sans", "Noto Sans Bengali", system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: 1fr auto; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; background: var(--card); }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--muted); background: transparent; color: var(--ink); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .out { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Pendulum"></canvas>
+<div class="bar">
+  <button id="time" class="primary"></button>
+  <span id="out" class="out"></span>
+</div>
+<script>
+(() => {
+  // ---------- Host API (spec/1.1/host-api.md), by hand ----------
+  // The handshake goes on the window: hello up, init down carrying a private channel (a MessagePort).
+  // Everything after that goes on the channel.
+  const host = window.parent;
+  let session = null, port = null, nextId = 1;
+  const send = (m) => { if (port) port.postMessage(Object.assign({ chalk: 1 }, m)); };
+  const waiting = new Map();
+  const request = (m) => new Promise((ok, fail) => { const id = nextId++; waiting.set(id, { ok, fail }); send(Object.assign({ id }, m)); });
+  addEventListener('message', (e) => {
+    const m = e.data;
+    if (e.source !== host || !m || m.chalk !== 1 || m.type !== 'init' || session) return;   // only the host, only to start
+    clearInterval(helloTimer);
+    if (m.api !== 1 || !e.ports[0]) return;
+    port = e.ports[0];
+    port.onmessage = (ev) => onHost(ev.data);
+    start(m);
+  });
+  function onHost(m) {
+    if (!m || m.chalk !== 1) return;
+    if (m.type === 'reply' && waiting.has(m.id)) { const w = waiting.get(m.id); waiting.delete(m.id); m.ok ? w.ok(m.result) : w.fail(m.error); }
+    else if (m.type === 'visibility') setVisible(m.visible);
+    else if (m.type === 'theme') setTheme(m.theme);
+    else if (m.type === 'locale') { locale = m.locale; render(); }
+    else if (m.type === 'reset') { readings = []; timing = null; render(); report(); }
+    // anything else: from a later version, ignored
+  }
+  const hello = () => host.postMessage({ chalk: 1, type: 'hello', api: [1], lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0' } }, '*');
+  const helloTimer = setInterval(hello, 500); hello();
+  // Standalone (opened directly, no host): run with defaults after a moment.
+  setTimeout(() => { if (!session && window.parent === window) start({ api: 1, params: {}, locale: navigator.language, theme: 'light', granted: [], state: null, visible: true }); }, 300);
+
+  // ---------- the lab ----------
+  const cv = document.getElementById('c'), g2 = cv.getContext('2d');
+  const T = { en: { time: (n) => `Time ${n} swings`, timing: 'Timing…', period: 'Period', need: 'readings', done: 'Done: g ≈ ' },
+              bn: { time: (n) => `${n}টি দোলনের সময় নাও`, timing: 'সময় নেওয়া হচ্ছে…', period: 'দোলনকাল', need: 'টি পাঠ', done: 'শেষ: g ≈ ' } };
+  let P, locale = 'en', visible = true, running = false, readings = [], timing = null, theta = 0.25, omega = 0, last = 0, simT = 0;
+  const bn = () => locale.startsWith('bn');
+  const t = (k) => T[bn() ? 'bn' : 'en'][k];
+  // numbers in the student's script: ০১২৩৪৫৬৭৮৯ in Bengali
+  const num = (x) => (bn() ? String(x).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[d]) : String(x));
+  const can = (cap) => session.granted.includes(cap);
+  // one render loop at most; none while hidden (the host says when we are off screen)
+  function setVisible(v) { visible = v; if (visible && !running) { running = true; last = 0; requestAnimationFrame(loop); } }
+  function setTheme(th) { document.documentElement.classList.toggle('dark', th === 'dark'); }
+
+  function start(init) {
+    session = init;
+    P = Object.assign({ length: 0.8, g: 9.8, swings: 10, readings: 3 }, init.params);
+    locale = init.locale || 'en'; setTheme(init.theme);
+    if (init.state && Array.isArray(init.state.readings)) readings = init.state.readings.slice(0, P.readings);
+    if (init.reducedMotion) theta = 0.12;
+    // a stopwatch started by hand: it starts at the next pass through the vertical and stops after `swings` swings
+    document.getElementById('time').onclick = () => { if (!timing) timing = { t0: null, crossings: 0 }; render(); };
+    resize(); addEventListener('resize', resize);
+    render(); draw(); send({ type: 'ready' });   // first frame is on screen
+    report(); setVisible(init.visible !== false);
+  }
+  function report() {
+    if (can('progress')) send({ type: 'progress', step: { done: readings.length, total: P.readings }, completed: readings.length >= P.readings });
+  }
+  function save() { if (can('state')) request({ type: 'state.save', state: { readings } }).catch(() => {}); }
+
+  function resize() { const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1); cv.width = r.width * d; cv.height = r.height * d; draw(); }
+  function step(dt) {
+    // 1 ms steps of the exact equation θ'' = −(g/L)·sin θ (semi-implicit Euler). Times are simulated
+    // time, so a slow device shows the swing slower but measures the same period.
+    for (let k = 0; k < Math.round(dt * 1000); k++) {
+      const before = theta;
+      omega -= (P.g / P.length) * Math.sin(theta) * 0.001; theta += omega * 0.001; simT += 0.001;
+      if (!timing || Math.sign(theta) === Math.sign(before)) continue;
+      // a pass through the vertical: interpolate the instant it happened
+      const at = simT - 0.001 * (theta / (theta - before));
+      if (timing.t0 === null) { timing.t0 = at; continue; }
+      if (++timing.crossings < 2 * P.swings) continue;   // two passes per swing
+      const period = (at - timing.t0) / P.swings;
+      timing = null; readings = readings.concat(+period.toFixed(3)).slice(-P.readings);
+      save(); report(); render();
+    }
+  }
+  function loop(now) {
+    if (!visible) { running = false; return; }   // the host hid us: stop drawing until it shows us again
+    const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
+    step(dt); draw();
+    requestAnimationFrame(loop);
+  }
+  function draw() {
+    const w = cv.width, h = cv.height, s = Math.min(w, h) / 1.2, px = w / 2, py = h * 0.08, L = P ? P.length * s : 0;
+    g2.clearRect(0, 0, w, h);
+    const css = getComputedStyle(document.documentElement);
+    g2.strokeStyle = css.getPropertyValue('--muted'); g2.lineWidth = Math.max(2, s / 200);
+    g2.beginPath(); g2.moveTo(px - s * 0.2, py); g2.lineTo(px + s * 0.2, py); g2.stroke();
+    const bx = px + L * Math.sin(theta), by = py + L * Math.cos(theta);
+    g2.strokeStyle = css.getPropertyValue('--ink'); g2.beginPath(); g2.moveTo(px, py); g2.lineTo(bx, by); g2.stroke();
+    g2.fillStyle = css.getPropertyValue('--accent'); g2.beginPath(); g2.arc(bx, by, s * 0.04, 0, Math.PI * 2); g2.fill();
+  }
+  function render() {
+    document.getElementById('time').textContent = timing ? t('timing') : t('time')(num(P.swings));
+    const mean = readings.length ? readings.reduce((a, b) => a + b, 0) / readings.length : null;
+    const g = mean ? (4 * Math.PI * Math.PI * P.length) / (mean * mean) : null;
+    document.getElementById('out').textContent = readings.length >= P.readings
+      ? t('done') + num(g.toFixed(2)) + ' m/s²'
+      : `${t('period')}: ${readings.map((r) => num(r.toFixed(2)) + ' s').join(', ') || '–'} · ${num(readings.length)}/${num(P.readings)} ${t('need')}`;
+  }
+})();
+</script>
+</body>
+</html>
