@@ -29,7 +29,7 @@ export type DockProps = {
 };
 
 const WIDTH: Record<string, number> = { page: 96, '|': 13, more: 40 };
-const itemWidth = (id: string) => WIDTH[id] ?? 40;
+const HEIGHT: Record<string, number> = { page: 48, '|': 13, more: 40 };
 /** How much an item is needed on a small screen: higher stays in the dock longer. Custom items sit mid-way. */
 const NEED: Record<string, number> = {
   tools: 100, page: 95, next: 90, prev: 89, undo: 80, search: 70, thumbnails: 65, redo: 60, zoomIn: 40, zoomOut: 39, fit: 35, layout: 30,
@@ -103,6 +103,7 @@ export function Dock(p: DockProps) {
 
   // overflow: what does not fit goes in "more", least needed first (a phone keeps tools and page turning),
   // and what stays keeps its order
+  const itemWidth = (id: string) => (vertical ? HEIGHT[id] : WIDTH[id]) ?? 40;
   const total = items.reduce((s, i) => s + itemWidth(i.id), 12);
   let shown = items, hidden: Item[] = [];
   if (total > room) {

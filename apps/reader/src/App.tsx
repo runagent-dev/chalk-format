@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { ChalkReader, type BookSource } from '@chalk-format/reader';
+import { ChalkReader, DEFAULT_CONFIG, type BookSource, type ReaderConfig } from '@chalk-format/reader';
+import { Playground } from './Playground.js';
 
 const SAMPLES = [
   { id: 'showcase', label: 'পদার্থবিজ্ঞান · Physics sample', url: '/samples/showcase.chalk' },
@@ -11,6 +12,8 @@ const SAMPLES = [
 export function App() {
   const [source, setSource] = useState<{ key: string; src: BookSource }>({ key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
   const file = useRef<HTMLInputElement>(null);
+  const [config, setConfig] = useState<ReaderConfig>(DEFAULT_CONFIG);
+  const [configuring, setConfiguring] = useState(false);
   return (
     <div className="app">
       <header className="app-bar">
@@ -23,11 +26,13 @@ export function App() {
           </select>
         </label>
         <button type="button" className="app-btn" onClick={() => file.current?.click()}>Open a book</button>
+        <button type="button" className="app-btn" aria-pressed={configuring} onClick={() => setConfiguring((c) => !c)}>Configure</button>
         <input ref={file} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader key={source.key} source={source.src} />
+        <ChalkReader key={source.key} source={source.src} config={config} />
+        {configuring && <Playground config={config} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>
   );

@@ -1,3 +1,5 @@
+// the <model-viewer> JSX element type, wherever this file is compiled
+import type {} from '../model-viewer-jsx.js';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { PauseIcon, PlayIcon } from '@phosphor-icons/react';
 import { mountLab, type LabHost, type StateKey } from '@chalk-format/lab';

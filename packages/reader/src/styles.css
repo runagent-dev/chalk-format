@@ -83,6 +83,9 @@
 .chalk-viewer { flex: 1; min-width: 0; overflow: auto; overscroll-behavior: contain; outline: none; scrollbar-gutter: stable; }
 .chalk-reader[data-dock="bottom"] .chalk-viewer { padding-bottom: calc(var(--chalk-btn) + 2 * var(--chalk-space-lg)); }
 .chalk-reader[data-dock="top"] .chalk-viewer { padding-top: calc(var(--chalk-btn) + 2 * var(--chalk-space-lg)); }
+/* side docks narrow the column (a margin, so the fit maths sees the width that is really free) */
+.chalk-reader[data-dock="left"] .chalk-viewer { margin-left: calc(var(--chalk-btn) + 12px + 2 * var(--chalk-space-lg)); }
+.chalk-reader[data-dock="right"] .chalk-viewer { margin-right: calc(var(--chalk-btn) + 12px + 2 * var(--chalk-space-lg)); }
 .chalk-column { position: relative; }
 .chalk-row { position: absolute; display: flex; gap: 16px; }
 .chalk-page { position: relative; flex: none; background: oklch(100% 0 0); box-shadow: var(--chalk-page-shadow); overflow: hidden; contain: layout paint; }
@@ -194,7 +197,8 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-reader[data-dock="left"] .chalk-panel { left: auto; right: var(--chalk-space-md); }
 @container chalk (min-width: 720px) {
   .chalk-reader[data-panel] .chalk-viewer { margin-left: 312px; }
-  .chalk-reader[data-panel][data-dock="left"] .chalk-viewer { margin-left: 0; margin-right: 312px; }
+  .chalk-reader[data-panel][data-dock="left"] .chalk-viewer { margin-right: 312px; }
+  .chalk-reader[data-panel][data-dock="right"] .chalk-viewer { margin-left: 312px; }
 }
 @container chalk (max-width: 719px) {
   .chalk-panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(62%, 560px); border-radius: 16px 16px 0 0; border-bottom: 0; }
@@ -347,3 +351,8 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   font-size: var(--chalk-text-sm); box-shadow: var(--chalk-float-shadow); animation: chalk-fade-in var(--chalk-dur) var(--chalk-ease-out);
 }
 @keyframes chalk-fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* in a side dock the page number stacks: the current page over the count, a button wide */
+.chalk-dock.is-left .chalk-dock-page, .chalk-dock.is-right .chalk-dock-page {
+  flex-direction: column; align-items: center; justify-content: center; gap: 0; width: var(--chalk-btn); height: 48px; padding: 0; line-height: 1.15;
+}
+.chalk-dock.is-left .chalk-dock-page-total, .chalk-dock.is-right .chalk-dock-page-total { font-size: 11px; }

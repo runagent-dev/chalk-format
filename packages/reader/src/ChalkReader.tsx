@@ -107,6 +107,11 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [theme, setTheme] = useState<'light' | 'dark' | null>(config.theme === 'system' ? null : config.theme);
   const [locale, setLocale] = useState<Locale>(config.locale);
   const [fullscreen, setFullscreen] = useState(false);
+  // a side dock on a phone-width reader would cover the page: it goes to the bottom there
+  const [rootWidth, setRootWidth] = useState(1000);
+  useEffect(() => { const e = root.current; if (!e) return; const ro = new ResizeObserver(() => setRootWidth(e.clientWidth)); ro.observe(e); return () => ro.disconnect(); }, []);
+  const dockPos = config.dock ? (rootWidth < 720 && (config.dock.position === 'left' || config.dock.position === 'right') ? 'bottom' : config.dock.position) : null;
+  const dockCfg = config.dock && dockPos ? { ...config.dock, position: dockPos } : null;
   const [panel, setPanel] = useState<'thumbnails' | 'search' | null>(null);
   const [query, setQuery] = useState('');
   const [hit, setHit] = useState(0);
@@ -249,7 +254,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const togglePanel = (which: 'thumbnails' | 'search') => setPanel((p) => (p === which ? null : which));
 
   return (
-    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={config.dock ? config.dock.position : 'none'} data-panel={panel ?? undefined} lang={locale} style={props.style} onKeyDown={onKey}>
+    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? undefined} lang={locale} style={props.style} onKeyDown={onKey}>
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
@@ -278,13 +283,13 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
       {toast && <div className="chalk-toast" role="status">{toast}</div>}
-      {config.dock && (
+      {dockCfg && (
         <Dock
-          config={config} dock={config.dock} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
+          config={config} dock={dockCfg} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
           canUndo={ann.canUndo} canRedo={ann.canRedo}
           tools={A.tools.length > 1 ? <ToolsMenu config={A} locale={locale} tool={tool} color={color} highlight={highlight} size={size}
-            onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={config.dock.position !== 'top'} /> : undefined}
+            onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
             undo: ann.undo, redo: ann.redo, exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
