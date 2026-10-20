@@ -1,0 +1,127 @@
+import type { ReactNode } from 'react';
+
+/**
+ * Everything about the reader that a host app can set. One `config` prop, partial: what is not given keeps
+ * the default below. Arrays (dock items, tools, colours) replace the default rather than merge with it.
+ */
+
+/** Annotation tools (spec 1.0 objects the student adds as an overlay). */
+export type ToolId = 'pan' | 'select' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow';
+
+/** Built-in dock items. `'|'` draws a divider. */
+export type DockItemId =
+  | 'prev' | 'page' | 'next'
+  | 'zoomOut' | 'fit' | 'zoomIn' | 'layout'
+  | 'thumbnails' | 'search'
+  | 'tools' | 'undo' | 'redo'
+  | 'export' | 'theme' | 'language' | 'fullscreen'
+  | '|';
+
+/** A dock button of the host's own. */
+export type CustomDockItem = { id: string; label: string; icon: ReactNode; onClick: () => void; active?: boolean };
+
+export type Layout = 'continuous' | 'single' | 'spread';
+export type Fit = 'width' | 'page';
+export type ThemeChoice = 'light' | 'dark' | 'system';
+export type Locale = 'bn' | 'en';
+
+export type ReaderConfig = {
+  /** Pages one under another (default), one at a time, or two side by side on wide screens. */
+  layout: Layout;
+  /** What zoom 100 % means: the page's width fills the view, or the whole page fits. */
+  fit: Fit;
+  zoom: { min: number; max: number; step: number };
+  theme: ThemeChoice;
+  locale: Locale;
+  /** Page to open at: 1-based number or a page id. */
+  initialPage: number | string;
+  readOnly: boolean;
+  features: {
+    thumbnails: boolean;
+    search: boolean;
+    annotations: boolean;
+    media: boolean;
+    model3d: boolean;
+    labs: boolean;
+    snips: boolean;
+    fullscreen: boolean;
+    export: boolean;
+    keyboard: boolean;
+    textSelection: boolean;
+    themeToggle: boolean;
+    languageToggle: boolean;
+  };
+  dock: false | {
+    position: 'bottom' | 'top' | 'left' | 'right';
+    items: (DockItemId | CustomDockItem)[];
+  };
+  annotations: {
+    tools: ToolId[];
+    defaultTool: ToolId;
+    /** Pen, text and shape colours (CSS colours). */
+    colors: string[];
+    /** Highlighter colours (drawn translucent). */
+    highlighterColors: string[];
+    /** Stroke sizes in page units. */
+    sizes: number[];
+    /** Let the student move or delete the book's own objects, not only their own (recorded in the overlay). */
+    editBase: boolean;
+  };
+  labs: {
+    /** Start a lab when its page comes into view instead of on a tap. */
+    autoStart: boolean;
+  };
+  /** Where annotations are kept when the host does not handle them: this browser, or nowhere. */
+  persistence: 'local' | 'none';
+};
+
+export const DEFAULT_CONFIG: ReaderConfig = {
+  layout: 'continuous',
+  fit: 'width',
+  zoom: { min: 0.25, max: 5, step: 1.25 },
+  theme: 'system',
+  locale: 'bn',
+  initialPage: 1,
+  readOnly: false,
+  features: {
+    thumbnails: true, search: true, annotations: true, media: true, model3d: true, labs: true, snips: true,
+    fullscreen: true, export: true, keyboard: true, textSelection: true, themeToggle: true, languageToggle: true,
+  },
+  dock: {
+    position: 'bottom',
+    items: ['thumbnails', 'search', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'tools', 'undo', 'redo', '|', 'export', 'theme', 'language', 'fullscreen'],
+  },
+  annotations: {
+    tools: ['pan', 'pen', 'highlighter', 'eraser', 'text', 'rect', 'ellipse', 'arrow', 'select'],
+    defaultTool: 'pan',
+    colors: ['#1f2a44', '#c0392b', '#1565c0', '#2e7d32', '#ef6c00'],
+    highlighterColors: ['#ffe066', '#a5f3a1', '#9fd3ff', '#ffb3c7'],
+    sizes: [3, 6, 12],
+    editBase: false,
+  },
+  labs: { autoStart: false },
+  persistence: 'local',
+};
+
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+export type ReaderConfigInput = DeepPartial<ReaderConfig>;
+
+const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+
+/** Defaults overlaid with the host's partial config. Arrays and non-plain values replace; plain objects merge. */
+export function resolveConfig(input: ReaderConfigInput = {}): ReaderConfig {
+  const merge = (base: unknown, over: unknown): unknown => {
+    if (over === undefined) return base;
+    if (isPlain(base) && isPlain(over)) {
+      const out: Record<string, unknown> = { ...base };
+      for (const [k, v] of Object.entries(over)) out[k] = merge(base[k], v);
+      return out;
+    }
+    return over;
+  };
+  const c = merge(DEFAULT_CONFIG, input) as ReaderConfig;
+  // no annotations in read-only mode, whatever else says
+  if (c.readOnly) c.features = { ...c.features, annotations: false };
+  if (!c.annotations.tools.includes(c.annotations.defaultTool)) c.annotations = { ...c.annotations, defaultTool: c.annotations.tools[0] ?? 'pan' };
+  return c;
+}

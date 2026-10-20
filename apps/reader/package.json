@@ -1,0 +1,28 @@
+{
+  "name": "@chalk-format/reader-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Showcase site for the reference .chalk reader.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/samples.mjs && vite",
+    "build": "node scripts/samples.mjs && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@chalk-format/reader": "workspace:*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "vite": "^7.1.0",
+    "vitest": "^2.1.8"
+  }
+}
