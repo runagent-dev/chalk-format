@@ -3,72 +3,105 @@
     "file": "valid/minimal.chalk",
     "valid": true,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "one blank page, fat bundle, no assets"
   },
   {
     "file": "valid/all-features.chalk",
     "valid": true,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "every object type, every background type, text layer (Bengali), snip page, cover, inline + external assets"
   },
   {
     "file": "valid/thin.chalk",
     "valid": true,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "thin bundle: sha256 asset listed with inline:false and no bytes"
   },
   {
     "file": "valid/legacy-no-format-version.chalk",
     "valid": true,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "files written before formatVersion/snipPages existed are read as version 1 and migrated"
   },
   {
     "file": "valid/overlay.chalk",
     "valid": true,
     "kind": "overlay",
+    "since": "1.0",
     "covers": "overlay package (kind: overlay) over a base lesson"
+  },
+  {
+    "file": "valid/lab.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.1",
+    "covers": "a lab (entry HTML, a GLB it may load, poster, params, capabilities) and a plugin no reader knows (must draw its poster card, spec 1.1 §2.2)"
+  },
+  {
+    "file": "invalid/lab-without-descriptor.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.1",
+    "covers": "plugin 'chalk.lab' without a lab descriptor"
+  },
+  {
+    "file": "invalid/lab-entry-not-content-addressed.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.1",
+    "covers": "lab.entry is a file name, not a sha256: id (hosts could not verify what they run)"
   },
   {
     "file": "invalid/no-manifest.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "manifest.json missing"
   },
   {
     "file": "invalid/wrong-format-id.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "manifest.format is not chalkbook.lesson"
   },
   {
     "file": "invalid/path-traversal.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "page path escapes the package"
   },
   {
     "file": "invalid/missing-page-file.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "manifest lists a page file that is not in the ZIP"
   },
   {
     "file": "invalid/bad-page-json.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "page file is not JSON"
   },
   {
     "file": "invalid/unknown-object-type.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "object type outside the 1.0 set (1.0 readers reject; see spec §Compatibility for the planned fallback rule)"
   },
   {
     "file": "invalid/missing-inline-asset.chalk",
     "valid": false,
     "kind": "lesson",
+    "since": "1.0",
     "covers": "asset declared inline but its bytes are absent"
   }
 ]
