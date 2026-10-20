@@ -30,35 +30,48 @@
 <script>
 (() => {
   // ---------- Host API (spec/1.1/host-api.md), by hand ----------
-  const host = window.parent, send = (m) => host.postMessage(Object.assign({ chalk: 1 }, m), '*');
-  let session = null, nextId = 1;
+  // The handshake goes on the window: hello up, init down carrying a private channel (a MessagePort).
+  // Everything after that goes on the channel.
+  const host = window.parent;
+  let session = null, port = null, nextId = 1;
+  const send = (m) => { if (port) port.postMessage(Object.assign({ chalk: 1 }, m)); };
   const waiting = new Map();
   const request = (m) => new Promise((ok, fail) => { const id = nextId++; waiting.set(id, { ok, fail }); send(Object.assign({ id }, m)); });
   addEventListener('message', (e) => {
     const m = e.data;
-    if (e.source !== host || !m || m.chalk !== 1) return;   // only the host, only our protocol
-    if (m.type === 'init' && !session) { clearInterval(helloTimer); if (m.api === 1) start(m); }
-    else if (m.type === 'reply' && waiting.has(m.id)) { const w = waiting.get(m.id); waiting.delete(m.id); m.ok ? w.ok(m.result) : w.fail(m.error); }
-    else if (m.type === 'visibility') { visible = m.visible; if (visible) loop(); }
+    if (e.source !== host || !m || m.chalk !== 1 || m.type !== 'init' || session) return;   // only the host, only to start
+    clearInterval(helloTimer);
+    if (m.api !== 1 || !e.ports[0]) return;
+    port = e.ports[0];
+    port.onmessage = (ev) => onHost(ev.data);
+    start(m);
+  });
+  function onHost(m) {
+    if (!m || m.chalk !== 1) return;
+    if (m.type === 'reply' && waiting.has(m.id)) { const w = waiting.get(m.id); waiting.delete(m.id); m.ok ? w.ok(m.result) : w.fail(m.error); }
+    else if (m.type === 'visibility') setVisible(m.visible);
     else if (m.type === 'theme') setTheme(m.theme);
     else if (m.type === 'locale') { locale = m.locale; render(); }
-    else if (m.type === 'reset') { readings = []; render(); report(); }
-  });
-  const hello = () => send({ type: 'hello', api: [1], lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0' } });
+    else if (m.type === 'reset') { readings = []; timing = null; render(); report(); }
+    // anything else: from a later version, ignored
+  }
+  const hello = () => host.postMessage({ chalk: 1, type: 'hello', api: [1], lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0' } }, '*');
   const helloTimer = setInterval(hello, 500); hello();
   // Standalone (opened directly, no host): run with defaults after a moment.
-  setTimeout(() => { if (!session && window.parent === window) start({ api: 1, params: {}, locale: navigator.language, theme: 'light', granted: [], state: null }); }, 300);
+  setTimeout(() => { if (!session && window.parent === window) start({ api: 1, params: {}, locale: navigator.language, theme: 'light', granted: [], state: null, visible: true }); }, 300);
 
   // ---------- the lab ----------
   const cv = document.getElementById('c'), g2 = cv.getContext('2d');
   const T = { en: { time: (n) => `Time ${n} swings`, timing: 'Timing…', period: 'Period', need: 'readings', done: 'Done: g ≈ ' },
               bn: { time: (n) => `${n}টি দোলনের সময় নাও`, timing: 'সময় নেওয়া হচ্ছে…', period: 'দোলনকাল', need: 'টি পাঠ', done: 'শেষ: g ≈ ' } };
-  let P, locale = 'en', visible = true, readings = [], timing = null, theta = 0.25, omega = 0, last = 0, simT = 0;
+  let P, locale = 'en', visible = true, running = false, readings = [], timing = null, theta = 0.25, omega = 0, last = 0, simT = 0;
   const bn = () => locale.startsWith('bn');
   const t = (k) => T[bn() ? 'bn' : 'en'][k];
   // numbers in the student's script: ০১২৩৪৫৬৭৮৯ in Bengali
   const num = (x) => (bn() ? String(x).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[d]) : String(x));
   const can = (cap) => session.granted.includes(cap);
+  // one render loop at most; none while hidden (the host says when we are off screen)
+  function setVisible(v) { visible = v; if (visible && !running) { running = true; last = 0; requestAnimationFrame(loop); } }
   function setTheme(th) { document.documentElement.classList.toggle('dark', th === 'dark'); }
 
   function start(init) {
@@ -71,7 +84,7 @@
     document.getElementById('time').onclick = () => { if (!timing) timing = { t0: null, crossings: 0 }; render(); };
     resize(); addEventListener('resize', resize);
     render(); draw(); send({ type: 'ready' });   // first frame is on screen
-    report(); loop();
+    report(); setVisible(init.visible !== false);
   }
   function report() {
     if (can('progress')) send({ type: 'progress', step: { done: readings.length, total: P.readings }, completed: readings.length >= P.readings });
@@ -96,8 +109,7 @@
     }
   }
   function loop(now) {
-    if (!visible) return;   // the host hid us: stop drawing until it shows us again
-    now = now || performance.now();
+    if (!visible) { running = false; return; }   // the host hid us: stop drawing until it shows us again
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
     step(dt); draw();
     requestAnimationFrame(loop);

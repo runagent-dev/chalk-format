@@ -52,16 +52,18 @@ pnpm --filter @chalk-format/cli start convert ./book.pdf -o book.chalk \
 
 ## Labs
 
-A lab is one self-contained HTML file placed on a page. The reader runs it in a sandbox with no network
-access and gives it its `params`, saved state and the book's assets through the [Host API](spec/1.1/host-api.md).
+A lab is one self-contained HTML file placed on a page. The reader runs it in a sandbox where it cannot
+fetch anything, and gives it its `params`, saved state and the book's assets through the
+[Host API](spec/1.1/host-api.md). A lab is confined to what it is given, not a container for secrets
+([spec 1.1 §3.3](spec/1.1/README.md#33-sandbox-normative-for-hosts)).
 Books with labs still open in 1.0 readers, which show the lab's poster instead.
 
 ```ts
 // in a reader
 import { mountLab } from '@chalk-format/lab';
-const { host } = await mountLab(box, { lab: object.lab, entry: entryBytes, locale: 'bn',
+const { host } = await mountLab(box, { lab: object.lab, entry: entryBytes, locale: 'bn', visible: onScreen,
   loadState, saveState, getAsset, onReady: hidePoster, onProgress });
-host.setVisible(false);   // when the page scrolls away: the lab stops rendering
+host.setVisible(false);   // when the page scrolls away: the lab stops rendering (before or after it starts)
 
 // in a lab (or speak the protocol by hand, as examples/labs/pendulum.html does)
 import { connectLab } from '@chalk-format/lab/client';

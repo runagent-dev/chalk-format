@@ -15,9 +15,9 @@ asset, run by the reader in a sandbox, and talking to the reader only through th
 Labs are what make a `.chalk` book more than annotated pages, and they have to work:
 
 - **in every app that reads `.chalk`**, including those written before labs existed (§4);
-- **offline**, from a book downloaded once (a lab never touches the network, §3.3);
+- **offline**, from a book downloaded once (a lab cannot fetch anything, §3.3);
 - **on cheap phones** (§3.4);
-- **safely**: a lab is untrusted code from whoever made the book (§3.3).
+- **safely**: a lab is untrusted code from whoever made the book (§3.3), confined to what it is given.
 
 ## 2. The lab object
 
@@ -46,7 +46,7 @@ descriptor:
 | `lab.title` | string | yes | Human-readable name. Used as the accessible name of the frame and on the fallback card. |
 | `lab.entry` | asset id | yes | The lab's HTML file (§3). MUST be a content-addressed (`sha256:`) id. |
 | `lab.assets` | asset ids | no | Other assets of this book the lab may load (3D models, images, audio) through the Host API. Only these. |
-| `lab.params` | object | no | JSON configuration handed to the lab at start (which variant, which constants). At most 16 KiB serialised. One lab file, many configurations. |
+| `lab.params` | object | no | JSON configuration handed to the lab at start (which variant, which constants). At most 16 KiB serialised as UTF-8 JSON. One lab file, many configurations. JSON Schema cannot state a byte limit (the schema only annotates it, `x-chalk-max-bytes`), so readers MUST check it themselves. |
 | `lab.capabilities` | strings | no | Host API capabilities the lab asks for (§2.1). Absent means none. |
 
 The embed's own `assetId` and `url` fields are not used by labs and SHOULD be absent.
@@ -74,15 +74,19 @@ parts.
 A reader that does not support an object's `plugin` id MUST still accept the page and MUST draw the object
 as its **fallback card**: the `poster` scaled to cover `width` × `height` (or a neutral tile if there is no
 poster), with `lab.title` when present. It MUST NOT reject the book. Writers MUST preserve objects whose
-plugin they do not support, including fields they do not know.
+plugin they do not support, including fields they do not know: the reference model keeps unknown fields of
+embeds and of the `lab` descriptor through a parse and write.
 
 ## 3. The lab file
 
 ### 3.1 One self-contained HTML file
 
 - The entry asset is an HTML document, UTF-8, starting with `<!doctype html>` (an optional BOM and
-  whitespace may precede it). Its media type is `text/html`, added to the 1.0 media set for lab entries
-  only. Readers MUST NOT render `text/html` assets in any other way.
+  whitespace may precede it), declared with type `text/html`. HTML is **not** part of the media set: an
+  app that sniffs uploads to decide what it accepts as images, video, audio or models MUST keep rejecting
+  it (accepted as media and served from the app's origin, HTML is stored XSS). It is recognised only where
+  a lab is being placed (reference: `isLabEntryBytes`, separate from `sniffMediaType`), and readers MUST
+  NOT render `text/html` assets in any way other than as a lab in the sandbox.
 - Everything the page needs at start, scripts, styles, fonts and small images, is inline (`<script>`,
   `<style>`, `data:` URLs). There is no `<script src>`, `<link href>` or `import` of another file:
   nothing outside the document resolves (§3.3).
@@ -117,10 +121,25 @@ A host MUST run every lab:
   `connect-src 'none'` is the point: a lab cannot fetch, post or open sockets. Everything it shows comes
   from the book. (`'unsafe-eval'` is allowed because shader compilers and some simulation libraries
   need it; it grants nothing beyond the sandbox.)
+- with a **guard script** inserted right after the CSP `<meta>`, before any of the lab's markup, that reports
+  the lab's document going away (`pagehide`) to the host as `gone` (Host API §4.6), carrying a random nonce
+  made for this one mount. It registers first, in the capture phase, and keeps its own reference to the
+  parent, so the lab cannot silence it. Reference: `labGuard(nonce)` in `packages/lab`;
 - only from bytes whose SHA-256 matches `lab.entry`. A host MUST NOT run a lab whose entry bytes do not
   match its id.
 
-Hosts accept messages only from the lab's own frame (Host API §2).
+Hosts accept window messages only from the lab's own frame, and after the handshake talk to it only on the
+private channel `init` hands over (Host API §2).
+
+**Navigation.** No sandbox flag or CSP directive that browsers support stops a frame from navigating
+itself (`location.href = …`, `<meta http-equiv="refresh">`), and a document loaded that way runs without
+this CSP. Hosts therefore MUST stop a lab for good as soon as its document goes away (the guard's `gone`)
+and SHOULD also stop it, and empty its frame, if the frame loads a second document. The page the lab
+navigated to never has the channel, so it can neither call the Host API nor receive replies. What this
+cannot prevent is a lab carrying out, in the URL it navigates to, data it already holds: its `params`, its
+own saved state, and assets listed in `lab.assets` that it has loaded. So `connect-src 'none'` stops a lab
+from using the network for anything else, but **a lab is not a container for secrets**: a book author lists
+in `lab.assets` only what they are willing to hand to the lab's author.
 
 A frame loaded through `srcdoc` or a `blob:` URL inherits the host page's own CSP as well. A host whose
 page forbids inline scripts therefore serves labs from a separate origin (with the policy above as an HTTP
