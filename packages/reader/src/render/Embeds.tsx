@@ -148,12 +148,19 @@ export function LabFrame({ book, o, style, locale, theme, storage, onProgress, o
     const holder = frameHost.current;
     const key = (k: StateKey) => `chalk:${book.lesson.id}:lab:${o.id}:${k.labId}@${k.major}`;
     void (async () => {
-      const entry = await book.assetBytes(o.lab.entry);
+      // the lab's file and the libraries it imports (spec 1.5), all from the book (or its stores), all at once
+      const [entry, ...libs] = await Promise.all([book.assetBytes(o.lab.entry), ...(o.lab.libraries ?? []).map((l) => book.assetBytes(l.asset))]);
       if (!live) return;
       if (!entry) { props.current.onStop('the lab is not in this book'); return; }
+      const libraries = new Map<string, Uint8Array>();
+      for (const [i, lib] of (o.lab.libraries ?? []).entries()) {
+        const got = libs[i];
+        if (!got) { props.current.onStop(`the library ${lib.specifier} is not in this book`); return; }
+        libraries.set(lib.specifier, new Uint8Array(got.bytes));
+      }
       try {
         const r = await mountLab(holder!, {
-          lab: o.lab, entry: new Uint8Array(entry.bytes), locale, theme,
+          lab: o.lab, entry: new Uint8Array(entry.bytes), libraries, locale, theme,
           reducedMotion: typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches,
           ...(storage ? { loadState: (k: StateKey) => storage.load(key(k)), saveState: (k: StateKey, s: unknown) => storage.save(key(k), s), clearState: (k: StateKey) => storage.clear(key(k)) } : {}),
           getAsset: (id) => book.assetBytes(id),
