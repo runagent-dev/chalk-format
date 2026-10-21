@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_CONFIG, type DockItemId, type ReaderConfig, type ReaderConfigInput, type ToolId } from '@chalk-format/reader';
+import { DEFAULT_CONFIG, type DockItemId, type MediaRendererProps, type PresentationConfig, type ReaderConfig, type ReaderConfigInput, type ToolId } from '@chalk-format/reader';
 
 const ALL_TOOLS: ToolId[] = ['pan', 'pen', 'highlighter', 'eraser', 'text', 'rect', 'ellipse', 'line', 'arrow', 'select'];
 const ALL_ITEMS: Exclude<DockItemId, '|'>[] = ['thumbnails', 'search', 'prev', 'page', 'next', 'zoomOut', 'fit', 'zoomIn', 'layout', 'tools', 'undo', 'redo', 'export', 'import', 'theme', 'language', 'fullscreen'];
@@ -8,6 +8,31 @@ const FEATURE_LABEL: Record<keyof ReaderConfig['features'], string> = {
   snips: 'Snips', fullscreen: 'Full screen', export: 'Save / open notes', keyboard: 'Keyboard', textSelection: 'Text selection',
   themeToggle: 'Theme toggle', languageToggle: 'Language toggle',
 };
+
+// ---- presentation examples: what a host app might set (spec 1.3 §5) ----
+const EMOJI: PresentationConfig['icons'] = { video: '🎬', audio: '🎵', model3d: '🧊', lab: '🧪', image: '🖼️', snip: '✂️', plugin: '📦', ruler: '📏', atom: '⚛️', magnet: '🧲', flask: '🧪' };
+const BRAND: PresentationConfig['defaults'] = { model3d: { accent: '#7c3aed' }, video: { accent: '#b42318' }, audio: { accent: '#b54708' }, lab: { accent: '#175cd3' }, image: { accent: '#0e7c66' }, snip: { accent: '#3f621a' } };
+const withAccents = (d: PresentationConfig['defaults'], on: boolean): PresentationConfig['defaults'] => {
+  const out: PresentationConfig['defaults'] = {};
+  for (const k of new Set([...Object.keys(d), ...(on ? Object.keys(BRAND) : [])]) as Set<keyof typeof BRAND>) {
+    const v = { ...d[k] };
+    if (on) v.accent = BRAND[k]!.accent; else delete v.accent;
+    if (Object.keys(v).length) out[k] = v;
+  }
+  return out;
+};
+
+/** Stands in for a host's own 3D viewer (config.renderers.model3d). */
+function DemoViewer(p: MediaRendererProps) {
+  return (
+    <div className="demo-viewer">
+      {p.poster && <img src={p.poster} alt="" />}
+      <span>{p.locale === 'bn' ? 'আপনার নিজের ভিউয়ার' : 'Your own viewer'} · {p.where}</span>
+    </div>
+  );
+}
+/** Printed as is in the code sample (not quoted). */
+class Raw { constructor(readonly code: string) {} }
 
 /** What the config has that the defaults do not, for the code sample. */
 function changed(cur: unknown, def: unknown): unknown {
@@ -21,6 +46,7 @@ function changed(cur: unknown, def: unknown): unknown {
 }
 const js = (v: unknown, ind = 2): string => {
   const pad = ' '.repeat(ind);
+  if (v instanceof Raw) return v.code;
   if (Array.isArray(v)) return `[${v.map((x) => js(x, ind)).join(', ')}]`;
   if (v && typeof v === 'object') return `{\n${Object.entries(v).map(([k, x]) => `${pad}  ${/^\w+$/.test(k) ? k : `'${k}'`}: ${js(x, ind + 2)}`).join(',\n')}\n${pad}}`;
   return typeof v === 'string' ? `'${v}'` : String(v);
@@ -40,7 +66,11 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
     set({ dock: { ...dock, items: next } });
   };
   // the app's own setting (the pdf.js worker URL) is not something to copy
-  const diff = changed({ ...config, pdfWorkerSrc: null }, DEFAULT_CONFIG) as ReaderConfigInput | undefined;
+  const diff = changed({ ...config, pdfWorkerSrc: null, renderers: {} }, DEFAULT_CONFIG) as Record<string, unknown> | undefined as ReaderConfigInput | undefined;
+  if (config.renderers.model3d) Object.assign(diff ?? {}, { renderers: { model3d: new Raw('(p) => <MyViewer src={p.src} poster={p.poster} />') } });
+  const pres = config.presentation;
+  const setPres = (patch: Partial<PresentationConfig>) => set({ presentation: { ...pres, ...patch } });
+  const brand = Object.values(pres.defaults).some((d) => d?.accent);
   const code = `<ChalkReader\n  source="/books/physics.chalk"${diff ? `\n  config={${js(diff, 2)}}` : ''}\n/>`;
 
   return (
@@ -87,6 +117,18 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
             <Check wide label="May edit the book's own objects" checked={config.annotations.editBase} onChange={(v) => set({ annotations: { ...config.annotations, editBase: v } })} />
           </div>
           <Choice label="Keep notes in" value={config.persistence} options={['local', 'none']} onChange={(v) => set({ persistence: v })} />
+        </section>
+        <section>
+          <h3>Media</h3>
+          <div className="pg-checks">
+            <Check wide label="Use the colours authors chose" checked={pres.authorAccents} onChange={(v) => setPres({ authorAccents: v })} />
+            <Check wide label="Let media start by itself (live, autoplay)" checked={pres.live} onChange={(v) => setPres({ live: v })} />
+            <Check wide label="My colour for each kind" checked={brand} onChange={(v) => setPres({ defaults: withAccents(pres.defaults, v) })} />
+          </div>
+          <Choice label="Icons" value={pres.icons === EMOJI ? 'emoji' : 'built-in'} options={['built-in', 'emoji']} onChange={(v) => setPres({ icons: v === 'emoji' ? EMOJI : {} })} />
+          <Choice label="3D models with no choice of their own" value={pres.defaults.model3d?.show === 'live' ? 'live' : 'card'} options={['card', 'live']}
+            onChange={(v) => { const m = { ...pres.defaults.model3d }; delete m.show; delete m.autoRotate; setPres({ defaults: { ...pres.defaults, model3d: v === 'live' ? { ...m, show: 'live', autoRotate: true } : m } }); }} />
+          <Check wide label="My own 3D viewer (demo renderer)" checked={Boolean(config.renderers.model3d)} onChange={(v) => set({ renderers: v ? { model3d: DemoViewer } : {} })} />
         </section>
         <section>
           <h3>Labs</h3>
