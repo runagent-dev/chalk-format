@@ -1,0 +1,13 @@
+{
+  "id": "media-r2",
+  "kind": "derived",
+  "template": "https://media.example.org/c1/{h0}/{h1}/{h}",
+  "media": [
+    "video/*",
+    "image/*",
+    "model/*",
+    "audio/*"
+  ],
+  "priority": 10,
+  "verify": "first"
+}

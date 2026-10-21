@@ -191,6 +191,8 @@ Migration from `formatVersion` 7 to 8 is the identity: a 7 document contains no 
 
 ## 6. Still on the roadmap
 
+(Where thin books' external assets come from is now [Chalk 1.2: asset stores](../1.2/README.md).)
+
 1.1 compatibility for *other* new object types (a general fallback on every object, `requires` in the
 manifest), host-provided data queries (the reserved `data` capability), learner-state packages (saved
 lab state travelling with an overlay), navigation, reflowable text and the rest of

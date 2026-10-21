@@ -1,0 +1,102 @@
+{
+  "$id": "https://chalk-format.dev/schema/v9/store.schema.json",
+  "title": "Chalk store descriptor (spec 1.2 §5.1)",
+  "x-chalk-format-version": 9,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "kind": {
+      "type": "string"
+    },
+    "template": {
+      "type": "string"
+    },
+    "base": {
+      "type": "string"
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\*|[a-z0-9][a-z0-9.+-]*)\\/(\\*|[a-z0-9][a-z0-9.+-]*)$"
+      }
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "verify": {
+      "type": "string",
+      "enum": [
+        "always",
+        "first",
+        "none"
+      ]
+    },
+    "auth": {
+      "type": "string",
+      "enum": [
+        "none",
+        "bearer"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "kind"
+  ],
+  "additionalProperties": {},
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "derived"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "template"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "indexed",
+              "api"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "base"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "base"
+        ]
+      },
+      "then": {
+        "properties": {
+          "base": {
+            "pattern": "/$"
+          }
+        }
+      }
+    }
+  ]
+}
