@@ -18,6 +18,13 @@ import { Surface, type Pen } from './annotate/Surface.js';
 import { ToolsMenu } from './annotate/ToolsMenu.js';
 import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
+import { useAuthoring } from './author/state.js';
+import { AuthorSurface } from './author/AuthorSurface.js';
+import { Inspector } from './author/Inspector.js';
+import { ACCEPT, objectFromFile } from './author/insert.js';
+import { authorStrings } from './author/i18n.js';
+import { edit } from './annotate/state.js';
+import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
 import { searchBook } from './search.js';
@@ -40,6 +47,14 @@ export type ChalkReaderProps = {
   defaultOverlay?: Overlay;
   /** After every change to the notes. */
   onOverlayChange?: (overlay: Overlay) => void;
+  /** Authoring (config.authoring): after every change to the book. */
+  onLessonChange?: (lesson: Lesson) => void;
+  /** Authoring: the saved book. Without it, Save downloads the .chalk file. */
+  onSave?: (bytes: Uint8Array, lesson: Lesson) => void | Promise<void>;
+  /** Authoring: the mode, controlled by the host (e.g. its own switch). The dock's switch reports through onModeChange. */
+  mode?: 'read' | 'author';
+  /** Authoring: when the reader switches between reading and authoring. */
+  onModeChange?: (mode: 'read' | 'author') => void;
   className?: string;
   style?: CSSProperties;
 };
@@ -88,12 +103,21 @@ function useSystemDark() {
 }
 
 function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: ReaderConfig; handleRef: React.ForwardedRef<ReaderHandle> }) {
-  const { book, config } = props;
-  const ann = useAnnotations(book.lesson, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
-  const lesson = ann.lesson;
+  const { book: original, config } = props;
+  // authoring: the reader shows the author's working copy, in both modes. Read mode is the student's reader over
+  // it (notes and all); author mode edits the book itself, without the notes.
+  const authoringOn = config.authoring.enabled;
+  const au = useAuthoring(original, props.onLessonChange);
+  const ann = useAnnotations(authoringOn ? au.lesson : original.lesson, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
+  const [mode, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
+  const author = authoringOn && mode === 'author';
+  const [sel, setSel] = useState<{ pageId: string; id: string } | null>(null);
+  const book = authoringOn ? au.book : original;
+  const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
   const viewer = useRef<ViewerHandle>(null);
   const root = useRef<HTMLDivElement>(null);
+  const narrow = () => (root.current?.clientWidth ?? 1000) < 720;
   const systemDark = useSystemDark();
 
   const startPage = useMemo(() => {
@@ -112,7 +136,10 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [rootWidth, setRootWidth] = useState(1000);
   useEffect(() => { const e = root.current; if (!e) return; const ro = new ResizeObserver(() => setRootWidth(e.clientWidth)); ro.observe(e); return () => ro.disconnect(); }, []);
   const dockPos = config.dock ? (rootWidth < 720 && (config.dock.position === 'left' || config.dock.position === 'right') ? 'bottom' : config.dock.position) : null;
-  const dockCfg = config.dock && dockPos ? { ...config.dock, position: dockPos } : null;
+  // the dock: the author's in author mode; in read mode the host's, with the mode switch first when authoring is on
+  const dockItems = !config.dock ? [] : author ? config.authoring.dock
+    : authoringOn && !config.dock.items.includes('mode') ? ['mode' as const, '|' as const, ...config.dock.items] : config.dock.items;
+  const dockCfg = config.dock && dockPos ? { ...config.dock, position: dockPos, items: dockItems } : null;
   const [panel, setPanel] = useState<'thumbnails' | 'search' | null>(null);
   const [query, setQuery] = useState('');
   const [hit, setHit] = useState(0);
@@ -130,7 +157,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [color, setColor] = useState(A.colors[0] ?? '#1f2a44');
   const [highlight, setHighlight] = useState(A.highlighterColors[0] ?? '#ffe066');
   const [size, setSize] = useState(A.sizes[Math.min(1, A.sizes.length - 1)] ?? 4);
-  const drawing = config.features.annotations && tool !== 'pan';
+  const drawing = config.features.annotations && tool !== 'pan' && !author;
   const pen: Pen = useMemo(() => ({ tool, color, highlight, size, textSize: [24, 34, 48][Math.max(0, A.sizes.indexOf(size))] ?? 30 }), [tool, color, highlight, size, A.sizes]);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 3500); return () => clearTimeout(id); }, [toast]);
@@ -169,13 +196,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   const onKey = (e: React.KeyboardEvent) => {
     if (!config.features.keyboard || e.defaultPrevented) return;
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+    // keys typed into a text field are the field's (Ctrl+Z there undoes the typing); a radio or a checkbox is not one
+    const el = e.target as HTMLElement;
+    const typing = el.tagName === 'TEXTAREA' || el.isContentEditable || (el.tagName === 'INPUT' && !/^(radio|checkbox|range|color|button|submit|reset|file)$/.test((el as HTMLInputElement).type));
+    if (typing) return;
     const k = e.key, mod = e.ctrlKey || e.metaKey;
     if (mod && k.toLowerCase() === 'f' && config.features.search) { e.preventDefault(); setPanel('search'); return; }
-    if (config.features.annotations && mod && (k.toLowerCase() === 'z' || k.toLowerCase() === 'y')) {
-      e.preventDefault(); if (k.toLowerCase() === 'y' || e.shiftKey) ann.redo(); else ann.undo(); return;
+    if ((config.features.annotations || author) && mod && (k.toLowerCase() === 'z' || k.toLowerCase() === 'y')) {
+      const h = author ? au : ann;
+      e.preventDefault(); if (k.toLowerCase() === 'y' || e.shiftKey) h.redo(); else h.undo(); return;
     }
+    // arrow keys move the selected object in author mode, not the page
+    if (author && sel && k.startsWith('Arrow')) return;
     if (k === 'PageDown' || (k === 'ArrowRight' && !mod) || (k === ' ' && layout === 'single')) { e.preventDefault(); next(); }
     else if (k === 'PageUp' || (k === 'ArrowLeft' && !mod)) { e.preventDefault(); prev(); }
     else if (k === 'Home') { e.preventDefault(); goTo(0); }
@@ -235,6 +267,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   // a live embed stops once its page is well out of view (it would be off screen, using the phone's power)
   useEffect(() => { if (active && Math.abs(active.page - page) > 1) setActive(null); }, [page, active]);
+
   // what starts by itself: a model or lab the author made live (spec 1.3), or any lab with labs.autoStart. It starts
   // once at least half of it is on screen and it is big enough there to use; one at a time, and never in place of
   // one the student started with a tap. Nothing is downloaded for objects the student does not scroll to.
@@ -246,7 +279,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       return x.embed === 'model3d' && f.model3d && pr.present(x).show === 'live';
     };
     const objects = new Map((pages[page]?.objects ?? []).filter(wants).map((o) => [o.id, o]));
-    if (!objects.size) return;
+    if (!objects.size || author) return;
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
         const id = (e.target as HTMLElement).dataset.chalkId, o = id ? objects.get(id) : undefined;
@@ -261,8 +294,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       for (const id of objects.keys()) { const el = root.current?.querySelector(`[data-chalk-id="${CSS.escape(id)}"]`); if (el) io.observe(el); }
     });
     return () => { cancelAnimationFrame(raf); io.disconnect(); };
-  }, [page, pages, config.labs.autoStart, config.features, pr]);
+  }, [page, pages, config.labs.autoStart, config.features, pr, author]);
 
+  const noActive = useCallback(() => undefined, []);
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
 
   // search hits on each page; the current one marked
@@ -277,12 +311,66 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     setHit(i); viewer.current?.reveal(h.page, h.x + h.width / 2, h.y);
   }, [hits]);
   const stepHit = useCallback((d: 1 | -1) => { if (hits.length) showHit((hit + d + hits.length) % hits.length); }, [hits.length, hit, showHit]);
-  const narrow = () => (root.current?.clientWidth ?? 1000) < 720;
 
   const editableOn = useCallback((pageId: string) => (o: LessonObject) => A.editBase || ann.isOwn(pageId, o), [A.editBase, ann.isOwn]);   // eslint-disable-line react-hooks/exhaustive-deps
   const pageOverlay = useCallback((pg: LessonPage, _i: number, scale: number) =>
     drawing ? <Surface page={pg} scale={scale} pen={pen} editable={editableOn(pg.id)} apply={ann.apply} textPrompt={t.textPrompt} /> : undefined,
   [drawing, pen, editableOn, ann.apply, t.textPrompt]);
+
+  const at_ = authorStrings(locale);
+  const setMode = useCallback((m: 'read' | 'author') => {
+    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null);
+    props.onModeChange?.(m);
+  }, [props.onModeChange]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // media files onto a page: where they were dropped, or the middle of the page for the + button
+  const addFiles = useCallback(async (files: File[], pg: LessonPage, where?: { x: number; y: number }) => {
+    const size = getPageSize(pg);
+    let last: string | null = null, refused = 0;
+    for (const [n, f] of files.entries()) {
+      const p0 = where ?? { x: size.width / 2, y: size.height / 2 };
+      const o = await objectFromFile(f, size, { x: p0.x + n * 24, y: p0.y + n * 24 }, au.addAsset).catch(() => null);
+      if (!o) { refused++; continue; }
+      au.apply(edit.add(pg.id, o)); last = o.id;
+    }
+    if (last) setSel({ pageId: pg.id, id: last });
+    if (refused) setToast(at_.notPlaceable);
+  }, [au, at_]);
+  const mediaFile = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (authoringOn && props.mode && props.mode !== mode) setMode(props.mode); }, [props.mode]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const saveBook = useCallback(async () => {
+    const bytes = await au.save();
+    if (props.onSave) await props.onSave(bytes, au.lesson);
+    else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
+      a.download = `${au.lesson.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'}.chalk`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    setToast(at_.saved);
+  }, [au, props.onSave, at_]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // unsaved work is not lost to a closed tab without a warning
+  useEffect(() => {
+    if (!authoringOn || !au.dirty) return;
+    const f = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = at_.leave; };
+    addEventListener('beforeunload', f); return () => removeEventListener('beforeunload', f);
+  }, [authoringOn, au.dirty, at_]);
+  const authorOverlay = useCallback((pg: LessonPage, _i: number, scale: number) => (
+    <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
+      onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
+      onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
+  ), [sel, au.apply, addFiles, at_]);
+  const selectedObject = useMemo(() => {
+    if (!sel) return null;
+    return lesson.pages.find((p) => p.id === sel.pageId)?.objects.find((o) => o.id === sel.id) ?? null;
+  }, [sel, lesson]);
+  // a selection that was undone away is gone
+  useEffect(() => { if (sel && !selectedObject) setSel(null); }, [sel, selectedObject]);
+  // on a phone the properties sheet covers the lower part: bring a newly selected object up above it
+  useEffect(() => {
+    if (!sel || !narrow()) return;
+    const id = requestAnimationFrame(() => root.current?.querySelector(`.chalk-viewer [data-chalk-id="${CSS.escape(sel.id)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(id);
+  }, [sel?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const exportNotes = useCallback(async () => {
     const bytes = await packOverlay(ann.overlay);
@@ -301,11 +389,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   return (
     <PresenterProvider value={pr}>
-    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? undefined} lang={locale} style={props.style} onKeyDown={onKey}>
+    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? (author && selectedObject ? 'inspector' : undefined)} data-mode={authoringOn ? mode : undefined} lang={locale} style={props.style} onKeyDown={onKey}>
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
-        onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={renderHtmlObject}
-        textLayer={config.features.textSelection && !drawing} gestures={!drawing} pageLabel={pageLabel} highlights={highlights} pageActive={pageActive} pageOverlay={pageOverlay} pdfWorkerSrc={config.pdfWorkerSrc}
+        onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={author ? renderPreview : renderHtmlObject}
+        textLayer={config.features.textSelection && !drawing && !author} gestures={!drawing} pageLabel={pageLabel} highlights={highlights}
+        pageActive={author ? noActive : pageActive} pageOverlay={author ? authorOverlay : pageOverlay} pdfWorkerSrc={config.pdfWorkerSrc}
       />
       {modal && (
         <Modal title={modal.kind === 'snip' ? (book.lesson.snipPages.find((p) => p.id === modal.pageId)?.title ?? t.openSnip) : modalTitle(modal.o, t, pr)}
@@ -315,6 +404,16 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             ? <SnipView book={book} pageId={modal.pageId} renderHtmlObject={renderHtmlObject} />
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
+      )}
+      {author && selectedObject && !panel && (
+        <Panel title={at_.properties} closeLabel={t.close} onClose={() => setSel(null)}>
+          <Inspector o={selectedObject} pageId={sel?.pageId ?? null} apply={au.apply} t={at_}
+            onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }} />
+        </Panel>
+      )}
+      {authoringOn && (
+        <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden
+          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; }} />
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
@@ -335,11 +434,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
         <Dock
           config={config} dock={dockCfg} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
-          canUndo={ann.canUndo} canRedo={ann.canRedo}
+          canUndo={author ? au.canUndo : ann.canUndo} canRedo={author ? au.canRedo : ann.canRedo}
+          author={authoringOn ? { on: author, dirty: au.dirty, t: at_ } : undefined}
           tools={A.tools.length > 1 ? <ToolsMenu config={A} locale={locale} tool={tool} color={color} highlight={highlight} size={size}
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
-            undo: ann.undo, redo: ann.redo, exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
+            undo: author ? au.undo : ann.undo, redo: author ? au.redo : ann.redo,
+            mode: () => setMode(author ? 'read' : 'author'), add: () => mediaFile.current?.click(), save: () => void saveBook(),
+            exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,
             theme: () => setTheme(dark === 'dark' ? 'light' : 'dark'), language: () => setLocale((l) => (l === 'bn' ? 'en' : 'bn')), fullscreen: toggleFullscreen,

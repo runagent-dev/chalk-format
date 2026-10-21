@@ -16,6 +16,8 @@ export type DockItemId =
   | 'thumbnails' | 'search'
   | 'tools' | 'undo' | 'redo'
   | 'export' | 'import' | 'theme' | 'language' | 'fullscreen'
+  /** Authoring (when `authoring.enabled`): switch between reading and authoring, add media, save the book. */
+  | 'mode' | 'add' | 'save'
   | '|';
 
 /** A dock button of the host's own. */
@@ -81,6 +83,16 @@ export type ReaderConfig = {
   /** How media is presented: your icons, colours and defaults, and whether authors' colours and live media are
    *  used (spec 1.3 §5). The author's choices are kept wherever you do not override them. */
   presentation: PresentationConfig;
+  /** Author mode: place media on the pages and choose how each piece is presented (spec 1.3), then save the
+   *  book. Off by default; a reader for students leaves it off. While on, read mode is the student's reader over
+   *  the edited book (notes stay on top of it); author mode edits the book and hides the notes. */
+  authoring: {
+    enabled: boolean;
+    /** The mode the reader opens in. */
+    startIn: 'read' | 'author';
+    /** The dock in author mode. The read-mode dock gets a 'mode' button at its start if it has none. */
+    dock: (DockItemId | CustomDockItem)[];
+  };
   /** Your own player or viewer for a kind, in place of the reader's (the browser's video and audio, <model-viewer>). */
   renderers: MediaRenderers;
 };
@@ -112,6 +124,10 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   labs: { autoStart: false },
   persistence: 'local',
   pdfWorkerSrc: null,
+  authoring: {
+    enabled: false, startIn: 'read',
+    dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'add', 'undo', 'redo', '|', 'save', 'theme', 'language'],
+  },
   presentation: DEFAULT_PRESENTATION,
   renderers: {},
 };
@@ -133,8 +149,8 @@ export function resolveConfig(input: ReaderConfigInput = {}): ReaderConfig {
     return over;
   };
   const c = merge(DEFAULT_CONFIG, input) as ReaderConfig;
-  // no annotations in read-only mode, whatever else says
-  if (c.readOnly) c.features = { ...c.features, annotations: false };
+  // no annotations in read-only mode, whatever else says; and no authoring
+  if (c.readOnly) { c.features = { ...c.features, annotations: false }; c.authoring = { ...c.authoring, enabled: false }; }
   if (!c.annotations.tools.includes(c.annotations.defaultTool)) c.annotations = { ...c.annotations, defaultTool: c.annotations.tools[0] ?? 'pan' };
   return c;
 }

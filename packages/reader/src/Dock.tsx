@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsInIcon, ArrowsOutIcon, BookOpenIcon, CaretLeftIcon, CaretRightIcon,
-  DotsThreeIcon, DownloadSimpleIcon, FolderOpenIcon, MagnifyingGlassIcon, MinusIcon, MoonIcon, PlusIcon, RowsIcon, SquaresFourIcon, SunIcon, TranslateIcon, FileIcon,
+  DotsThreeIcon, DownloadSimpleIcon, EyeIcon, FloppyDiskIcon, FolderOpenIcon, PencilSimpleIcon, PlusCircleIcon, MagnifyingGlassIcon, MinusIcon, MoonIcon, PlusIcon, RowsIcon, SquaresFourIcon, SunIcon, TranslateIcon, FileIcon,
 } from '@phosphor-icons/react';
 import type { CustomDockItem, DockItemId, Fit, Layout, Locale, ReaderConfig } from './config.js';
 import { num, strings } from './i18n.js';
@@ -12,6 +12,7 @@ export type DockActions = Partial<{
   thumbnails: () => void; search: () => void;
   undo: () => void; redo: () => void; exportNotes: () => void; importNotes: () => void;
   theme: () => void; language: () => void; fullscreen: () => void;
+  mode: () => void; add: () => void; save: () => void;
 }>;
 
 export type DockProps = {
@@ -26,13 +27,15 @@ export type DockProps = {
   actions: DockActions;
   /** The tools button and its popover (annotations), supplied by the reader. */
   tools?: ReactNode;
+  /** Authoring, when the host allows it: which mode, unsaved changes, and the words for its buttons. */
+  author?: { on: boolean; dirty: boolean; t: { edit: string; preview: string; add: string; save: string; unsaved: string } } | undefined;
 };
 
 const WIDTH: Record<string, number> = { page: 96, '|': 13, more: 40 };
 const HEIGHT: Record<string, number> = { page: 48, '|': 13, more: 40 };
 /** How much an item is needed on a small screen: higher stays in the dock longer. Custom items sit mid-way. */
 const NEED: Record<string, number> = {
-  tools: 100, page: 95, next: 90, prev: 89, undo: 80, search: 70, thumbnails: 65, redo: 60, zoomIn: 40, zoomOut: 39, fit: 35, layout: 30,
+  mode: 99, add: 98, save: 97, tools: 100, page: 95, next: 90, prev: 89, undo: 80, search: 70, thumbnails: 65, redo: 60, zoomIn: 40, zoomOut: 39, fit: 35, layout: 30,
   export: 20, import: 19, theme: 15, language: 14, fullscreen: 10,
 };
 const need = (id: string) => NEED[id] ?? 50;
@@ -81,8 +84,12 @@ export function Dock(p: DockProps) {
       case 'thumbnails': return f.thumbnails ? btn('thumbnails', t.thumbnails, <SquaresFourIcon size={20} />, a.thumbnails, { pressed: !!p.open?.thumbnails }) : null;
       case 'search': return f.search ? btn('search', t.search, <MagnifyingGlassIcon size={20} />, a.search, { pressed: !!p.open?.search }) : null;
       case 'tools': return f.annotations && p.tools ? { id: 'tools', label: t.tools, node: <span key="tools">{p.tools}</span> } : null;
-      case 'undo': return f.annotations ? btn('undo', t.undo, <ArrowCounterClockwiseIcon size={20} />, a.undo, { disabled: !p.canUndo }) : null;
-      case 'redo': return f.annotations ? btn('redo', t.redo, <ArrowClockwiseIcon size={20} />, a.redo, { disabled: !p.canRedo }) : null;
+      case 'mode': return p.author ? btn('mode', p.author.on ? p.author.t.preview : p.author.t.edit, p.author.on ? <EyeIcon size={20} /> : <PencilSimpleIcon size={20} />, a.mode, { pressed: p.author.on }) : null;
+      case 'add': return p.author?.on ? btn('add', p.author.t.add, <PlusCircleIcon size={20} />, a.add) : null;
+      case 'save': return p.author?.on ? btn('save', p.author.dirty ? `${p.author.t.save} · ${p.author.t.unsaved}` : p.author.t.save,
+        <span className={`chalk-dock-save ${p.author.dirty ? 'is-dirty' : ''}`}><FloppyDiskIcon size={20} /></span>, a.save) : null;
+      case 'undo': return f.annotations || p.author?.on ? btn('undo', t.undo, <ArrowCounterClockwiseIcon size={20} />, a.undo, { disabled: !p.canUndo }) : null;
+      case 'redo': return f.annotations || p.author?.on ? btn('redo', t.redo, <ArrowClockwiseIcon size={20} />, a.redo, { disabled: !p.canRedo }) : null;
       case 'export': return f.export && f.annotations ? btn('export', t.export, <DownloadSimpleIcon size={20} />, a.exportNotes) : null;
       case 'import': return f.export && f.annotations ? btn('import', t.import, <FolderOpenIcon size={20} />, a.importNotes) : null;
       case 'theme': return f.themeToggle ? btn('theme', t.theme, p.dark ? <SunIcon size={20} /> : <MoonIcon size={20} />, a.theme, { pressed: p.dark }) : null;

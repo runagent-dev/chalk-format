@@ -70,6 +70,8 @@ export type Presenter = {
   present(o: LessonObject): ResolvedPresentation;
   /** The icon to draw for an object, `size` px. */
   glyph(o: LessonObject, size: number): ReactNode;
+  /** An icon by name (the host's artwork for it, else the reader's), for pickers. */
+  icon(name: IconName, size: number): ReactNode;
   /** Style variables for the object's accent, if it has one. */
   accent(o: LessonObject): CSSProperties | undefined;
   renderers: MediaRenderers;
@@ -109,6 +111,7 @@ export function createPresenter(cfg: PresentationConfig, renderers: MediaRendere
       if (name) { const h2 = cfg.icons[name]; if (h2 !== undefined) return art(h2, size); const C = BUILT_IN[name]; return <C size={size} weight={name === 'play' ? 'fill' : 'duotone'} />; }
       return <PackageIcon size={size} weight="duotone" />;
     },
+    icon(name, size) { const h = cfg.icons[name]; if (h !== undefined) return art(h, size); const C = BUILT_IN[name]; return <C size={size} weight={name === 'play' ? 'fill' : 'duotone'} />; },
     accent(o) { return accentStyle(present(o).accent); },
     renderers,
     env,

@@ -1,0 +1,34 @@
+import type { Locale } from '../config.js';
+
+/** Author mode's own words (the reader's are in ../i18n.ts). */
+const STRINGS = {
+  en: {
+    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saved: 'Book saved',
+    unsaved: 'Unsaved changes', leave: 'This book has unsaved changes. Leave anyway?', notPlaceable: 'This file cannot be added',
+    properties: 'Properties', nothing: 'Select something on the page to change how it is shown. Add media with the + button, or drop files on a page.',
+    display: 'On the page', full: 'Full size', icon: 'Small icon',
+    show: 'Before it is tapped', card: 'Thumbnail', live: 'Live',
+    open: 'A tap opens it', inline: 'In place', popup: 'In a window', fullscreen: 'Full screen', none: 'Nothing',
+    label: 'Label', labelHint: 'Shown on the thumbnail, and read out by screen readers',
+    iconPick: 'Icon', iconDefault: 'Default', accent: 'Colour', accentNone: "Reader's colour",
+    playback: 'Playback', autoplay: 'Play by itself', loop: 'Play again at the end', muted: 'Without sound', autoRotate: 'Turn slowly',
+    labTitle: 'Lab name', remove: 'Delete', resize: 'Resize', drop: 'Drop to add to this page',
+    image: 'Image', video: 'Video', audio: 'Sound', model3d: '3D model', lab: 'Lab', plugin: 'Widget', snip: 'Snip', other: 'Object',
+  },
+  bn: {
+    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saved: 'বই সংরক্ষিত হয়েছে',
+    unsaved: 'পরিবর্তন সংরক্ষণ করা হয়নি', leave: 'বইটির পরিবর্তন সংরক্ষণ করা হয়নি। তবুও বের হবেন?', notPlaceable: 'এই ফাইলটি যোগ করা যায় না',
+    properties: 'বৈশিষ্ট্য', nothing: 'পাতার কিছু নির্বাচন করুন, তারপর এটি কীভাবে দেখাবে তা বদলান। + বোতাম দিয়ে মিডিয়া যোগ করুন, অথবা ফাইল পাতার ওপর ছেড়ে দিন।',
+    display: 'পাতায়', full: 'পূর্ণ আকারে', icon: 'ছোট আইকন',
+    show: 'ট্যাপ করার আগে', card: 'থাম্বনেইল', live: 'সরাসরি',
+    open: 'ট্যাপ করলে খুলবে', inline: 'এখানেই', popup: 'আলাদা জানালায়', fullscreen: 'পূর্ণ পর্দায়', none: 'কিছু না',
+    label: 'লেবেল', labelHint: 'থাম্বনেইলে দেখা যাবে, স্ক্রিন রিডার পড়ে শোনাবে',
+    iconPick: 'আইকন', iconDefault: 'স্বাভাবিক', accent: 'রং', accentNone: 'রিডারের রং',
+    playback: 'চালানো', autoplay: 'নিজে থেকে চালু হবে', loop: 'শেষ হলে আবার চলবে', muted: 'শব্দ ছাড়া', autoRotate: 'ধীরে ঘুরবে',
+    labTitle: 'ল্যাবের নাম', remove: 'মুছুন', resize: 'আকার বদলান', drop: 'এই পাতায় যোগ করতে এখানে ছাড়ুন',
+    image: 'ছবি', video: 'ভিডিও', audio: 'শব্দ', model3d: 'ত্রিমাত্রিক মডেল', lab: 'ল্যাব', plugin: 'উইজেট', snip: 'স্নিপ', other: 'বস্তু',
+  },
+};
+
+export type AuthorStrings = (typeof STRINGS)['en'];
+export const authorStrings = (locale: Locale): AuthorStrings => STRINGS[locale];

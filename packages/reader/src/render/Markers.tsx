@@ -42,7 +42,7 @@ export function IconMarker({ o, label, onActivate }: { o: LessonObject; label: s
   const s = o.type === 'snip' ? SNIP_ICON_SIZE : MEDIA_ICON_SIZE;
   return (
     <Box x={o.x} y={o.y} width={s} height={s} className={`chalk-marker is-${o.type === 'snip' ? 'snip' : 'media'}`} label={label} title={label || undefined}
-      kind={kind} style={pr.accent(o)} {...(onActivate ? { onActivate } : {})}>
+      kind={kind} id={o.id} style={pr.accent(o)} {...(onActivate ? { onActivate } : {})}>
       {pr.glyph(o, 26)}
     </Box>
   );

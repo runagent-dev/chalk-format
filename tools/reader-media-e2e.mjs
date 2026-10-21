@@ -42,7 +42,7 @@ for (const [name, opts] of [['desktop', { viewport: { width: 1280, height: 800 }
   await p.keyboard.press('Escape');
   await press('.chalk-audio-play', { timeout: 5000 });
   // the sound comes out of the book first, which can take a moment on a cold server
-  await p.waitForFunction(() => (document.querySelector('.chalk-audio audio')?.currentTime ?? 0) > 0.5, null, { timeout: 6000 }).catch(() => {});
+  await p.waitForFunction(() => (document.querySelector('.chalk-audio audio')?.currentTime ?? 0) > 1, null, { timeout: 6000 }).catch(() => {});
   r.audio = await p.evaluate(() => { const a = document.querySelector('.chalk-audio audio'); return a ? { playing: !a.paused, t: +a.currentTime.toFixed(1) } : 'no audio element'; });
   // the author's icon marker: label as its name, and its accent colour
   r.marker = await p.evaluate(() => { const m = document.querySelector('.chalk-marker[aria-label="সুরশলাকা · ৪৪০ Hz"]'); return m ? getComputedStyle(m).backgroundColor : 'missing'; });

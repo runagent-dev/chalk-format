@@ -210,6 +210,8 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 @container chalk (max-width: 719px) {
   .chalk-panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(62%, 560px); border-radius: 16px 16px 0 0; border-bottom: 0; }
   .chalk-reader[data-dock="left"] .chalk-panel { right: 0; }
+  /* author mode: a shorter sheet, so the object being changed stays in view above it */
+  .chalk-reader[data-mode="author"] .chalk-panel { height: min(46%, 440px); }
 }
 .chalk-panel-head { flex: none; display: flex; align-items: center; gap: var(--chalk-space-xs); padding: var(--chalk-space-sm) var(--chalk-space-sm) var(--chalk-space-sm) var(--chalk-space-lg); border-bottom: 1px solid var(--chalk-line); }
 .chalk-panel-head h2 { margin: 0 auto 0 0; font-size: var(--chalk-text-md); font-weight: 600; }
@@ -321,6 +323,49 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-surface.is-eraser { cursor: cell; }
 .chalk-surface.is-select { cursor: default; }
 .chalk-surface.is-text { cursor: text; }
+/* author mode: the page scrolls under a finger as usual; only a drag that starts on the selection moves it */
+.chalk-surface.chalk-author { touch-action: pan-x pan-y; cursor: default; }
+.chalk-reader[data-mode="author"] [data-chalk-id] { scroll-margin-top: 16px; }
+.chalk-author-sel { position: absolute; outline: calc(2px / var(--s)) solid var(--chalk-accent); outline-offset: calc(3px / var(--s)); touch-action: none; cursor: move; }
+.chalk-author-handle { position: absolute; right: 0; bottom: 0; transform: translate(50%, 50%); border-radius: 50%; background: var(--chalk-surface); border: calc(2px / var(--s)) solid var(--chalk-accent); cursor: nwse-resize; touch-action: none; }
+.chalk-author-handle::after { content: ""; position: absolute; inset: -150%; }
+.chalk-author-drop { position: absolute; inset: 0; display: grid; place-items: center; background: oklch(60% 0.12 255 / 0.12); outline: 3px dashed var(--chalk-accent); outline-offset: -6px; pointer-events: none; }
+.chalk-author-drop span { padding: 0.4em 0.9em; border-radius: 999px; background: var(--chalk-accent); color: var(--chalk-accent-ink); font-weight: 600; }
+/* unsaved changes: a dot on the save button */
+.chalk-dock-save { position: relative; display: inline-grid; }
+.chalk-dock-save.is-dirty::after { content: ""; position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--chalk-danger); box-shadow: 0 0 0 2px var(--chalk-surface); }
+
+/* the properties panel (author mode) */
+.chalk-insp { display: grid; gap: var(--chalk-space-md); padding: var(--chalk-space-md) var(--chalk-space-lg) var(--chalk-space-xl); }
+.chalk-insp-empty { margin: 0; padding: var(--chalk-space-lg); color: var(--chalk-ink-muted); font-size: var(--chalk-text-md); }
+.chalk-insp-kind { display: flex; align-items: center; gap: var(--chalk-space-sm); font-size: var(--chalk-text-md); }
+.chalk-insp-glyph { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--chalk-accent-soft); color: var(--chalk-accent); }
+.chalk-insp-field { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.chalk-insp-field > legend, .chalk-insp-field > label { padding: 0; margin-bottom: 2px; font-size: var(--chalk-text-sm); font-weight: 600; color: var(--chalk-ink-muted); }
+.chalk-insp-field small { font-size: 0.75rem; color: var(--chalk-ink-muted); }
+.chalk-insp-field input[type="text"] { width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-md); }
+.chalk-insp-field input[type="text"]:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-insp-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.chalk-insp-seg label { position: relative; padding: 6px 12px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-pill); font-size: var(--chalk-text-sm); cursor: pointer; white-space: nowrap; }
+.chalk-insp-seg label:hover { border-color: var(--chalk-ink-muted); }
+.chalk-insp-seg label.is-on { background: var(--chalk-accent-soft); border-color: var(--chalk-accent); color: var(--chalk-accent); }
+.chalk-insp-seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.chalk-insp-seg label:has(input:focus-visible) { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-insp-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; }
+.chalk-insp-icon { display: grid; place-items: center; height: 36px; padding: 0; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); cursor: pointer; }
+.chalk-insp-icon.is-default { grid-column: span 3; font-size: var(--chalk-text-sm); }
+.chalk-insp-icon:hover { border-color: var(--chalk-ink-muted); }
+.chalk-insp-icon[aria-checked="true"] { background: var(--chalk-accent-soft); border-color: var(--chalk-accent); color: var(--chalk-accent); }
+.chalk-insp-icon:focus-visible, .chalk-insp-swatch:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-insp-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chalk-insp-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid var(--chalk-surface); border-radius: 50%; box-shadow: 0 0 0 1px var(--chalk-line); cursor: pointer; }
+.chalk-insp-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--chalk-ink); }
+.chalk-insp-swatch.is-none { background: linear-gradient(135deg, transparent 45%, var(--chalk-danger) 45% 55%, transparent 55%), var(--chalk-surface); }
+.chalk-insp-swatches input[type="color"] { width: 36px; height: 28px; padding: 0; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: none; cursor: pointer; }
+.chalk-insp-toggle { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--chalk-text-md); cursor: pointer; }
+.chalk-insp-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--chalk-accent); }
+.chalk-insp-delete { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: transparent; color: var(--chalk-danger); font: inherit; font-size: var(--chalk-text-md); cursor: pointer; }
+.chalk-insp-delete:hover { border-color: var(--chalk-danger); }
 .chalk-selection { fill: oklch(55% 0.17 255 / 0.06); stroke: var(--chalk-focus); }
 .chalk-selection-delete {
   position: absolute; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
