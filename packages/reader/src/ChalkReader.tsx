@@ -1,11 +1,11 @@
 import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { getPageSize, isLabObject, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
+import { getPageSize, isLabObject, resolvePresentation, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
 import { num, strings } from './i18n.js';
 import { Dock } from './Dock.js';
 import { Viewer, type ViewerHandle } from './Viewer.js';
-import { EmbedCard, IconMarker, embedIcon, imageGlyph, snipGlyph } from './render/Markers.js';
+import { Box, EmbedCard, IconMarker, objectGlyph, snipGlyph } from './render/Markers.js';
 import { PageView, type HtmlObjectRenderer } from './render/PageView.js';
 import { AudioEmbed, LabFrame, ModelViewer, VideoEmbed, localLabStorage, type LabStorage } from './render/Embeds.js';
 import { Modal } from './render/Modal.js';
@@ -117,8 +117,10 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [hit, setHit] = useState(0);
   const deferredQuery = useDeferredValue(query);
   // one live embed at a time (a running lab or a 3D viewer), and at most one dialog
-  const [active, setActive] = useState<{ id: string; page: number } | null>(null);
-  const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject } | null>(null);
+  // the one live embed (model or lab); `auto` when it started by itself rather than by a tap
+  const [active, setActive] = useState<{ id: string; page: number; auto?: boolean } | null>(null);
+  const activeRef = useRef(active); activeRef.current = active;
+  const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject; full?: boolean } | null>(null);
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
   const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(lesson, deferredQuery) : []), [lesson, deferredQuery, panel]);
   // the pen: tool, colours and size
@@ -182,31 +184,39 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   };
 
   const onLabProgress = props.onLabProgress;
+  // a tap that opens an object somewhere else than its box (spec 1.3 `open`)
+  const openElsewhere = useCallback((o: LessonObject, open: string) => setModal({ kind: 'media', o, full: open === 'fullscreen' }), []);
   const renderHtmlObject: HtmlObjectRenderer = useCallback((o, pg) => {
     const f = config.features, pi = pages.indexOf(pg);
     if (o.type === 'snip') return f.snips ? <IconMarker x={o.x} y={o.y} kind="snip" glyph={snipGlyph} label={t.openSnip} onActivate={() => setModal({ kind: 'snip', pageId: o.snipPageId })} /> : null;
-    if (o.type === 'image') return <IconMarker x={o.x} y={o.y} kind="media" glyph={imageGlyph} label="" onActivate={() => setModal({ kind: 'media', o })} />;
+    if (o.type === 'image') {
+      const p = resolvePresentation(o);
+      const open = p.open === 'none' ? undefined : () => openElsewhere(o, p.open);
+      if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={objectGlyph(o, 26)} label={p.label ?? t.image} accent={p.accent} onActivate={open} />;
+      return <OpenableImage book={book} o={o} label={p.label ?? t.image} onActivate={open} />;
+    }
+    if (o.type !== 'embed') return null;
+    const p = resolvePresentation(o);
     const lab = isLabObject(o) ? o : null;
     const canRun = lab ? f.labs : o.embed === 'model3d' ? f.model3d : o.embed === 'video' || o.embed === 'audio' ? f.media : false;
-    const label = lab?.lab.title ?? (o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : t.unsupported);
-    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={embedIcon(o, 26)} label={label} onActivate={canRun ? () => setModal({ kind: 'media', o }) : undefined} />;
+    const label = p.label ?? lab?.lab.title ?? (o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : t.unsupported);
+    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={objectGlyph(o, 26)} label={label} accent={p.accent} onActivate={canRun ? () => openElsewhere(o, p.open) : undefined} />;
     if (!canRun) return <EmbedCard book={book} o={o} caption={o.embed === 'plugin' && !lab ? t.unsupported : lab?.lab.title} label={label} />;
-    if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} />;
+    const elsewhere = p.open === 'popup' || p.open === 'fullscreen' ? () => openElsewhere(o, p.open) : undefined;
+    if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} onOpen={elsewhere} />;
     if (o.embed === 'audio') return <AudioEmbed book={book} o={o} locale={locale} />;
     // in its box on the page, unless that box is too small on this screen to use: then a larger view
     // a lab needs room for its controls; a model only needs to be big enough to turn
-    const start = (el: HTMLElement) => {
-      const r = el.getBoundingClientRect(), [w, h] = lab ? [440, 260] : [240, 180];
-      if (r.width < w || r.height < h) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi });
-    };
+    const start = elsewhere ?? ((el: HTMLElement) => { if (tooSmall(el, Boolean(lab))) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); });
     return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} />;
-  }, [book, config.features, t, locale, pages]);
+  }, [book, config.features, t, locale, pages, openElsewhere]);
 
   // previews (thumbnails, snips inside a dialog): the same cards and markers, but inert
   const renderPreview: HtmlObjectRenderer = useCallback((o) => {
     if (o.type === 'snip') return <IconMarker x={o.x} y={o.y} kind="snip" glyph={snipGlyph} label={t.openSnip} />;
-    if (o.type === 'image') return <IconMarker x={o.x} y={o.y} kind="media" glyph={imageGlyph} label="" />;
-    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={embedIcon(o, 26)} label="" />;
+    if (o.type === 'image') return o.displayMode === 'icon' ? <IconMarker x={o.x} y={o.y} kind="media" glyph={objectGlyph(o, 26)} label="" accent={resolvePresentation(o).accent} /> : <OpenableImage book={book} o={o} label="" />;
+    if (o.type !== 'embed') return null;
+    if (o.displayMode === 'icon') return <IconMarker x={o.x} y={o.y} kind="media" glyph={objectGlyph(o, 26)} label="" accent={resolvePresentation(o).accent} />;
     return <EmbedCard book={book} o={o} caption={isLabObject(o) ? o.lab.title : undefined} />;
   }, [book, t]);
 
@@ -223,12 +233,33 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   // a live embed stops once its page is well out of view (it would be off screen, using the phone's power)
   useEffect(() => { if (active && Math.abs(active.page - page) > 1) setActive(null); }, [page, active]);
-  // labs.autoStart: the first lab on the page you arrive at starts by itself
+  // what starts by itself: a model or lab the author made live (spec 1.3), or any lab with labs.autoStart. It starts
+  // once at least half of it is on screen and it is big enough there to use; one at a time, and never in place of
+  // one the student started with a tap. Nothing is downloaded for objects the student does not scroll to.
   useEffect(() => {
-    if (!config.labs.autoStart || !config.features.labs) return;
-    const lab = pages[page]?.objects.find((x) => isLabObject(x) && x.displayMode !== 'icon');
-    if (lab && active?.id !== lab.id) setActive({ id: lab.id, page });
-  }, [page, config.labs.autoStart, config.features.labs]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const f = config.features;
+    const wants = (x: LessonObject) => {
+      if (x.type !== 'embed' || x.displayMode === 'icon' || x.embed === 'video' || x.embed === 'audio') return false;
+      if (isLabObject(x)) return f.labs && (config.labs.autoStart || resolvePresentation(x).show === 'live');
+      return x.embed === 'model3d' && f.model3d && resolvePresentation(x).show === 'live';
+    };
+    const objects = new Map((pages[page]?.objects ?? []).filter(wants).map((o) => [o.id, o]));
+    if (!objects.size) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const id = (e.target as HTMLElement).dataset.chalkId, o = id ? objects.get(id) : undefined;
+        if (!o || e.intersectionRatio < 0.5 || tooSmall(e.target as HTMLElement, isLabObject(o))) continue;
+        const cur = activeRef.current;
+        if (cur?.id === o.id || (cur && !cur.auto)) continue;
+        setActive({ id: o.id, page, auto: true });
+      }
+    }, { threshold: [0, 0.5] });
+    // the cards are drawn after the page is laid out
+    const raf = requestAnimationFrame(() => {
+      for (const id of objects.keys()) { const el = root.current?.querySelector(`[data-chalk-id="${CSS.escape(id)}"]`); if (el) io.observe(el); }
+    });
+    return () => { cancelAnimationFrame(raf); io.disconnect(); };
+  }, [page, pages, config.labs.autoStart, config.features]);
 
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
 
@@ -263,6 +294,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     try { const { overlay } = await unpackOverlay(new Uint8Array(await f.arrayBuffer())); ann.load(overlay); setToast(t.notesOpened); }
     catch (e) { setToast(`${t.notesFailed}: ${e instanceof Error ? e.message : String(e)}`); }
   }, [ann, t]);
+  const closeModal = useCallback(() => setModal(null), []);
   const togglePanel = (which: 'thumbnails' | 'search') => setPanel((p) => (p === which ? null : which));
 
   return (
@@ -274,10 +306,11 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       />
       {modal && (
         <Modal title={modal.kind === 'snip' ? (book.lesson.snipPages.find((p) => p.id === modal.pageId)?.title ?? t.openSnip) : modalTitle(modal.o, t)}
-          closeLabel={t.close} onClose={() => setModal(null)} container={root.current} wide={modal.kind === 'snip' || (modal.o.type === 'embed' && modal.o.embed !== 'audio')}>
+          closeLabel={t.close} onClose={closeModal} container={root.current} wide={modal.kind === 'snip' || (modal.o.type === 'embed' && modal.o.embed !== 'audio')}
+          full={modal.kind === 'media' && modal.full === true}>
           {modal.kind === 'snip'
             ? <SnipView book={book} pageId={modal.pageId} renderHtmlObject={renderHtmlObject} />
-            : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={() => setModal(null)} />}
+            : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
@@ -315,7 +348,25 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 }
 
 const modalTitle = (o: LessonObject, t: ReturnType<typeof strings>) =>
-  o.type === 'embed' ? (isLabObject(o) ? o.lab.title : o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : o.embed) : '';
+  (o.type === 'image' || o.type === 'embed' ? resolvePresentation(o).label : undefined)
+  ?? (o.type === 'embed' ? (isLabObject(o) ? o.lab.title : o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : o.embed) : t.image);
+
+/** Is a card too small on this screen to use the object in its box? A lab needs room for its controls; a model
+ *  only needs to be big enough to turn (spec 1.3 §1: such an object MAY open in a popup instead). */
+function tooSmall(el: HTMLElement, lab: boolean): boolean {
+  const r = el.getBoundingClientRect(), [w, h] = lab ? [440, 260] : [240, 180];
+  return r.width < w || r.height < h;
+}
+
+/** A full-size image, drawn as HTML so that it can be tapped when its author made it open (spec 1.3). */
+function OpenableImage({ book, o, label, onActivate }: { book: Book; o: Extract<LessonObject, { type: 'image' }>; label: string; onActivate?: (() => void) | undefined }) {
+  const url = useAssetUrl(book, o.assetId);
+  return (
+    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-image-open" label={label} id={o.id} {...(onActivate ? { onActivate } : {})}>
+      {url ? <img src={url} alt="" draggable={false} /> : <span className="chalk-placeholder" />}
+    </Box>
+  );
+}
 
 /** A snip page (spec 1.0 §3.4), fitted to the dialog. */
 function SnipView({ book, pageId, renderHtmlObject }: { book: Book; pageId: string; renderHtmlObject: HtmlObjectRenderer }) {
@@ -331,12 +382,14 @@ function SnipView({ book, pageId, renderHtmlObject }: { book: Book; pageId: stri
 /** Icon-mode media opened in the dialog, at a comfortable size. */
 function MediaInModal({ book, o, locale, theme, storage, onClose }: { book: Book; o: LessonObject; locale: Locale; theme: 'light' | 'dark'; storage: LabStorage | null; onClose: () => void }) {
   const url = useAssetUrl(book, o.type === 'image' ? o.assetId : o.type === 'embed' ? o.assetId : undefined);
-  if (o.type === 'image') return url ? <img className="chalk-modal-media" src={url} alt="" /> : null;
+  if (o.type === 'image') return url ? <img className="chalk-modal-media" src={url} alt={resolvePresentation(o).label ?? ''} /> : null;
   if (o.type !== 'embed') return null;
   const big = { position: 'relative' as const, width: '100%', aspectRatio: o.embed === 'model3d' ? '4 / 3' : '16 / 9' };
   if (isLabObject(o)) return <LabFrame book={book} o={o as LabObject} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 'min(70vh, 560px)' }} locale={locale} theme={theme} storage={storage} onStop={onClose} />;
   if (o.embed === 'model3d') return <ModelViewer book={book} o={o} style={big} />;
-  if (o.embed === 'video') return url ? <video className="chalk-modal-media" src={url} controls autoPlay playsInline /> : null;
+  const p = resolvePresentation(o);
+  // opened by a tap: the student asked, so it plays (with sound unless the author muted it)
+  if (o.embed === 'video') return url ? <video className="chalk-modal-media" src={url} controls autoPlay playsInline loop={p.loop} muted={p.muted} /> : null;
   if (o.embed === 'audio') return <ModalAudio book={book} o={o} locale={locale} />;
   return null;
 }

@@ -1,14 +1,14 @@
 // the <model-viewer> JSX element type, wherever this file is compiled
 import type {} from '../model-viewer-jsx.js';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { PauseIcon, PlayIcon } from '@phosphor-icons/react';
 import { mountLab, type LabHost, type StateKey } from '@chalk-format/lab';
-import type { EmbedObject, LabObject } from '@chalk-format/model';
+import { resolvePresentation, type EmbedObject, type LabObject } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import type { Locale } from '../config.js';
 import { num, strings } from '../i18n.js';
 import { useAssetUrl } from './assets.js';
-import { Box, EmbedCard } from './Markers.js';
+import { Box, EmbedCard, type Activate } from './Markers.js';
 
 /** Where labs keep their saved state (host-api §4.1). The reader adds the book and object to the key. */
 export type LabStorage = {
@@ -26,16 +26,38 @@ export const localLabStorage: LabStorage = {
 
 const mediaUrl = (book: Book, o: EmbedObject) => ({ id: o.assetId, url: o.url });
 
-/** A video: its card until tapped, then the browser's own player, in the page. */
-export function VideoEmbed({ book, o, label }: { book: Book; o: EmbedObject; label: string }) {
-  const [playing, setPlaying] = useState(false);
+/** Plays the element while at least half of it is on screen and the tab is visible; pauses it otherwise. */
+function usePlayWhileVisible(el: RefObject<HTMLMediaElement | null>, on: boolean) {
+  useEffect(() => {
+    const m = el.current; if (!on || !m) return;
+    let seen = false;
+    const update = () => { if (seen && document.visibilityState === 'visible') void m.play().catch(() => {}); else m.pause(); };
+    const io = new IntersectionObserver((es) => { seen = es.some((x) => x.intersectionRatio >= 0.5); update(); }, { threshold: [0, 0.5] });
+    io.observe(m); document.addEventListener('visibilitychange', update);
+    return () => { io.disconnect(); document.removeEventListener('visibilitychange', update); };
+  }, [el, on]);
+}
+
+/**
+ * A video. Its card until tapped, then the browser's own player in the page; or the player at once if the author
+ * asked for it live (spec 1.3), started by itself while on screen if they asked for autoplay. A tap that should
+ * open it elsewhere (popup, full screen) goes to `onOpen`.
+ */
+export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObject; label: string; onOpen?: Activate | undefined }) {
+  const p = resolvePresentation(o);
+  const [playing, setPlaying] = useState(p.show === 'live');
   const { id, url } = mediaUrl(book, o);
   const src = useAssetUrl(book, playing ? id : undefined) ?? (playing ? url : undefined);
   const poster = useAssetUrl(book, o.poster);
-  if (!playing) return <EmbedCard book={book} o={o} label={label} onActivate={() => setPlaying(true)} />;
+  const el = useRef<HTMLVideoElement>(null);
+  const [tapped, setTapped] = useState(false);
+  usePlayWhileVisible(el, playing && p.autoplay && !tapped);
+  if (!playing) return <EmbedCard book={book} o={o} label={label} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
   return (
-    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video">
-      {src && <video src={src} poster={poster ?? undefined} controls autoPlay playsInline />}
+    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>
+      {/* browsers start a video by itself only without sound; a tap is the student asking, so then it plays as authored */}
+      {src && <video ref={el} src={src} poster={poster ?? undefined} controls playsInline preload="metadata"
+        autoPlay={tapped} loop={p.loop} muted={p.muted || (p.autoplay && !tapped)} />}
     </Box>
   );
 }
@@ -45,14 +67,18 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const t = strings(locale);
   const el = useRef<HTMLAudioElement>(null);
   const [state, setState] = useState({ playing: false, time: 0, duration: 0 });
-  const [want, setWant] = useState(false);
+  const p = resolvePresentation(o);
+  // autoplay (spec 1.3): load at once, and play while on screen if the browser allows sound without a tap
+  const [want, setWant] = useState(p.autoplay);
   const src = useAssetUrl(book, want ? o.assetId : undefined) ?? (want ? o.url : undefined);
-  useEffect(() => { if (want && src) void el.current?.play(); }, [want, src]);
+  const [tapped, setTapped] = useState(false);
+  useEffect(() => { if (want && src && tapped) void el.current?.play(); }, [want, src, tapped]);
+  usePlayWhileVisible(el, Boolean(src) && p.autoplay && !tapped);
   const fmt = (s: number) => num(locale, `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
-  const toggle = () => { const a = el.current; if (!want) { setWant(true); return; } if (!a) return; if (a.paused) void a.play(); else a.pause(); };
+  const toggle = () => { setTapped(true); const a = el.current; if (!want || !a) { setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
   const style = { '--h': `${o.height}px` } as CSSProperties;
   return (
-    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio">
+    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>
       <div className="chalk-audio-bar" style={style}>
         <button type="button" className="chalk-audio-play" aria-label={state.playing ? '❚❚' : t.play} onClick={toggle}>
           {state.playing ? <PauseIcon weight="fill" /> : <PlayIcon weight="fill" />}
@@ -62,7 +88,7 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
         <span className="chalk-audio-time">{fmt(state.time)}</span>
       </div>
       {src && (
-        <audio ref={el} src={src} preload="metadata"
+        <audio ref={el} src={src} preload="metadata" loop={p.loop}
           onPlay={() => setState((s) => ({ ...s, playing: true }))} onPause={() => setState((s) => ({ ...s, playing: false }))}
           onTimeUpdate={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, time: a.currentTime })); }}
           onLoadedMetadata={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, duration: a.duration })); }} />
@@ -75,13 +101,14 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
 export function ModelViewer({ book, o, style }: { book: Book; o: EmbedObject; style: CSSProperties }) {
   const src = useAssetUrl(book, o.assetId) ?? o.url;
   const poster = useAssetUrl(book, o.poster);
+  const p = resolvePresentation(o);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { let live = true; void import('@google/model-viewer').then(() => { if (live) setLoaded(true); }); return () => { live = false; }; }, []);
   return (
-    <div className="chalk-live chalk-model" style={style}>
+    <div className="chalk-live chalk-model" style={style} aria-label={p.label}>
       {loaded && src && (
         <model-viewer src={src} poster={poster ?? undefined} camera-controls="" touch-action="pan-y" shadow-intensity="0.7" exposure="1.05"
-          environment-image="neutral" interaction-prompt="none" style={{ width: '100%', height: '100%', background: 'transparent' }} />
+          environment-image="neutral" interaction-prompt="none" {...(p.autoRotate ? { 'auto-rotate': '' } : {})} style={{ width: '100%', height: '100%', background: 'transparent' }} />
       )}
       {!loaded && <span className="chalk-spinner" aria-hidden />}
     </div>

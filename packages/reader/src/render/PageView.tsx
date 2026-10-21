@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react';
-import { getPageSize, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
+import { getPageSize, resolvePresentation, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { useAssetUrl } from './assets.js';
 import { inkPath } from './ink.js';
@@ -64,7 +64,8 @@ export const PageView = memo(function PageView(p: PageViewProps) {
 });
 
 type Run = { kind: 'svg'; items: LessonObject[] } | { kind: 'html'; item: LessonObject };
-const isHtml = (o: LessonObject) => o.type === 'text' || o.type === 'embed' || o.type === 'snip' || (o.type === 'image' && o.displayMode === 'icon');
+// an image the author made openable (spec 1.3) is drawn as HTML, so it can be tapped
+const isHtml = (o: LessonObject) => o.type === 'text' || o.type === 'embed' || o.type === 'snip' || (o.type === 'image' && (o.displayMode === 'icon' || resolvePresentation(o).open !== 'none'));
 function runs(objects: readonly LessonObject[]): Run[] {
   const out: Run[] = [];
   for (const o of objects) {
