@@ -7,6 +7,13 @@ import type { AuthorStrings } from './i18n.js';
 
 /** A few accents to pick from; any colour through the picker. */
 const SWATCHES = ['#1f4d8f', '#2f6f4e', '#b42318', '#c2621a', '#7c3aed', '#0e7c66', '#334155'];
+/** Ink, text and shape colours. */
+const INKS = ['#1f2a44', '#c0392b', '#1565c0', '#2e7d32', '#ef6c00', '#7c3aed', '#ffffff'];
+const TEXT_SIZES = [16, 20, 24, 30, 36, 48, 64];
+const WIDTHS = [1, 2, 3, 4, 6, 10];
+/** #rrggbbaa (a highlighter stroke): keep its see-through-ness when the colour changes. */
+const alphaOf = (c: string) => (/^#[0-9a-f]{8}$/i.test(c) ? c.slice(7) : '');
+const opaque = (c: string) => (/^#[0-9a-f]{8}$/i.test(c) ? c.slice(0, 7) : c);
 
 /**
  * The selected object's properties (spec 1.3 presentation): how it sits on the page, what a tap opens, its label,
@@ -40,7 +47,7 @@ export function Inspector({ o, pageId, apply, onDelete, t }: {
     <div className="chalk-insp">
       <div className="chalk-insp-kind">
         <span className="chalk-insp-glyph">{pr.glyph(o, 20)}</span>
-        <strong>{kind ? t[kind] : t.other}</strong>
+        <strong>{kind ? t[kind] : ((t as unknown as Record<string, string>)[o.type] ?? t.other)}</strong>
       </div>
 
       {media && (
@@ -106,6 +113,35 @@ export function Inspector({ o, pageId, apply, onDelete, t }: {
         </fieldset>
       )}
 
+      {o.type === 'text' && (
+        <>
+          <Field label={t.text}>
+            {(id) => <textarea id={id} rows={3} value={o.text} onChange={(e) => setObj({ text: e.target.value }, `text-${o.id}`)} />}
+          </Field>
+          <Seg label={t.textSize} value={String(o.fontSize)} options={[...new Set([...TEXT_SIZES, o.fontSize])].sort((a, b) => a - b).map((n) => [String(n), String(n)] as [string, string])}
+            onChange={(v) => setObj({ fontSize: Number(v) })} />
+          <Colors label={t.accent} value={o.fill} onChange={(c, g) => setObj({ fill: c }, g)} />
+        </>
+      )}
+      {(o.type === 'rect' || o.type === 'ellipse') && (
+        <>
+          <Colors label={t.stroke} value={o.stroke} onChange={(c, g) => setObj({ stroke: c }, g)} />
+          <Colors label={t.fill} value={o.fill} none={t.noFill} onChange={(c, g) => setObj({ fill: c }, g)} />
+          <Seg label={t.thickness} value={String(o.strokeWidth)} options={[...new Set([...WIDTHS, o.strokeWidth])].sort((a, b) => a - b).map((n) => [String(n), String(n)] as [string, string])}
+            onChange={(v) => setObj({ strokeWidth: Number(v) })} />
+        </>
+      )}
+      {(o.type === 'line' || o.type === 'arrow') && (
+        <>
+          <Colors label={t.stroke} value={o.stroke} onChange={(c, g) => setObj({ stroke: c }, g)} />
+          <Seg label={t.thickness} value={String(o.strokeWidth)} options={[...new Set([...WIDTHS, o.strokeWidth])].sort((a, b) => a - b).map((n) => [String(n), String(n)] as [string, string])}
+            onChange={(v) => setObj({ strokeWidth: Number(v) })} />
+        </>
+      )}
+      {o.type === 'ink' && (
+        <Colors label={t.accent} value={opaque(o.color)} onChange={(c, g) => setObj({ color: c + alphaOf(o.color) }, g)} />
+      )}
+
       <button type="button" className="chalk-insp-delete" onClick={onDelete}><TrashIcon size={16} /> {t.remove}</button>
     </div>
   );
@@ -135,6 +171,22 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children(id)}
       {hint && <small>{hint}</small>}
     </div>
+  );
+}
+
+/** Colour swatches and a picker; `none` adds a "no colour" choice (transparent). */
+function Colors({ label, value, onChange, none }: { label: string; value: string; onChange: (c: string, gesture?: string) => void; none?: string }) {
+  const g = useId();
+  const v = value.toLowerCase();
+  return (
+    <fieldset className="chalk-insp-field">
+      <legend>{label}</legend>
+      <div className="chalk-insp-swatches">
+        {none && <button type="button" className="chalk-insp-swatch is-none" aria-pressed={v === 'transparent' || v === 'none'} title={none} aria-label={none} onClick={() => onChange('transparent')} />}
+        {INKS.map((c) => <button key={c} type="button" className="chalk-insp-swatch" style={{ background: c }} aria-pressed={v === c} aria-label={c} title={c} onClick={() => onChange(c)} />)}
+        <input type="color" aria-label={label} value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#1f2a44'} onChange={(e) => onChange(e.target.value, `color-${g}`)} />
+      </div>
+    </fieldset>
   );
 }
 

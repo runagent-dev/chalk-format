@@ -12,7 +12,9 @@ const STRINGS = {
     label: 'Label', labelHint: 'Shown on the thumbnail, and read out by screen readers',
     iconPick: 'Icon', iconDefault: 'Default', accent: 'Colour', accentNone: "Reader's colour",
     playback: 'Playback', autoplay: 'Play by itself', loop: 'Play again at the end', muted: 'Without sound', autoRotate: 'Turn slowly',
+    tools: 'Tools', shapes: 'Shapes', text: 'Text', textSize: 'Text size', fill: 'Fill', noFill: 'No fill', stroke: 'Line', thickness: 'Thickness',
     labTitle: 'Lab name', remove: 'Delete', resize: 'Resize', drop: 'Drop to add to this page',
+    rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', ink: 'Drawing', vector: 'Drawing',
     image: 'Image', video: 'Video', audio: 'Sound', model3d: '3D model', lab: 'Lab', plugin: 'Widget', snip: 'Snip', other: 'Object',
   },
   bn: {
@@ -25,7 +27,9 @@ const STRINGS = {
     label: 'লেবেল', labelHint: 'থাম্বনেইলে দেখা যাবে, স্ক্রিন রিডার পড়ে শোনাবে',
     iconPick: 'আইকন', iconDefault: 'স্বাভাবিক', accent: 'রং', accentNone: 'রিডারের রং',
     playback: 'চালানো', autoplay: 'নিজে থেকে চালু হবে', loop: 'শেষ হলে আবার চলবে', muted: 'শব্দ ছাড়া', autoRotate: 'ধীরে ঘুরবে',
+    tools: 'সরঞ্জাম', shapes: 'আকৃতি', text: 'লেখা', textSize: 'লেখার আকার', fill: 'ভরাট', noFill: 'ভরাট নেই', stroke: 'রেখা', thickness: 'পুরুত্ব',
     labTitle: 'ল্যাবের নাম', remove: 'মুছুন', resize: 'আকার বদলান', drop: 'এই পাতায় যোগ করতে এখানে ছাড়ুন',
+    rect: 'আয়তক্ষেত্র', ellipse: 'উপবৃত্ত', line: 'রেখা', arrow: 'তীর', ink: 'আঁকা', vector: 'আঁকা',
     image: 'ছবি', video: 'ভিডিও', audio: 'শব্দ', model3d: 'ত্রিমাত্রিক মডেল', lab: 'ল্যাব', plugin: 'উইজেট', snip: 'স্নিপ', other: 'বস্তু',
   },
 };

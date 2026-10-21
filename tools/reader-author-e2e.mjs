@@ -72,6 +72,42 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('unsaved changes are marked', !!(await p.$('.chalk-dock-save.is-dirty')));
   await shot(p, 'author-added');
 
+  // drawing into the book, ChalkBoard-style tools from the rail and the keyboard
+  check('the tool rail is there', !!(await p.$('.chalk-rail')));
+  await go(1);
+  // a tool other than select closes the properties panel, which moves the page: measure after that
+  await p.click('.chalk-rail button[aria-label^="কলম"]');
+  await p.waitForTimeout(300);
+  const pg1 = await p.evaluate(() => { const r = document.querySelector('.chalk-page').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  const P = (fx, fy) => [pg1.x + pg1.w * fx, pg1.y + pg1.h * fy];
+  const count = (sel) => p.evaluate((s) => document.querySelectorAll(s).length, sel);
+  const drawLine = async (a, b2) => { await p.mouse.move(...a); await p.mouse.down(); await p.mouse.move(...b2, { steps: 12 }); await p.mouse.up(); await p.waitForTimeout(150); };
+  const inkBefore = await count('.chalk-page path');
+  await drawLine(P(0.2, 0.3), P(0.45, 0.33));
+  check('pen draws into the page', (await count('.chalk-page path')) > inkBefore);
+  await p.keyboard.press('r');
+  check('R picks the rectangle', await p.evaluate(() => document.querySelector('.chalk-surface')?.classList.contains('is-rect')));
+  await drawLine(P(0.55, 0.34), P(0.8, 0.44));
+  await p.keyboard.press('t');
+  await p.mouse.click(...P(0.15, 0.46)); await p.waitForTimeout(150);
+  await p.keyboard.type('লেখকের লেখা'); await p.keyboard.press('Enter'); await p.waitForTimeout(200);
+  check('text tool writes text', await p.evaluate(() => [...document.querySelectorAll('.chalk-text')].some((t) => t.textContent === 'লেখকের লেখা')),
+    JSON.stringify(await p.evaluate(() => ({ input: document.querySelector('.chalk-note-input')?.value, surface: document.querySelector('.chalk-surface')?.className }))));
+  // select the rectangle and fill it from the panel
+  await p.keyboard.press('v');
+  await p.mouse.click(...P(0.67, 0.39)); await p.waitForSelector('.chalk-insp', { timeout: 5000 });
+  check('a shape is selectable, with its own properties', (await p.textContent('.chalk-insp-kind')).includes('আয়তক্ষেত্র'));
+  await p.click('.chalk-insp fieldset:has(legend:text("ভরাট")) .chalk-insp-swatch[aria-label="#ef6c00"]');
+  check('the panel fills it', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#ef6c00')));
+  await p.keyboard.press('Escape');
+  // the eraser removes the pen stroke, not media
+  await p.keyboard.press('e');
+  const inkNow = await count('.chalk-page path');
+  await drawLine(P(0.3, 0.28), P(0.3, 0.36));
+  check('eraser removes the drawing', (await count('.chalk-page path')) < inkNow);
+  await p.keyboard.press('v');
+  await shot(p, 'author-drawn');
+
   // the student's view
   await p.click('.app-mode button:has-text("Read")');
   await p.waitForTimeout(400);
@@ -91,6 +127,9 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('saved: the new image', pg.objects.some((o) => o.type === 'image' && r.assets.has(o.assetId)));
   check('saved: c1 keys for added media', /^c1:/.test(vid?.assetId ?? ''));
   check('saved: nothing missing', r.missingAssetIds.length === 0, JSON.stringify(r.missingAssetIds));
+  const p1 = r.lesson.pages[0].objects;
+  check('saved: the rectangle (filled), the text, and no erased stroke', p1.some((o) => o.type === 'rect' && o.fill === '#ef6c00') && p1.some((o) => o.type === 'text' && o.text === 'লেখকের লেখা') && !p1.some((o) => o.type === 'ink'),
+    JSON.stringify(p1.map((o) => o.type)));
   await p.waitForTimeout(300);
   check('saving clears the unsaved mark', !(await p.$('.chalk-dock-save.is-dirty')));
   check('no errors', errs.length === 0, errs.join(' | '));

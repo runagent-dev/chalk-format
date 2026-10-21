@@ -36,6 +36,7 @@ export function AuthorSurface({ page, scale, selected, onSelect, apply, onDropFi
   const el = useRef<HTMLDivElement>(null);
   const g = useRef<{ id: string; pointer: number; start: Point; orig: LessonObject; resize: boolean; moved: boolean } | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [hover, setHover] = useState<string | null>(null);
   const { width, height } = getPageSize(page);
   const tol = 6 / scale;
   const at = (e: { clientX: number; clientY: number }): Point => {
@@ -69,7 +70,10 @@ export function AuthorSurface({ page, scale, selected, onSelect, apply, onDropFi
     g.current = { id: generateId('g'), pointer: e.pointerId, start: p, orig: hit, resize, moved: false };
   };
   const move = (e: React.PointerEvent) => {
-    const s = g.current; if (!s || s.pointer !== e.pointerId) return;
+    const s = g.current;
+    // no drag: outline what a click would select
+    if (!s) { if (e.pointerType === 'mouse') setHover(topAt(page.objects, at(e), tol)?.id ?? null); return; }
+    if (s.pointer !== e.pointerId) return;
     const p = at(e), dx = p.x - s.start.x, dy = p.y - s.start.y;
     if (!s.moved && Math.hypot(dx, dy) < tol / 2) return;
     s.moved = true;
@@ -94,8 +98,14 @@ export function AuthorSurface({ page, scale, selected, onSelect, apply, onDropFi
     <div ref={el} className={`chalk-surface chalk-author ${dropping ? 'is-dropping' : ''}`} style={{ width, height }}
       onPointerDown={(e) => down(e)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { g.current = null; }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropping(true); } }}
+      onPointerLeave={() => setHover(null)}
       onDragLeave={() => setDropping(false)}
       onDrop={(e) => { e.preventDefault(); setDropping(false); const files = [...e.dataTransfer.files]; if (files.length) onDropFiles(files, at(e)); }}>
+      {hover && hover !== selected && (() => {
+        const h = page.objects.find((o) => o.id === hover); if (!h) return null;
+        const b = boxOf(h);
+        return <div className="chalk-author-hover" style={{ left: b.x, top: b.y, width: b.width, height: b.height, '--s': scale } as React.CSSProperties} />;
+      })()}
       {sb && (
         <div className="chalk-author-sel" style={{ left: sb.x, top: sb.y, width: sb.width, height: sb.height, '--s': scale } as React.CSSProperties}>
           {sel && resizable(sel) && (

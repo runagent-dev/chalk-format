@@ -21,7 +21,8 @@ import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface } from './author/AuthorSurface.js';
 import { Inspector } from './author/Inspector.js';
-import { ACCEPT, objectFromFile } from './author/insert.js';
+import { ACCEPT, objectFromFile, type MediaKind } from './author/insert.js';
+import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
 import { edit } from './annotate/state.js';
 import type { Lesson } from '@chalk-format/model';
@@ -112,6 +113,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [mode, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
   const author = authoringOn && mode === 'author';
   const [sel, setSel] = useState<{ pageId: string; id: string } | null>(null);
+  const [authorTool, setAuthorToolState] = useState<AuthorTool>('select');
+  const setAuthorTool = useCallback((x: AuthorTool) => { setAuthorToolState(x); if (x !== 'select') setSel(null); }, []);
   const book = authoringOn ? au.book : original;
   const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
@@ -319,7 +322,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   const at_ = authorStrings(locale);
   const setMode = useCallback((m: 'read' | 'author') => {
-    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null);
+    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select');
     props.onModeChange?.(m);
   }, [props.onModeChange]);   // eslint-disable-line react-hooks/exhaustive-deps
   // media files onto a page: where they were dropped, or the middle of the page for the + button
@@ -354,11 +357,34 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     const f = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = at_.leave; };
     addEventListener('beforeunload', f); return () => removeEventListener('beforeunload', f);
   }, [authoringOn, au.dirty, at_]);
+  // tool shortcuts in author mode (V select, P pen, H highlighter, E eraser, T text, R O L A shapes), wherever the
+  // focus is on the page, except while typing in a field
+  useEffect(() => {
+    if (!author) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'TEXTAREA' || el.isContentEditable || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && !/^(radio|checkbox|range|color|button|submit|reset|file)$/.test((el as HTMLInputElement).type)));
+      const x = SHORTCUTS[e.key.toLowerCase()];
+      if (!x || typing || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      e.preventDefault(); setAuthorTool(x);
+    };
+    addEventListener('keydown', onKey); return () => removeEventListener('keydown', onKey);
+  }, [author, setAuthorTool]);
+  // the eraser of author mode takes drawings, text and shapes; media is removed by selecting it
+  const erasable = useCallback((o: LessonObject) => o.type !== 'image' && o.type !== 'embed' && o.type !== 'snip', []);
   const authorOverlay = useCallback((pg: LessonPage, _i: number, scale: number) => (
-    <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
-      onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
-      onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
-  ), [sel, au.apply, addFiles, at_]);
+    authorTool === 'select'
+      ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
+          onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
+          onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
+      : <Surface page={pg} scale={scale} pen={{ ...pen, tool: authorTool }} editable={erasable} apply={au.apply} textPrompt={t.textPrompt} />
+  ), [sel, au.apply, addFiles, at_, authorTool, pen, erasable, t.textPrompt]);
+  // + in the rail: a file picker for that kind of media
+  const pickMedia = useCallback((kind: MediaKind) => {
+    const input = mediaFile.current; if (!input) return;
+    input.accept = { image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind];
+    input.click();
+  }, []);
   const selectedObject = useMemo(() => {
     if (!sel) return null;
     return lesson.pages.find((p) => p.id === sel.pageId)?.objects.find((o) => o.id === sel.id) ?? null;
@@ -405,6 +431,10 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
+      {author && (
+        <AuthorRail tool={authorTool} onTool={setAuthorTool} color={color} onColor={setColor} highlight={highlight} onHighlight={setHighlight}
+          size={size} onSize={setSize} colors={A.colors} highlighterColors={A.highlighterColors} sizes={A.sizes} onMedia={pickMedia} locale={locale} t={at_} />
+      )}
       {author && selectedObject && !panel && (
         <Panel title={at_.properties} closeLabel={t.close} onClose={() => setSel(null)}>
           <Inspector o={selectedObject} pageId={sel?.pageId ?? null} apply={au.apply} t={at_}
@@ -413,7 +443,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       {authoringOn && (
         <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden
-          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; }} />
+          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; e.target.accept = ACCEPT; }} />
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>

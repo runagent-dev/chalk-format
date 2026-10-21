@@ -94,11 +94,18 @@ Every colour, font, space and radius is a CSS custom property on `.chalk-reader`
 With `config.authoring.enabled`, the reader can also edit the book. A Read / Author switch sits at the start of the
 dock (or drive it yourself with the `mode` prop and `onModeChange`).
 
-- **Author mode:** tap any object to select it; drag to move it, the corner handle to resize it (media keeps its
-  proportions), arrows to nudge, Delete to remove. The properties panel sets how media is presented (spec 1.3):
-  full size or a small icon, thumbnail or live, what a tap opens, label, icon, colour, playback. Add media with
-  the + button or by dropping files on a page: images, video (a poster is taken from its frames), audio, `.glb`
-  models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
+- **Author mode** looks like an editor (a dotted desk, outlined pages) and has a tool rail on the left, as in
+  ChalkBoard: select (V), pen (P), highlighter (H), eraser (E), text (T), shapes (R rectangle, O ellipse, L line,
+  A arrow), colour and thickness, and + to add media. Everything drawn goes into the book itself (in read mode
+  the same tools write the student's notes). The eraser takes drawings, text and shapes; media is removed by
+  selecting it.
+- **Select:** click any object; drag to move it, the corner handle to resize it (media keeps its proportions),
+  arrows to nudge, Delete to remove; the object under the mouse is outlined. The properties panel (right) sets
+  how media is presented (spec 1.3: full size or small icon, thumbnail or live, what a tap opens, label, icon,
+  colour, playback), a text's words, size and colour, a shape's line, fill and thickness, a drawing's colour.
+- **Add media** from the rail or by dropping files on a page: images, video (a poster is taken from its frames),
+  audio, `.glb` models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
+- Made for a computer (mouse and keyboard); it still works by touch.
 - **Read mode** is the student's reader over the edited book, notes included, so you see exactly what students will.
 - **Save** writes a `.chalk` file with every asset it can reach (`onSave(bytes, lesson)` to keep it yourself;
   otherwise it downloads). `onLessonChange` reports every edit. Closing the tab with unsaved changes asks first.
@@ -107,7 +114,7 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
 |---|---|---|
 | `authoring.enabled` | `false` | Allow author mode. Off for a student app. `readOnly` turns it off. |
 | `authoring.startIn` | `'read'` | The mode the reader opens in. |
-| `authoring.dock` | mode, pages, page turning, zoom, add, undo, redo, save, theme, language | The dock in author mode. |
+| `authoring.dock` | mode, pages, page turning, zoom, undo, redo, save, theme, language | The dock in author mode (the tools are in the rail). |
 
 ## Restyling media
 

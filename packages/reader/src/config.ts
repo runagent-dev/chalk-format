@@ -126,7 +126,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   pdfWorkerSrc: null,
   authoring: {
     enabled: false, startIn: 'read',
-    dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'add', 'undo', 'redo', '|', 'save', 'theme', 'language'],
+    dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'undo', 'redo', '|', 'save', 'theme', 'language'],
   },
   presentation: DEFAULT_PRESENTATION,
   renderers: {},

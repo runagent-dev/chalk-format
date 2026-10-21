@@ -127,8 +127,10 @@ All built from committed sources by `apps/reader/showcase/make-showcase.ts`:
 
 1. **Bengali text from PDFs is broken.** Chromium's PDF output (and many other tools') has no Unicode for shaped Bengali glyphs (conjuncts, pre-base vowel signs); pdf.js reads them as U+0000, so search on a converted Bengali PDF fails. Real textbooks in older Bijoy-style fonts will be worse. `convert-pdf` needs OCR or legacy-encoding → Unicode conversion. Not started.
 2. **Phase 6 is not finished:** an accessibility audit with a screen reader, a performance check on a cheap Android phone, a smaller first download (179 KB gzip: React + zod validation + JSZip; pdf.js and model-viewer already load on demand), deploying the showcase.
-3. **Author mode, next:** it places and presents media; still missing: editing lab settings (`lab.params`), replacing a
-   poster, the book's own text and shapes (add/edit), pages (add, reorder, import from PDF), the media library over
+3. **Author mode, next:** it has ChalkBoard's tools (rail: select, pen, highlighter, eraser, text, shapes, media) and
+   properties for media, text, shapes and drawings. The user wants it desktop-first (mouse and keyboard). Still
+   missing: editing lab settings (`lab.params`), replacing a poster, editing text in place (it is edited in the
+   panel), a snip-region tool, pages (add, reorder, import from PDF), the media library over
    the registry (search and reuse; needs the registry service, see 5). Audio shows as a card in author mode, not as
    its player bar. Push `feat/presentation` and open a PR: ask the user.
 4. **Switching chalkboard to chalk-format:** not started. Do it on a separate branch in a separate worktree. Chalkboard's `feat/interactive-lab-embed` branch has a stale uncommitted WIP (from 2026-08-29) that adds `embed: "lab"` as `formatVersion` 8, which conflicts with Chalk 1.1. Don't build on it, and don't touch that working tree.

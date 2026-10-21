@@ -343,6 +343,8 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-insp-field { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .chalk-insp-field > legend, .chalk-insp-field > label { padding: 0; margin-bottom: 2px; font-size: var(--chalk-text-sm); font-weight: 600; color: var(--chalk-ink-muted); }
 .chalk-insp-field small { font-size: 0.75rem; color: var(--chalk-ink-muted); }
+.chalk-insp-field textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-md); resize: vertical; }
+.chalk-insp-field textarea:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
 .chalk-insp-field input[type="text"] { width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-md); }
 .chalk-insp-field input[type="text"]:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
 .chalk-insp-seg { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -417,3 +419,63 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   flex-direction: column; align-items: center; justify-content: center; gap: 0; width: var(--chalk-btn); height: 48px; padding: 0; line-height: 1.15;
 }
 .chalk-dock.is-left .chalk-dock-page-total, .chalk-dock.is-right .chalk-dock-page-total { font-size: 11px; }
+
+/* ---------- author mode: it should look like editing ---------- */
+/* a dotted desk and outlined pages */
+.chalk-reader[data-mode="author"] .chalk-viewer {
+  background-color: var(--chalk-desk);
+  background-image: radial-gradient(color-mix(in oklch, var(--chalk-ink) 22%, transparent) 1px, transparent 1.2px);
+  background-size: 18px 18px;
+}
+.chalk-reader[data-mode="author"] .chalk-page { outline: 1px dashed color-mix(in oklch, var(--chalk-accent) 55%, transparent); outline-offset: 6px; }
+/* what is under the mouse in select mode */
+.chalk-author-hover { position: absolute; outline: calc(1.5px / var(--s)) dashed var(--chalk-accent); outline-offset: calc(2px / var(--s)); pointer-events: none; }
+.chalk-surface.chalk-author.is-drawing { cursor: crosshair; }
+
+/* the tool rail */
+.chalk-rail {
+  position: absolute; z-index: 26; left: var(--chalk-space-md); top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px;
+  background: var(--chalk-surface); color: var(--chalk-ink); border: 1px solid var(--chalk-line);
+  border-radius: 14px; box-shadow: var(--chalk-float-shadow);
+}
+.chalk-rail-sep { width: 24px; height: 1px; margin: 4px 0; background: var(--chalk-line); }
+.chalk-rail-btn {
+  display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 10px;
+  background: transparent; color: inherit; cursor: pointer;
+}
+.chalk-rail-btn:hover { background: var(--chalk-surface-2); }
+.chalk-rail-btn[aria-pressed="true"] { background: var(--chalk-accent-soft); color: var(--chalk-accent); }
+.chalk-rail-btn.is-add { background: var(--chalk-accent); color: var(--chalk-accent-ink); }
+.chalk-rail-btn.is-add:hover { filter: brightness(1.08); }
+.chalk-rail-btn:focus-visible, .chalk-rail-item:focus-visible, .chalk-rail-swatch:focus-visible, .chalk-rail-size:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-rail-dot { display: block; border-radius: 50%; box-shadow: 0 0 0 1px var(--chalk-line); }
+.chalk-rail-fly-wrap { position: relative; display: grid; }
+.chalk-rail-fly {
+  position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); z-index: 1;
+  display: flex; gap: 2px; padding: 6px; background: var(--chalk-surface); border: 1px solid var(--chalk-line);
+  border-radius: 12px; box-shadow: var(--chalk-float-shadow);
+}
+.chalk-rail-fly.is-list { flex-direction: column; min-width: 170px; }
+.chalk-rail-item { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: var(--chalk-text-md); text-align: left; cursor: pointer; }
+.chalk-rail-item:hover { background: var(--chalk-surface-2); }
+.chalk-rail-fly.is-style { flex-direction: column; gap: 8px; width: 196px; }
+.chalk-rail-swatches, .chalk-rail-sizes { display: flex; flex-wrap: wrap; gap: 6px; }
+.chalk-rail-swatch { width: 26px; height: 26px; padding: 0; border: 2px solid var(--chalk-surface); border-radius: 50%; box-shadow: 0 0 0 1px var(--chalk-line); cursor: pointer; }
+.chalk-rail-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--chalk-ink); }
+.chalk-rail-size { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--chalk-line); border-radius: 8px; background: transparent; cursor: pointer; }
+.chalk-rail-size[aria-pressed="true"] { border-color: var(--chalk-accent); background: var(--chalk-accent-soft); }
+.chalk-rail-size span { border-radius: 50%; }
+
+@container chalk (min-width: 720px) {
+  /* room for the rail on the left; the properties panel goes to the right */
+  .chalk-reader[data-mode="author"] .chalk-viewer { margin-left: 68px; }
+  .chalk-reader[data-mode="author"] .chalk-panel { left: auto; right: var(--chalk-space-md); }
+  .chalk-reader[data-mode="author"][data-panel] .chalk-viewer { margin-left: 68px; margin-right: 312px; }
+  .chalk-reader[data-mode="author"][data-panel] .chalk-dock.is-bottom, .chalk-reader[data-mode="author"][data-panel] .chalk-dock.is-top { left: calc(50% - 122px); }
+}
+@container chalk (max-width: 719px) {
+  /* a phone: the rail runs along the left edge, a little smaller */
+  .chalk-rail { left: 6px; padding: 4px; }
+  .chalk-rail-btn { width: 38px; height: 38px; }
+}
