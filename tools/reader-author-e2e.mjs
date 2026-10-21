@@ -42,6 +42,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   await p.click('.chalk-insp-swatch[aria-label="#b42318"]');
   const c2 = await obj('screw-gauge');
   check('label, icon and colour show on the card', c2.label === 'স্ক্রু গজ · দেখো' && (await p.evaluate(() => getComputedStyle(document.querySelector('[data-chalk-id="screw-gauge"] .chalk-card-glyph')).backgroundColor)) === 'rgb(180, 35, 24)');
+  await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("Thumbnail")');
   await p.click('.chalk-insp-seg label:has-text("Small icon")');
   check('small icon makes it a marker', !!(await p.$('.chalk-marker[data-chalk-id="screw-gauge"]')));
   await p.keyboard.press('Control+z');
@@ -127,14 +128,26 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   await p.keyboard.press('v');
   await shot(p, 'author-drawn');
 
+  // a video carried in the book, set to live + autoplay
+  await go(3);
+  await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-video"]')?.scrollIntoView({ block: 'center' }));
+  await p.waitForTimeout(300);
+  { const v = await obj('pendulum-video'); await p.mouse.click(v.x + v.w / 2, v.y + v.h / 2); }
+  await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("Live")');
+  await p.click('.chalk-sidebar label:has-text("Play by itself")');
+
   // the student's view
   await p.click('.app-mode button:has-text("Read")');
+  await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-video"]')?.scrollIntoView({ block: 'center' }));
+  const auto = await p.waitForFunction(() => { const v = document.querySelector('[data-chalk-id="pendulum-video"] video'); return v && !v.paused && v.currentTime > 0.3 ? { muted: v.muted } : null; }, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
+  check('a book video set live + autoplay plays by itself, silently', auto?.muted === true, JSON.stringify(auto));
   await p.waitForTimeout(400);
   check('read mode: the edits are there', (await p.$('[data-chalk-id="screw-gauge"][aria-label="স্ক্রু গজ · দেখো"]')) !== null);
   check('read mode: no selection or panel', !(await p.$('.chalk-author-sel')) && !(await p.$('.chalk-insp')));
 
-  // save
-  await p.click('.app-mode button:has-text("Author")');
+  // save; the dock's own switch goes through the host (the showcase controls the mode)
+  await p.click('.chalk-dock button[aria-label="Edit this book"]');
+  check('the dock\'s switch changes a host-controlled mode', await p.waitForFunction(() => document.querySelector('.chalk-reader')?.dataset.mode === 'author' && document.querySelector('.app-mode button[aria-checked="true"]')?.textContent === 'Author', null, { timeout: 3000 }).then(() => true, () => false));
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('.chalk-dock button[aria-label^="Save the book"]')]);
   const file = await dl.path();
   const r = await unpackLesson(new Uint8Array(readFileSync(file)));
@@ -145,6 +158,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('saved: the new video, its bytes and its poster', !!vid && r.assets.has(vid.assetId) && !!vid.poster && r.assets.has(vid.poster));
   check('saved: the new image', pg.objects.some((o) => o.type === 'image' && r.assets.has(o.assetId)));
   check('saved: c1 keys for added media', /^c1:/.test(vid?.assetId ?? ''));
+  check('saved: "Thumbnail" chosen by the author is kept, not dropped', sg?.presentation?.show === 'card', JSON.stringify(sg?.presentation));
   check('saved: the video starts as set while adding it (live)', vid?.presentation?.show === 'live', JSON.stringify(vid?.presentation));
   check('saved: nothing missing', r.missingAssetIds.length === 0, JSON.stringify(r.missingAssetIds));
   const p1 = r.lesson.pages[0].objects;

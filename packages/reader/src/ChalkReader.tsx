@@ -109,9 +109,15 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // it (notes and all); author mode edits the book itself, without the notes.
   const authoringOn = config.authoring.enabled;
   const au = useAuthoring(original, props.onLessonChange);
-  const ann = useAnnotations(authoringOn ? au.lesson : original.lesson, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
-  const [mode, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
+  // controlled by the host when it passes `mode` (the dock's switch then only asks, through onModeChange)
+  const [modeState, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
+  const mode = props.mode ?? modeState;
   const author = authoringOn && mode === 'author';
+  // the notes sit on the book as it was when author mode began, and move onto the edited book once, on the way
+  // back to reading (not on every step of a drag)
+  const notesBase = useRef(original.lesson);
+  if (!author) notesBase.current = authoringOn ? au.lesson : original.lesson;
+  const ann = useAnnotations(notesBase.current, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
   const [sel, setSel] = useState<{ pageId: string; id: string } | null>(null);
   const [authorTool, setAuthorToolState] = useState<AuthorTool>('select');
   // the media type being added (its options are in the sidebar), what drawing tools draw, how added media starts
@@ -335,9 +341,15 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const authorLocale = config.authoring.locale;
   const at_ = authorStrings(authorLocale);
   const setMode = useCallback((m: 'read' | 'author') => {
-    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null);
+    if (props.mode === undefined) setModeState(m);
     props.onModeChange?.(m);
-  }, [props.onModeChange]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [props.mode, props.onModeChange]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // a new mode starts clean: no selection, no live media, no dialog or panel, the select tool
+  const firstMode = useRef(true);
+  useEffect(() => {
+    if (firstMode.current) { firstMode.current = false; return; }
+    setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null);
+  }, [author]);
   // media files onto a page: where they were dropped, or the middle of the page for the + button
   const addFiles = useCallback(async (files: File[], pg: LessonPage, where?: { x: number; y: number }) => {
     const size = getPageSize(pg);
@@ -357,16 +369,24 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (refused) setToast(at_.notPlaceable);
   }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (authoringOn && props.mode && props.mode !== mode) setMode(props.mode); }, [props.mode]);   // eslint-disable-line react-hooks/exhaustive-deps
   const saveBook = useCallback(async () => {
-    const bytes = await au.save();
-    if (props.onSave) await props.onSave(bytes, au.lesson);
-    else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
-      a.download = `${au.lesson.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'}.chalk`;
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    let saved: Lesson;
+    try {
+      const { bytes, lesson: l } = await au.save();
+      if (props.onSave) await props.onSave(bytes, l);
+      else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
+        a.download = `${l.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'}.chalk`;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+      saved = l;
+    } catch (e) {
+      // not saved: the unsaved mark and the leave-page warning stay
+      setToast(`${at_.saveFailed}: ${e instanceof Error ? e.message : String(e)}`);
+      return;
     }
+    au.markSaved(saved);
     setToast(at_.saved);
   }, [au, props.onSave, at_]);   // eslint-disable-line react-hooks/exhaustive-deps
   // unsaved work is not lost to a closed tab without a warning
@@ -399,11 +419,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale]);
   // + in the rail: that kind of media, with its options in the sidebar
   const pickMedia = useCallback((kind: MediaKind) => { setAuthorToolState('select'); setSel(null); setAdding(kind); }, []);
-  const chooseFile = useCallback((kind: MediaKind) => {
-    const input = mediaFile.current; if (!input) return;
-    input.accept = { image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind];
-    input.click();
-  }, []);
+  // every opening sets what the picker offers (a cancelled one never reports back, so nothing is left narrowed)
+  const openPicker = useCallback((accept: string) => { const input = mediaFile.current; if (!input) return; input.accept = accept; input.click(); }, []);
+  const chooseFile = useCallback((kind: MediaKind) => openPicker({ image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind]), [openPicker]);
   const selectedObject = useMemo(() => {
     if (!sel) return null;
     return lesson.pages.find((p) => p.id === sel.pageId)?.objects.find((o) => o.id === sel.id) ?? null;
@@ -462,7 +480,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       {authoringOn && (
         <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden
-          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; e.target.accept = ACCEPT; }} />
+          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; }} />
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
@@ -489,7 +507,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
             undo: author ? au.undo : ann.undo, redo: author ? au.redo : ann.redo,
-            mode: () => setMode(author ? 'read' : 'author'), add: () => mediaFile.current?.click(), save: () => void saveBook(),
+            mode: () => setMode(author ? 'read' : 'author'), add: () => openPicker(ACCEPT), save: () => void saveBook(),
             exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,

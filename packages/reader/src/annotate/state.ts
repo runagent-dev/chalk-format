@@ -29,16 +29,16 @@ export function useAnnotations(base: Lesson, o: AnnotationOptions) {
     return ov && ov.base.id === base.id ? composeOverlay(base, ov) : base;
   };
   const [h, setH] = useState(() => ({ stack: [start()], i: 0, gesture: null as string | null }));
+  // the book under the notes changed (authoring): the same notes, on the new book; their undo history starts over.
+  // Adjusted during render, so no render with the new book and the old notes is ever committed or reported.
+  const [seenBase, setSeenBase] = useState(base);
+  if (seenBase !== base) {
+    setSeenBase(base);
+    setH((s) => ({ stack: [composeOverlay(base, diffLesson(seenBase, s.stack[s.i]!, baseRef))], i: 0, gesture: null }));
+  }
   const lesson = h.stack[h.i]!;
   const overlay = useMemo(() => diffLesson(base, lesson, baseRef), [base, lesson, baseRef]);
 
-  // the book under the notes changed (authoring): the same notes, on the new book. Their undo history starts over.
-  const prevBase = useRef(base);
-  useEffect(() => {
-    const was = prevBase.current; prevBase.current = base;
-    if (was === base) return;
-    setH((s) => ({ stack: [composeOverlay(base, diffLesson(was, s.stack[s.i]!, baseRef))], i: 0, gesture: null }));
-  }, [base, baseRef]);
 
   // a controlled overlay that the host changed (not the one we just reported) replaces the work
   const reported = useRef<Overlay | null>(null);

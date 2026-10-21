@@ -20,6 +20,15 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
 
   useEffect(() => () => { for (const a of added.current.values()) URL.revokeObjectURL(a.url); }, []);
 
+  // a new book from the host (a reload, or the saved file opened again): the work starts over from it
+  const seen = useRef(base);
+  useEffect(() => {
+    if (seen.current === base) return;
+    seen.current = base;
+    setH({ stack: [base.lesson], i: 0, gesture: null });
+    setSaved(base.lesson);
+  }, [base]);
+
   const book: Book = useMemo(() => {
     const own = added.current;
     return {
@@ -58,8 +67,11 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
     return id;
   }, []);
 
-  /** The book as a .chalk file: every asset it uses that is at hand is carried; others stay external. */
-  const save = useCallback(async (): Promise<Uint8Array> => {
+  /**
+   * The book as a .chalk file: every asset it uses that is at hand is carried; others stay external. It is not
+   * marked saved here: call `markSaved(lesson)` once the file is really kept (the host's upload may fail).
+   */
+  const save = useCallback(async (): Promise<{ bytes: Uint8Array; lesson: Lesson }> => {
     const bundle: AssetBundle = new Map();
     for (const id of referencedAssetIds(lesson)) {
       const a = added.current.get(id);
@@ -68,11 +80,11 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
       if (b) bundle.set(id, { type: b.type, bytes: new Uint8Array(b.bytes) });
     }
     const bytes = await packLesson({ ...lesson, updatedAt: new Date().toISOString() }, bundle);
-    setSaved(lesson);
-    return bytes;
+    return { bytes, lesson };
   }, [lesson, base]);
+  const markSaved = useCallback((l: Lesson) => setSaved(l), []);
 
-  return { lesson, book, apply, undo, redo, addAsset, save, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
+  return { lesson, book, apply, undo, redo, addAsset, save, markSaved, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
 }
 
 export type Authoring = ReturnType<typeof useAuthoring>;
