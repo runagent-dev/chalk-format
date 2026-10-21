@@ -51,6 +51,7 @@ pnpm --filter @chalk-format/reader-app dev        # the showcase at http://local
 pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books
 pnpm --filter @chalk-format/reader-app build      # production build (apps/reader/dist)
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]
+node tools/reader-media-e2e.mjs [url]             # real clicks (desktop) and taps (phone): 3D, video, lab, audio play
 ```
 
 `reader-shots.mjs` steps: `{ name, waitFor?, select?: [selector, value], click?, eval?, drag?: [[x,y],…],
@@ -103,7 +104,7 @@ Built in phases (see `docs/reader-plan.md`). Phases 1–5 are done; phase 6 is p
   - design tone (chosen with the user): **utilitarian, warm**: paper-grey desk, one ink-blue accent, compact floating dock, no gradients.
 - **Strings** (`src/i18n.ts`): Bengali (default) and English, with Bengali digits via `num()`. The reader's chrome is translated; the book never is.
 
-Verified in the browser: every embed type, labs (sandbox holds), search with Bengali, notes save → wipe
+Verified in the browser with real clicks and taps (`tools/reader-media-e2e.mjs`): every embed type, labs (sandbox holds), search with Bengali, notes save → wipe
 storage → reopen (the file is a valid overlay), the PDF fallback, the playground, desktop and phone.
 
 ## The sample book
@@ -131,6 +132,10 @@ All built from committed sources by `apps/reader/showcase/make-showcase.ts`:
 
 ## Pitfalls already hit
 
+- **Test interactions with real input, never `element.click()` from a script.** Scripted clicks skip hit
+  testing. That once hid a bug where the invisible text layer covered every media card, so nothing played for a
+  real user while the screenshots looked fine. Use `click`/`tap` steps or Playwright's `p.click`/`p.tap`, and run
+  `tools/reader-media-e2e.mjs` after touching the reader's layers.
 - **Scripts run with tsx** add a `__name` helper to named functions; functions sent to `page.evaluate` then fail. Fix: `page.addInitScript({ content: 'window.__name = (f) => f' })`.
 - **Pages created with `setContent`** run at `about:blank` and cannot load `file://` fonts. Load from a real file (`make-media.mjs` `filePage`).
 - **Scripted UI steps:**

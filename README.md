@@ -59,6 +59,7 @@ phone layout.
 pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books after changing apps/reader/showcase/
 pnpm --filter @chalk-format/reader-app build      # production build into apps/reader/dist/
 node tools/reader-shots.mjs out/shots              # desktop + phone screenshots of the running app
+node tools/reader-media-e2e.mjs                    # real clicks and taps: 3D, video, lab and audio must actually play
 ```
 
 ## Working on the format

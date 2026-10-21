@@ -44,11 +44,12 @@ export const PageView = memo(function PageView(p: PageViewProps) {
       {p.live && (
         <div className="chalk-page-units" style={{ width, height, transform: `scale(${p.scale})` }}>
           <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc} />
+          {/* the text layer sits on the background, under the objects: cards and players stay clickable */}
+          {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.textLayer} />}
           {runs(p.page.objects).map((run, i) =>
             run.kind === 'svg'
               ? <svg key={i} className="chalk-layer" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>{run.items.map((o) => <VectorObject key={o.id} o={o} book={p.book} />)}</svg>
               : <HtmlItem key={run.item.id} o={run.item} page={p.page} render={p.renderHtmlObject} />)}
-          {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.textLayer} />}
           {p.highlights && p.highlights.length > 0 && (
             <svg className="chalk-layer chalk-hits" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
               {p.highlights.map((h, i) => <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={2} className={h.current ? 'is-current' : undefined} />)}

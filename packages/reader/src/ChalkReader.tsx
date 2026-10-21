@@ -194,7 +194,11 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} />;
     if (o.embed === 'audio') return <AudioEmbed book={book} o={o} locale={locale} />;
     // in its box on the page, unless that box is too small on this screen to use: then a larger view
-    const start = (el: HTMLElement) => { const r = el.getBoundingClientRect(); if (r.width < 440 || r.height < 260) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); };
+    // a lab needs room for its controls; a model only needs to be big enough to turn
+    const start = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect(), [w, h] = lab ? [440, 260] : [240, 180];
+      if (r.width < w || r.height < h) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi });
+    };
     return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} />;
   }, [book, config.features, t, locale, pages]);
 

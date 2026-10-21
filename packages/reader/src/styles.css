@@ -100,8 +100,8 @@
 .chalk-text { position: absolute; white-space: pre; line-height: 1.2; font-family: var(--chalk-font); }
 
 /* the text layer: invisible but selectable and searchable */
-.chalk-textlayer { position: absolute; inset: 0; line-height: 1; }
-.chalk-textlayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; font-family: var(--chalk-font); cursor: text; }
+.chalk-textlayer { position: absolute; inset: 0; line-height: 1; pointer-events: none; }
+.chalk-textlayer span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; font-family: var(--chalk-font); cursor: text; pointer-events: auto; }
 .chalk-textlayer span::selection { background: oklch(70% 0.12 255 / 0.35); }
 .chalk-hits rect { fill: var(--chalk-hit); }
 .chalk-hits rect.is-current { fill: var(--chalk-hit-current); }
