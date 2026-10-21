@@ -132,7 +132,9 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
       const e = el.current; if (!e) return;
       if (p.layout === 'single') { p.onPage(index); e.scrollTo({ top: 0 }); return; }
       const row = rows.find((r) => r.pages.includes(index)); if (!row) return;
-      e.scrollTo({ top: row.top - PAD, behavior: smooth ? 'smooth' : 'auto' });
+      // smooth only for a short way: a long jump goes at once, without drawing (or loading) every page between
+      const near = Math.abs(row.top - e.scrollTop) < e.clientHeight * 2.5;
+      e.scrollTo({ top: row.top - PAD, behavior: smooth && near ? 'smooth' : 'auto' });
     },
     reveal(index, x, y) {
       const e = el.current; if (!e) return;
@@ -140,7 +142,8 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
       const row = rows.find((r) => r.pages.includes(index)) ?? rows[0]; if (!row) return;
       let left = Math.max(PAD, (contentW - row.width) / 2);
       for (const i of row.pages) { if (i === index) break; left += getPageSize(p.pages[i]!).width * scale + GAP; }
-      e.scrollTo({ top: row.top + y * scale - e.clientHeight / 3, left: left + x * scale - e.clientWidth / 2, behavior: 'smooth' });
+      const top = row.top + y * scale - e.clientHeight / 3;
+      e.scrollTo({ top, left: left + x * scale - e.clientWidth / 2, behavior: Math.abs(top - e.scrollTop) < e.clientHeight * 2.5 ? 'smooth' : 'auto' });
     },
     zoomTo(z, at) {
       const e = el.current; if (!e) return;

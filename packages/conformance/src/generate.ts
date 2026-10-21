@@ -3,10 +3,10 @@
 // since every reader implementation is tested against these exact bytes. Cases of an earlier spec version are
 // frozen: written only when missing, so a later formatVersion never rewrites them (they must keep opening as
 // they are). Delete a file to regenerate it.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import { assetKey, hashBytes, type Lesson, type LessonPage, type Overlay, type StoreDescriptor } from '@chalk-format/model';
-import { packLesson, packOverlay, type AssetBundle } from '@chalk-format/container';
+import { packLesson, packOverlay, publishStreamed, unpackLesson, type AssetBundle } from '@chalk-format/container';
 
 const ROOT = new URL('../../../conformance/', import.meta.url);
 const T = '2026-01-01T00:00:00.000Z';
@@ -201,3 +201,12 @@ write('invalid', 'missing-inline-asset.chalk', await rawZip({
 
 writeFileSync(new URL('cases.json', ROOT), JSON.stringify(cases, null, 2) + '\n');
 console.log(`${cases.length} cases → conformance/`);
+
+// ---- 1.4: a streamed book (spec 1.4 §8): valid/presentation.chalk as a directory ----
+{
+  const r = await unpackLesson(new Uint8Array(readFileSync(new URL('valid/presentation.chalk', ROOT))));
+  const { files } = await publishStreamed(r.lesson, r.assets, { assetInfo: r.assetInfo });
+  const dir = new URL('streamed/presentation/', ROOT);
+  rmSync(dir, { recursive: true, force: true });
+  for (const [p, b] of files) { const u = new URL(p, dir); mkdirSync(new URL('./', u), { recursive: true }); writeFileSync(u, b); }
+}

@@ -71,7 +71,8 @@ export interface UnpackResult {
    */
   bundling: 'fat' | 'thin';
   /** Facts the manifest gives per asset id: size, meta, renditions (spec 1.2 §4.2). */
-  assetInfo: Map<string, AssetInfo>;
+  /** Facts about assets beyond their bytes (spec 1.2), and the type of external ones. */
+  assetInfo: Map<string, AssetInfo & { type?: string }>;
   /** Stores the book suggests for its external assets (spec 1.2 §4.4); invalid descriptors are dropped. */
   assetSources: StoreDescriptor[];
 }
@@ -204,10 +205,11 @@ export async function unpackLesson(
   const lesson: Lesson = parseLesson(migrateToLatest(rawLesson, fromVersion));
 
   const bundling = manifest.bundling === 'thin' ? 'thin' : 'fat';
-  const assetInfo = new Map<string, AssetInfo>();
+  const assetInfo = new Map<string, AssetInfo & { type?: string }>();
   for (const e of manifest.assets ?? []) {
     const info = assetInfoSchema.safeParse({ size: e.size, meta: e.meta, renditions: e.renditions });
-    if (info.success && (e.size !== undefined || e.meta || e.renditions)) assetInfo.set(e.id, info.data);
+    // facts the book gives, and for an external asset its type too (nothing else says what it is)
+    if (info.success && (e.size !== undefined || e.meta || e.renditions || !e.inline)) assetInfo.set(e.id, { ...info.data, ...(e.inline ? {} : { type: e.type }) });
   }
   const assetSources = (manifest.assetSources ?? []).map((d) => storeDescriptorSchema.parse(d));   // checked above
   return { lesson, assets, missingAssetIds, bundling, assetInfo, assetSources };

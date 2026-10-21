@@ -1,0 +1,145 @@
+import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
+import type { Lesson, LessonPage, StreamIndex, StreamPage, StreamText } from '@chalk-format/model';
+import type { AssetResolver, Book } from './book.js';
+
+/**
+ * A streamed book (spec 1.4): the index first, then pages as the reader asks for them. Until its file arrives a
+ * page is a placeholder of the right size showing its thumbnail, so the whole book can be laid out, numbered and
+ * browsed at once. Images are drawn from their own URLs, so the browser and the CDN cache them.
+ */
+export type StreamedBook = Book & {
+  readonly streamed: true;
+  readonly index: StreamIndex;
+  /** Pages to load, most wanted first. Requests not started yet for other pages are dropped (spec 1.4 §5). */
+  want(pages: number[]): void;
+  isLoaded(pageId: string): boolean;
+  /** Every page loaded (author mode, saving). */
+  readonly complete: boolean;
+  loadAll(): Promise<void>;
+  /** The search file (spec 1.4 §4), fetched once; null if the book has none. */
+  searchText(): Promise<StreamText | null>;
+  /** Called whenever pages arrive (`lesson` is then a new object). */
+  subscribe(fn: () => void): () => void;
+};
+
+export const isStreamed = (b: Book): b is StreamedBook => (b as Partial<StreamedBook>).streamed === true;
+/** Does this source name a streamed book (an index, or a directory)? */
+export const isStreamSource = (s: unknown): s is string | URL => (typeof s === 'string' || s instanceof URL) && /(\/|\/book\.json)(\?.*)?$/.test(String(s));
+
+const MAX_REQUESTS = 6;
+
+export async function openStreamedBook(source: string | URL, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch } = {}): Promise<StreamedBook> {
+  const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
+  const indexUrl = new URL(String(source).endsWith('/') ? `${String(source)}book.json` : String(source), globalThis.location?.href);
+  const res = await doFetch(indexUrl.href);
+  if (!res.ok) throw new Error(`could not fetch the book (${res.status})`);
+  const index = parseStreamIndex(await res.json());
+  const at = (path: string) => new URL(path, indexUrl).href;
+  const assetPath = new Map(index.assets.filter((a) => a.path).map((a) => [a.id, a.path!]));
+  const assetType = new Map(index.assets.map((a) => [a.id, a.type]));
+
+  const placeholder = (p: StreamPage): LessonPage => ({
+    id: p.id, title: p.title ?? '', ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
+    background: p.thumb ? { type: 'image', assetId: p.thumb } : { type: 'blank' }, objects: [],
+  });
+  const pages: LessonPage[] = index.pages.map(placeholder);
+  const snipPages: LessonPage[] = (index.snipPages ?? []).map(placeholder);
+  const loaded = new Set<string>();
+  let lesson: Lesson = {
+    id: index.id, title: index.title, locale: index.locale, createdAt: index.createdAt, updatedAt: index.updatedAt,
+    ...(index.coverAssetId ? { coverAssetId: index.coverAssetId } : {}), pages: [...pages], snipPages: [...snipPages],
+  };
+  const listeners = new Set<() => void>();
+  const changed = () => { lesson = { ...lesson, pages: [...pages], snipPages: [...snipPages] }; listeners.forEach((f) => f()); };
+
+  // the queue: page indices (snips as -1 - i), most wanted first; at most MAX_REQUESTS in flight
+  let queue: number[] = [];
+  const inflight = new Map<number, Promise<void>>();
+  const abort = new AbortController();
+  const entryOf = (k: number) => (k >= 0 ? index.pages[k] : index.snipPages?.[-1 - k]);
+  const loadPage = (k: number): Promise<void> => {
+    const running = inflight.get(k); if (running) return running;
+    const e = entryOf(k); if (!e) return Promise.resolve();
+    const job = (async () => {
+      try {
+        const r = await doFetch(at(e.file), { signal: abort.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const page = parseStreamPage(index, await r.json(), k < 0);
+        if (k >= 0) pages[k] = page; else snipPages[-1 - k] = page;
+        loaded.add(e.id); changed();
+      } catch {
+        // stays a placeholder; it is asked for again the next time it is wanted (spec 1.4 §5.6)
+      } finally { inflight.delete(k); pump(); }
+    })();
+    inflight.set(k, job);
+    return job;
+  };
+  const pump = () => {
+    while (inflight.size < MAX_REQUESTS && queue.length) {
+      const k = queue.shift()!;
+      if (!loaded.has(entryOf(k)?.id ?? '')) void loadPage(k);
+    }
+  };
+
+  // assets: the book's own files by URL (cacheable), external ones through the host
+  const urls = new Map<string, Promise<string | null>>(), settled = new Map<string, string | null>(), owned: string[] = [];
+  const resolveUrl = async (id: string): Promise<string | null> => {
+    const p = assetPath.get(id);
+    if (p) return at(p);
+    if (!o.resolveAsset) return null;
+    const r = await o.resolveAsset(id);
+    if (r == null) return null;
+    if (typeof r === 'string') return r;
+    const u = URL.createObjectURL(r); owned.push(u); return u;
+  };
+  let text: Promise<StreamText | null> | null = null;
+
+  const book: StreamedBook = {
+    streamed: true, index,
+    get lesson() { return lesson; },
+    missingAssetIds: [],
+    assetUrl(id) {
+      let u = urls.get(id);
+      if (!u) { u = resolveUrl(id).catch(() => null).then((v) => { settled.set(id, v); return v; }); urls.set(id, u); }
+      return u;
+    },
+    peekUrl(id) { const p = assetPath.get(id); return p ? at(p) : settled.get(id); },
+    async assetBytes(id) {
+      const url = await book.assetUrl(id);
+      if (!url) return null;
+      const r = await doFetch(url, { signal: abort.signal });
+      if (!r.ok) return null;
+      return { type: assetType.get(id) ?? r.headers.get('content-type') ?? 'application/octet-stream', bytes: await r.arrayBuffer() };
+    },
+    want(list) {
+      const keys = list.filter((i) => i >= 0 && i < index.pages.length && !loaded.has(index.pages[i]!.id));
+      queue = keys.filter((k) => !inflight.has(k));
+      pump();
+    },
+    isLoaded: (id) => loaded.has(id),
+    get complete() { return loaded.size === index.pages.length + (index.snipPages?.length ?? 0); },
+    async loadAll() {
+      const all = [...index.pages.keys(), ...(index.snipPages ?? []).map((_, i) => -1 - i)];
+      // a few at a time, in reading order
+      for (let i = 0; i < all.length; i += MAX_REQUESTS) await Promise.all(all.slice(i, i + MAX_REQUESTS).map((k) => (loaded.has(entryOf(k)!.id) ? undefined : loadPage(k))));
+      if (!book.complete) throw new Error('some pages of this book could not be loaded');
+    },
+    searchText() {
+      if (!index.text) return Promise.resolve(null);
+      text ??= doFetch(at(index.text.file), { signal: abort.signal }).then(async (r) => (r.ok ? parseStreamText(await r.json()) : null)).catch(() => { text = null; return null; });
+      return text;
+    },
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    dispose() { abort.abort(); owned.forEach((u) => URL.revokeObjectURL(u)); listeners.clear(); urls.clear(); queue = []; },
+  };
+  // snip pages are small and opened from markers anywhere: they come right after the first pages
+  if (index.snipPages?.length) setTimeout(() => index.snipPages!.forEach((_, i) => { if (inflight.size < MAX_REQUESTS) void loadPage(-1 - i); }), 0);
+  return book;
+}
+
+/** Page indices to load around `current`, nearest first: current, next, previous, next but one, … (spec 1.4 §5). */
+export function windowAround(current: number, count: number, radius: number): number[] {
+  const out = [current];
+  for (let d = 1; d <= radius; d++) { out.push(current + d, current - d); }
+  return out.filter((i) => i >= 0 && i < count);
+}

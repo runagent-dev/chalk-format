@@ -89,6 +89,19 @@ Every colour, font, space and radius is a CSS custom property on `.chalk-reader`
 `--chalk-surface`, `--chalk-accent`, `--chalk-font`, …; see `styles.css`). Override them on the container, or on
 `.chalk-reader[data-theme="dark"]` for the dark theme. Nothing leaks outside `.chalk-reader`.
 
+## Streamed books (spec 1.4)
+
+Give `source` a streamed book's directory (ending in `/`) or its `book.json`: the reader opens it from the index,
+shows every page at once (placeholders with thumbnails until they arrive), and loads the current page first, then
+outward to `config.streaming.window` pages each way (default 5). A long jump goes straight there and loads only
+around it; search loads the book's text file and finds words on pages not loaded yet; author mode loads the rest
+of the book first. `openStreamedBook(url)` gives the same book outside the component. Publish with
+`tools/chalk-stream.ts publish book.chalk out/`.
+
+| Option | Default | |
+|---|---|---|
+| `streaming.window` | `5` | Pages kept loaded each way around the current one. |
+
 ## Author mode
 
 With `config.authoring.enabled`, the reader can also edit the book. A Read / Author switch sits at the start of the

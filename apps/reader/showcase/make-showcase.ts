@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { convertPdfToChalk } from '@chalk-format/convert-pdf';
-import { packLesson, unpackLesson } from '@chalk-format/container';
+import { packLesson, unpackLesson, publishStreamed } from '@chalk-format/container';
 import { getPageSize, hashBytes, type LessonObject, type LessonPage } from '@chalk-format/model';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -153,3 +153,30 @@ writeFileSync(path.join(out, 'showcase.chalk'), bytes);
 }
 const runs = lesson.pages.reduce((n, p) => n + (p.textLayer?.length ?? 0), 0);
 console.log(`showcase.chalk: ${(bytes.length / 1024 / 1024).toFixed(2)} MB, ${lesson.pages.length} pages, ${runs} text runs, ${assets.size} assets`);
+
+// ---------- 5. streamed books (spec 1.4) ----------
+// The sample as a directory, and a 60-page book (the sample's pages over and over) to show loading by window:
+// the reader fetches book.json, then only the pages around the one being read.
+async function publish(l: typeof lesson, a: typeof assets, dir: string, labels?: Map<string, string>) {
+  const { files, index } = await publishStreamed(l, a, labels ? { labels } : {});
+  rmSync(dir, { recursive: true, force: true });
+  for (const [p, b] of files) { mkdirSync(path.dirname(path.join(dir, p)), { recursive: true }); writeFileSync(path.join(dir, p), b); }
+  const total = [...files.values()].reduce((n, b) => n + b.byteLength, 0);
+  console.log(`${path.basename(dir)}/: ${index.pages.length} pages, book.json ${(files.get('book.json')!.byteLength / 1024).toFixed(1)} KB, ${(total / 1024 / 1024).toFixed(2)} MB in all`);
+}
+await publish(lesson, assets, path.join(out, 'showcase'));
+{
+  const bn = new Intl.NumberFormat('bn-BD');
+  const long = structuredClone(lesson), labels = new Map<string, string>();
+  long.id = 'chalk-showcase-long'; long.title += ' · 60 pages';
+  long.pages = Array.from({ length: 60 }, (_, i) => {
+    const pg = structuredClone(lesson.pages[i % lesson.pages.length]!);
+    pg.id = `long-${i + 1}`; pg.title = `${pg.title} (${i + 1})`;
+    labels.set(pg.id, bn.format(i + 1));
+    return pg;
+  });
+  await publish(long, assets, path.join(out, 'long'), labels);
+  const whole = await packLesson(long, assets);
+  writeFileSync(path.join(out, 'long.chalk'), whole);
+  console.log(`long.chalk: the same 60 pages in one file, ${(whole.length / 1024 / 1024).toFixed(2)} MB`);
+}

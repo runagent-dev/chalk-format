@@ -96,6 +96,8 @@ export type ReaderConfig = {
     /** The dock in author mode. The read-mode dock gets a 'mode' button at its start if it has none. */
     dock: (DockItemId | CustomDockItem)[];
   };
+  /** Streamed books (spec 1.4): how many pages to keep loaded each way around the current one. */
+  streaming: { window: number };
   /** Your own player or viewer for a kind, in place of the reader's (the browser's video and audio, <model-viewer>). */
   renderers: MediaRenderers;
 };
@@ -131,6 +133,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
     enabled: false, startIn: 'read', locale: 'en',
     dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'undo', 'redo', '|', 'save', 'theme', 'language'],
   },
+  streaming: { window: 5 },
   presentation: DEFAULT_PRESENTATION,
   renderers: {},
 };

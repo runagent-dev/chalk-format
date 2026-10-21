@@ -1,0 +1,54 @@
+{
+  "$id": "https://chalk-format.dev/schema/v10/stream-text.schema.json",
+  "title": "Chalk streamed book search text (spec 1.4 §4)",
+  "x-chalk-format-version": 10,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "pages": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number"
+            },
+            "fontSize": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "text",
+            "x",
+            "y",
+            "width",
+            "fontSize"
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "v",
+    "pages"
+  ],
+  "additionalProperties": {}
+}
