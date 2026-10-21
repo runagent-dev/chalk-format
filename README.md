@@ -16,6 +16,7 @@ interactive **labs**: simulations that run offline in a sandbox), with a searcha
 | [`spec/1.0`](spec/1.0/README.md) | The written specification (Chalk 1.0 Core = `formatVersion` 7) |
 | [`spec/1.1`](spec/1.1/README.md) | Chalk 1.1: labs (`formatVersion` 8) and the [Host API](spec/1.1/host-api.md) labs use to talk to the reader |
 | [`spec/1.2`](spec/1.2/README.md) | Chalk 1.2: asset stores (`formatVersion` 9): short `c1:` keys, stores that turn keys into bytes, the reader's resolution rules, and the [registry API](spec/1.2/registry-api.md) authoring tools use (with a [reference database](spec/1.2/registry.sql)) |
+| [`spec/1.3`](spec/1.3/README.md) | Chalk 1.3: presentation (`formatVersion` 10): how the author wants each image or embed presented (live or a card, what a tap opens, label, icon, accent, autoplay), from fixed lists, never CSS |
 | [`schema/`](schema) | JSON Schemas generated from the model, for non-TypeScript readers: lesson, page, overlay, store descriptor, index shard, registry API |
 | [`conformance/`](conformance) | Sample packages every reader must accept (`valid/`) or reject (`invalid/`), key test vectors (`keys.json`), store examples (`stores/`) |
 | `packages/model` | The data model (Zod, single source of truth), migrations, overlays, asset ids, media sniffing |

@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.2';
+const CURRENT = '1.3';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
@@ -158,7 +158,33 @@ const storeFiles: Record<string, unknown> = {
 };
 for (const [name, doc] of Object.entries(storeFiles)) writeFileSync(new URL(`stores/${name}`, ROOT), JSON.stringify(doc, null, 2) + '\n');
 
+// ── 1.3: presentation ────────────────────────────────────────────────────
+// Every field on every kind it applies to, plus values from a later version (an icon and a `show` this
+// version does not know), which readers must accept and treat as defaults (spec 1.3 §1).
+{
+  const k = { png: await assetKey(PNG), glb: await assetKey(GLB), lab: await assetKey(PENDULUM) };
+  const media: AssetBundle = new Map([[k.png, { type: 'image/png', bytes: PNG }], [k.glb, { type: 'model/gltf-binary', bytes: GLB }], [k.lab, { type: 'text/html', bytes: PENDULUM }]]);
+  write('valid', 'presentation.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
+    { id: 'img-popup', type: 'image', x: 10, y: 10, width: 120, height: 90, assetId: k.png, presentation: { open: 'popup', label: 'চিত্র ১' } },
+    { id: 'img-icon', type: 'image', x: 150, y: 10, width: 120, height: 90, assetId: k.png, displayMode: 'icon', presentation: { open: 'fullscreen', icon: 'eye', accent: '#1F4D8F' } },
+    { id: 'model-live', type: 'embed', embed: 'model3d', x: 10, y: 120, width: 400, height: 300, assetId: k.glb, poster: k.png,
+      presentation: { show: 'live', autoRotate: true, label: 'স্ক্রু গজ', icon: 'ruler', accent: '#2f6f4e' } },
+    { id: 'video', type: 'embed', embed: 'video', x: 420, y: 120, width: 320, height: 180, url: 'https://media.example.org/pendulum.mp4', poster: k.png,
+      presentation: { show: 'live', autoplay: true, muted: true, loop: true, open: 'popup' } },
+    { id: 'audio', type: 'embed', embed: 'audio', x: 420, y: 320, width: 320, height: 60, url: 'https://media.example.org/fork.mp3', presentation: { autoplay: true, loop: true, label: 'সুরশলাকা' } },
+    { ...labObject, id: 'lab-full', poster: k.png, lab: { ...labObject.lab, entry: k.lab, assets: [k.glb] }, presentation: { open: 'fullscreen', icon: 'atom' } },
+    { id: 'later', type: 'embed', embed: 'model3d', x: 760, y: 120, width: 200, height: 200, assetId: k.glb, displayMode: 'icon',
+      presentation: { show: 'hologram', open: 'sideways', icon: 'telescope', sparkle: true } },
+  ] })] }), media), { kind: 'lesson', since: '1.3', covers: 'presentation on images, models, video, audio and a lab; unknown show, open and icon values and an unknown field (accepted, defaults)' });
+}
+
 // ── invalid ──────────────────────────────────────────────────────────────
+const embedWith = (presentation: Record<string, unknown>) => JSON.stringify(page('p1', { objects: [
+  { id: 'm', type: 'embed', embed: 'model3d', x: 0, y: 0, width: 100, height: 100, url: 'https://media.example.org/m.glb', presentation } as never] }));
+write('invalid', 'presentation-accent.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 10 }), 'pages/page-1.json': embedWith({ accent: 'url(https://evil.example/x)' }) }),
+  { kind: 'lesson', since: '1.3', covers: 'an accent that is CSS, not a #rrggbb colour' });
+write('invalid', 'presentation-label.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 10 }), 'pages/page-1.json': embedWith({ label: '' }) }),
+  { kind: 'lesson', since: '1.3', covers: 'an empty label' });
 write('invalid', 'no-manifest.chalk', await rawZip({ 'pages/page-1.json': blankPage }), { kind: 'lesson', covers: 'manifest.json missing' });
 write('invalid', 'wrong-format-id.chalk', await rawZip({ 'manifest.json': manifest({ format: 'epub' }), 'pages/page-1.json': blankPage }),
   { kind: 'lesson', covers: 'manifest.format is not chalkbook.lesson' });
