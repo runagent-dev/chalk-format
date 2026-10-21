@@ -95,8 +95,11 @@ const at = (b: Box) => {
 };
 const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
 
-{ const b = at(frames.model3d!); put(b.page, { id: 'screw-gauge', type: 'embed', embed: 'model3d', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.model, poster: ids.modelPoster }); }
-{ const b = at(frames.video!); put(b.page, { id: 'pendulum-video', type: 'embed', embed: 'video', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.video, poster: ids.videoPoster }); }
+{ const b = at(frames.model3d!); put(b.page, { id: 'screw-gauge', type: 'embed', embed: 'model3d', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.model, poster: ids.modelPoster,
+  // spec 1.3: turning on the page as soon as you get there, with its own label, icon and colour
+  presentation: { show: 'live', autoRotate: true, label: 'স্ক্রু গজ', icon: 'ruler', accent: '#2f6f4e' } }); }
+{ const b = at(frames.video!); put(b.page, { id: 'pendulum-video', type: 'embed', embed: 'video', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.video, poster: ids.videoPoster,
+  presentation: { label: 'সরল দোলকের দোলন', loop: true } }); }
 { const b = at(frames.audio!); put(b.page, { id: 'tuning-fork', type: 'embed', embed: 'audio', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.audio }); }
 {
   const b = at(frames.lab!);
@@ -104,6 +107,8 @@ const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
     id: 'pendulum-lab', type: 'embed', embed: 'plugin', plugin: 'chalk.lab', x: b.x, y: b.y, width: b.width, height: b.height, poster: ids.labPoster,
     lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0', title: 'সরল দোলক · Simple pendulum', entry: ids.lab,
       params: { length: 1, swings: 10, readings: 3 }, capabilities: ['state', 'progress'] },
+    // a lab needs room: a tap opens it full screen
+    presentation: { open: 'fullscreen' },
   });
 }
 {
@@ -123,7 +128,8 @@ const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
 {
   // page 4: the tuning fork again as a small marker (icon display mode) beside the table
   const p = lesson.pages[3]!, { width, height } = getPageSize(p), kx = width / 210, ky = height / 297;
-  put(p, { id: 'tuning-fork-icon', type: 'embed', embed: 'audio', x: Math.round(176 * kx), y: Math.round(233 * ky), width: 56, height: 56, assetId: ids.audio, displayMode: 'icon' });
+  put(p, { id: 'tuning-fork-icon', type: 'embed', embed: 'audio', x: Math.round(176 * kx), y: Math.round(233 * ky), width: 56, height: 56, assetId: ids.audio, displayMode: 'icon',
+  presentation: { label: 'সুরশলাকা · ৪৪০ Hz', accent: '#c2621a' } });
 }
 
 // ---------- 4. pack ----------
