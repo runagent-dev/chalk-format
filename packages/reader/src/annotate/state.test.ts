@@ -40,3 +40,18 @@ describe('annotations as an overlay', () => {
     expect(edit.remove('p2', new Set(['nothing']))(l)).toBe(l);
   });
 });
+
+describe('notes on an edited book (authoring)', () => {
+  it('move onto the new book: the notes stay, and so does what the author added', () => {
+    const withNote = edit.add('p1', note)(base);
+    const edited = edit.add('p2', { id: 'added', type: 'rect', x: 0, y: 0, width: 10, height: 10, fill: 'transparent', stroke: '#000', strokeWidth: 2 })(base);
+    // what useAnnotations does when its base changes
+    const moved = composeOverlay(edited, diffLesson(base, withNote, { id: base.id, version: 10 }));
+    expect(moved.pages[0]!.objects.map((o) => o.id)).toEqual(['printed', 'n1']);
+    expect(moved.pages[1]!.objects.map((o) => o.id)).toEqual(['added']);
+    // and the overlay against the new book holds only the note
+    const ov = diffLesson(edited, moved, { id: base.id, version: 10 });
+    expect(JSON.stringify(ov)).toContain('n1');
+    expect(JSON.stringify(ov)).not.toContain('added');
+  });
+});

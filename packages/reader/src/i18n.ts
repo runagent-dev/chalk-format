@@ -15,7 +15,7 @@ const STRINGS = {
     theme: 'Dark mode', language: 'বাংলা', fullscreen: 'Full screen', close: 'Close',
     play: 'Play', startLab: 'Start the lab', labStopped: 'The lab stopped', unsupported: 'This reader cannot show this item',
     openSnip: 'Open the snip', textPrompt: 'Type your note',
-    model3d: '3D model', video: 'Video', audio: 'Sound',
+    model3d: '3D model', video: 'Video', audio: 'Sound', image: 'Image',
     notesSaved: 'Your notes were saved as a .chalk file', notesOpened: 'Notes opened', notesFailed: 'These notes could not be opened',
   },
   bn: {
@@ -31,7 +31,7 @@ const STRINGS = {
     theme: 'অন্ধকার মোড', language: 'English', fullscreen: 'পূর্ণ পর্দা', close: 'বন্ধ করো',
     play: 'চালাও', startLab: 'ল্যাব শুরু করো', labStopped: 'ল্যাবটি বন্ধ হয়ে গেছে', unsupported: 'এই রিডার এটি দেখাতে পারে না',
     openSnip: 'অংশটি খোলো', textPrompt: 'তোমার নোট লেখো',
-    model3d: 'ত্রিমাত্রিক মডেল', video: 'ভিডিও', audio: 'শব্দ',
+    model3d: 'ত্রিমাত্রিক মডেল', video: 'ভিডিও', audio: 'শব্দ', image: 'ছবি',
     notesSaved: 'তোমার নোট একটি .chalk ফাইলে সংরক্ষিত হয়েছে', notesOpened: 'নোট খোলা হয়েছে', notesFailed: 'এই নোট খোলা গেল না',
   },
 } as const;

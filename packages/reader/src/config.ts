@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { DEFAULT_PRESENTATION, type MediaRenderers, type PresentationConfig } from './present.js';
 
 /**
  * Everything about the reader that a host app can set. One `config` prop, partial: what is not given keeps
@@ -15,6 +16,8 @@ export type DockItemId =
   | 'thumbnails' | 'search'
   | 'tools' | 'undo' | 'redo'
   | 'export' | 'import' | 'theme' | 'language' | 'fullscreen'
+  /** Authoring (when `authoring.enabled`): switch between reading and authoring, add media, save the book. */
+  | 'mode' | 'add' | 'save'
   | '|';
 
 /** A dock button of the host's own. */
@@ -77,6 +80,26 @@ export type ReaderConfig = {
   /** pdf.js's worker script (a URL), to draw PDF pages that carry no rendered image. Unset: a placeholder.
    *  With Vite: `import src from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`. */
   pdfWorkerSrc: string | null;
+  /** How media is presented: your icons, colours and defaults, and whether authors' colours and live media are
+   *  used (spec 1.3 §5). The author's choices are kept wherever you do not override them. */
+  presentation: PresentationConfig;
+  /** Author mode: place media on the pages and choose how each piece is presented (spec 1.3), then save the
+   *  book. Off by default; a reader for students leaves it off. While on, read mode is the student's reader over
+   *  the edited book (notes stay on top of it); author mode edits the book and hides the notes. */
+  authoring: {
+    enabled: boolean;
+    /** The mode the reader opens in. */
+    startIn: 'read' | 'author';
+    /** The language of the author's tools (sidebar, rail, author dock). The reader's own language (`locale`) is
+     *  for students; the book's content is never translated. */
+    locale: Locale;
+    /** The dock in author mode. The read-mode dock gets a 'mode' button at its start if it has none. */
+    dock: (DockItemId | CustomDockItem)[];
+  };
+  /** Streamed books (spec 1.4): how many pages to keep loaded each way around the current one. */
+  streaming: { window: number };
+  /** Your own player or viewer for a kind, in place of the reader's (the browser's video and audio, <model-viewer>). */
+  renderers: MediaRenderers;
 };
 
 export const DEFAULT_CONFIG: ReaderConfig = {
@@ -106,9 +129,16 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   labs: { autoStart: false },
   persistence: 'local',
   pdfWorkerSrc: null,
+  authoring: {
+    enabled: false, startIn: 'read', locale: 'en',
+    dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'undo', 'redo', '|', 'save', 'theme', 'language'],
+  },
+  streaming: { window: 5 },
+  presentation: DEFAULT_PRESENTATION,
+  renderers: {},
 };
 
-type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] | ((...a: never[]) => unknown) ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
 export type ReaderConfigInput = DeepPartial<ReaderConfig>;
 
 const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
@@ -125,8 +155,8 @@ export function resolveConfig(input: ReaderConfigInput = {}): ReaderConfig {
     return over;
   };
   const c = merge(DEFAULT_CONFIG, input) as ReaderConfig;
-  // no annotations in read-only mode, whatever else says
-  if (c.readOnly) c.features = { ...c.features, annotations: false };
+  // no annotations in read-only mode, whatever else says; and no authoring
+  if (c.readOnly) { c.features = { ...c.features, annotations: false }; c.authoring = { ...c.authoring, enabled: false }; }
   if (!c.annotations.tools.includes(c.annotations.defaultTool)) c.annotations = { ...c.annotations, defaultTool: c.annotations.tools[0] ?? 'pan' };
   return c;
 }

@@ -28,6 +28,15 @@ html, body { margin: 0; height: 100%; overflow-x: clip; background: var(--app-pa
 .app-main { flex: 1; min-height: 0; display: flex; }
 .app-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 480px) { .app-mark span { display: none; } }
+/* a phone: the book picker gets the first row, the buttons the second */
+@media (max-width: 640px) {
+  .app-bar { flex-wrap: wrap; height: auto; row-gap: 8px; padding: 8px 12px; }
+  .app-mark { display: none; }
+  .app-field { flex: 1 1 100%; }
+  .app-field select { width: 100%; }
+  .app-btn, .app-mode button { min-height: 32px; padding: 0 10px; font-size: 0.8125rem; }
+  .app-mode button { min-height: 28px; }
+}
 
 /* ---------- the configuration playground ---------- */
 :root { --app-surface: oklch(99% 0.004 85); --app-surface-2: oklch(95.5% 0.008 85); --app-accent-soft: oklch(92% 0.035 255); --app-mono: ui-monospace, "SF Mono", Menlo, monospace; }
@@ -63,3 +72,14 @@ html, body { margin: 0; height: 100%; overflow-x: clip; background: var(--app-pa
 @media (max-width: 760px) {
   .pg { position: absolute; left: 0; right: 0; bottom: 0; z-index: 60; width: auto; height: 70%; border-left: 0; border-top: 1px solid var(--app-line); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px oklch(20% 0.02 260 / 0.2); }
 }
+
+/* the demo renderer in the playground: a stand-in for a host's own 3D viewer */
+.demo-viewer { position: absolute; inset: 0; display: grid; place-items: end start; overflow: hidden; border-radius: 8px; background: #0b1020; color: #fff; }
+.demo-viewer img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+.demo-viewer span { position: relative; margin: 10px; padding: 4px 10px; border-radius: 999px; background: #7c3aed; font: 600 14px/1.4 system-ui, sans-serif; }
+
+/* Read / Author switch in the bar */
+.app-mode { display: inline-flex; padding: 3px; border: 1px solid var(--app-line); border-radius: 999px; }
+.app-mode button { min-height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 0.875rem; cursor: pointer; }
+.app-mode button[aria-checked="true"] { background: var(--app-accent-soft); color: var(--app-accent); font-weight: 600; }
+.app-mode button:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 1px; }

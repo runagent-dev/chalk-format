@@ -17,9 +17,9 @@ optional text layer), assets addressed by `sha256:`, and optionally an overlay (
 
 | | State |
 |---|---|
-| `main` | Chalk 1.0 Core (`formatVersion` 7) + **Chalk 1.1 labs** (`formatVersion` 8, PR #1, merged) |
-| `feat/web-reader` | **The reference reader**: 7 commits on top of `main`, **not pushed, no PR yet**. The user was asked whether to push and open a PR, and where to deploy the showcase (GitHub Pages, Cloudflare, or their Coolify server). No answer yet. |
-| `feat/asset-stores` | **Chalk 1.2: asset stores** (`formatVersion` 9): 5 commits on top of `main`, in the worktree `../chalk-format-stores`, **not pushed**. Spec `spec/1.2/` (keys, stores, resolution, the registry API, a reference Postgres schema), `packages/store` (resolver, registry client), model/container support, schemas, conformance. All checks pass (307 tests). Independent of `feat/web-reader`; the reader does not use the resolver yet. |
+| `main` | Chalk 1.0 Core (7), **1.1 labs** (8), **1.2 asset stores** (9), and **the reference reader** (PRs #1–#3, merged) |
+| `feat/presentation` | **Chalk 1.3 presentation** (`formatVersion` 10) + **host restyling** + **author mode**, on top of `main`, **not pushed**. Spec `spec/1.3/`; `presentation` on images and embeds (live or card, what a tap opens, label, icon, accent, playback); `config.presentation` / `config.renderers` (host icons, colours, defaults, own players); `config.authoring` (Read/Author switch, select/move/resize, properties panel, add media, save). |
+| `feat/streamed-books` | **Chalk 1.4 streamed books**, on top of `feat/presentation` (PR #4): spec `spec/1.4/`; `publishStreamed` / `assembleStreamed` (container); `openStreamedBook` in the reader (index first, ±window, priority, cancelled jumps, search through `text.json`, author mode loads all); `tools/chalk-stream.ts`; showcase samples `Streamed: …` (incl. a 60-page book); `tools/reader-stream-e2e.mjs` watches the network. Not yet: reading a `.chalk` by byte ranges (spec §7), host stores for streamed books' external media, thumbnails for books that have none. |
 | CI | `.github/workflows/ci.yml`: lint, typecheck, tests, and "schema/ matches the model" |
 
 The plan and phase status for the reader live in [`docs/reader-plan.md`](docs/reader-plan.md).
@@ -47,12 +47,15 @@ The plan and phase status for the reader live in [`docs/reader-plan.md`](docs/re
 
 ```bash
 pnpm install
-pnpm check                                        # lint + typecheck + all tests (276 at last count)
+pnpm check                                        # lint + typecheck + all tests (338 at last count)
 pnpm --filter @chalk-format/reader-app dev        # the showcase at http://localhost:5190
 pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books
 pnpm --filter @chalk-format/reader-app build      # production build (apps/reader/dist)
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]
+node tools/reader-stream-e2e.mjs [url] [shots]    # a streamed 60-page book: what is fetched on open, on a jump, for search, for author mode
+npx tsx tools/chalk-stream.ts publish book.chalk out/dir/   # a .chalk as a streamed book (and `pack dir/ book.chalk` back)
 node tools/reader-media-e2e.mjs [url]             # real clicks (desktop) and taps (phone): 3D, video, lab, audio play
+npx tsx tools/reader-author-e2e.mjs [url] [shots] # author mode with real input: select, properties, undo, move, resize, add files, save and reopen
 ```
 
 `reader-shots.mjs` steps: `{ name, waitFor?, select?: [selector, value], click?, eval?, drag?: [[x,y],…],
@@ -127,14 +130,19 @@ All built from committed sources by `apps/reader/showcase/make-showcase.ts`:
 
 1. **Bengali text from PDFs is broken.** Chromium's PDF output (and many other tools') has no Unicode for shaped Bengali glyphs (conjuncts, pre-base vowel signs); pdf.js reads them as U+0000, so search on a converted Bengali PDF fails. Real textbooks in older Bijoy-style fonts will be worse. `convert-pdf` needs OCR or legacy-encoding → Unicode conversion. Not started.
 2. **Phase 6 is not finished:** an accessibility audit with a screen reader, a performance check on a cheap Android phone, a smaller first download (179 KB gzip: React + zod validation + JSZip; pdf.js and model-viewer already load on demand), deploying the showcase.
-3. **Push `feat/web-reader` and open a PR:** waiting for the user.
+3. **Author mode, next:** it has ChalkBoard's tools (rail: select, pen, highlighter, eraser, text, shapes, media) and
+   a Figma-style right sidebar that holds every setting (selection › media being added › tool › page). The user
+   asked for exactly that: all configuration in the right sidebar, by context. The user wants it desktop-first (mouse and keyboard). Still
+   missing: editing lab settings (`lab.params`), replacing a poster, editing text in place (it is edited in the
+   panel), a snip-region tool, pages (add, reorder, import from PDF), the media library over
+   the registry (search and reuse; needs the registry service, see 5). Audio shows as a card in author mode, not as
+   its player bar. Push `feat/presentation` and open a PR: ask the user.
 4. **Switching chalkboard to chalk-format:** not started. Do it on a separate branch in a separate worktree. Chalkboard's `feat/interactive-lab-embed` branch has a stale uncommitted WIP (from 2026-08-29) that adds `embed: "lab"` as `formatVersion` 8, which conflicts with Chalk 1.1. Don't build on it, and don't touch that working tree.
 5. **Asset stores (1.2), next steps:** push and PR `feat/asset-stores`; make the reader use `@chalk-format/store`'s
    resolver (host stores from config, the book's `assetSources`, a Cache Storage cache, `locate()` for video);
    build a registry service (open questions for the user: Cloudflare R2 or MinIO on Coolify for the bucket, and
    whether the service is its own app or part of `runagent-middleware-v2`); the authoring UI on top of it
-   (the user asked for "a good authoring UI": media library with search and upload, placing media and labs, lab
-   settings, page editing, saving a new book).
+   (author mode exists now, see 3; its media library waits for the registry).
 6. **Spec roadmap** (`spec/1.1/README.md` §6): general fallbacks for other new object types (`requires`), host-provided data queries (the reserved `data` capability), learner-state packages, navigation (TOC, links), reflowable text.
 
 ## Pitfalls already hit

@@ -84,6 +84,27 @@
     "covers": "a book's suggested store asks for credentials (books carry none)"
   },
   {
+    "file": "valid/presentation.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.3",
+    "covers": "presentation on images, models, video, audio and a lab; unknown show, open and icon values and an unknown field (accepted, defaults)"
+  },
+  {
+    "file": "invalid/presentation-accent.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.3",
+    "covers": "an accent that is CSS, not a #rrggbb colour"
+  },
+  {
+    "file": "invalid/presentation-label.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.3",
+    "covers": "an empty label"
+  },
+  {
     "file": "invalid/no-manifest.chalk",
     "valid": false,
     "kind": "lesson",

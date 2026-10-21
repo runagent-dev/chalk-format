@@ -6,7 +6,8 @@ import { inkPath } from '../render/ink.js';
 import { bounds, inkFrom, moved, topHit, translucent, type Point } from './ops.js';
 import { edit } from './state.js';
 
-export type Pen = { tool: ToolId; color: string; highlight: string; size: number; textSize: number };
+/** What the next stroke, shape or text looks like. `fill` is for rectangles and ellipses (default: none). */
+export type Pen = { tool: ToolId; color: string; highlight: string; size: number; textSize: number; fill?: string };
 
 type Draft =
   | { kind: 'ink'; points: Point[] }
@@ -95,7 +96,7 @@ export function Surface({ page, scale, pen, editable, apply, textPrompt }: {
       const { a, b } = draft, r = (v: number) => Math.round(v * 10) / 10;
       if (Math.hypot(b.x - a.x, b.y - a.y) > tol) {
         if (pen.tool === 'line' || pen.tool === 'arrow') apply(edit.add(page.id, { id, type: pen.tool, x: r(a.x), y: r(a.y), x2: r(b.x), y2: r(b.y), stroke: pen.color, strokeWidth: pen.size }));
-        else apply(edit.add(page.id, { id, type: pen.tool === 'ellipse' ? 'ellipse' : 'rect', x: r(Math.min(a.x, b.x)), y: r(Math.min(a.y, b.y)), width: r(Math.abs(b.x - a.x)), height: r(Math.abs(b.y - a.y)), fill: 'transparent', stroke: pen.color, strokeWidth: pen.size }));
+        else apply(edit.add(page.id, { id, type: pen.tool === 'ellipse' ? 'ellipse' : 'rect', x: r(Math.min(a.x, b.x)), y: r(Math.min(a.y, b.y)), width: r(Math.abs(b.x - a.x)), height: r(Math.abs(b.y - a.y)), fill: pen.fill ?? 'transparent', stroke: pen.color, strokeWidth: pen.size }));
       }
     } else if (pen.tool === 'text') {
       const p = at(e);
@@ -120,7 +121,7 @@ export function Surface({ page, scale, pen, editable, apply, textPrompt }: {
           return <path d={inkPath(points, hl ? Math.max(pen.size * 3, 14) : pen.size, false)} transform={`translate(${x} ${y})`} fill={hl ? translucent(pen.highlight) : pen.color} />;
         })()}
         {draft?.kind === 'shape' && (() => {
-          const { a, b } = draft, common = { stroke: pen.color, strokeWidth: pen.size, fill: 'none' };
+          const { a, b } = draft, common = { stroke: pen.color, strokeWidth: pen.size, fill: pen.fill && pen.fill !== 'transparent' && pen.tool !== 'line' && pen.tool !== 'arrow' ? pen.fill : 'none' };
           if (pen.tool === 'ellipse') return <ellipse cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2} rx={Math.abs(b.x - a.x) / 2} ry={Math.abs(b.y - a.y) / 2} {...common} />;
           if (pen.tool === 'line' || pen.tool === 'arrow') return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...common} strokeLinecap="round" />;
           return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(b.x - a.x)} height={Math.abs(b.y - a.y)} {...common} />;

@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v9/lesson.schema.json",
+  "$id": "https://chalk-format.dev/schema/v10/lesson.schema.json",
   "title": "Chalk lesson (assembled model)",
-  "x-chalk-format-version": 9,
+  "x-chalk-format-version": 10,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
@@ -253,6 +253,43 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "presentation": {
+                      "type": "object",
+                      "properties": {
+                        "show": {
+                          "type": "string"
+                        },
+                        "open": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "icon": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                        },
+                        "accent": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        },
+                        "autoplay": {
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "type": "boolean"
+                        },
+                        "muted": {
+                          "type": "boolean"
+                        },
+                        "autoRotate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
                     }
                   },
                   "required": [
@@ -472,6 +509,43 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "presentation": {
+                      "type": "object",
+                      "properties": {
+                        "show": {
+                          "type": "string"
+                        },
+                        "open": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "icon": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                        },
+                        "accent": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        },
+                        "autoplay": {
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "type": "boolean"
+                        },
+                        "muted": {
+                          "type": "boolean"
+                        },
+                        "autoRotate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
                     },
                     "plugin": {
                       "type": "string",
@@ -906,6 +980,43 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "presentation": {
+                      "type": "object",
+                      "properties": {
+                        "show": {
+                          "type": "string"
+                        },
+                        "open": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "icon": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                        },
+                        "accent": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        },
+                        "autoplay": {
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "type": "boolean"
+                        },
+                        "muted": {
+                          "type": "boolean"
+                        },
+                        "autoRotate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
                     }
                   },
                   "required": [
@@ -1125,6 +1236,43 @@
                         "full",
                         "icon"
                       ]
+                    },
+                    "presentation": {
+                      "type": "object",
+                      "properties": {
+                        "show": {
+                          "type": "string"
+                        },
+                        "open": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "icon": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+                        },
+                        "accent": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        },
+                        "autoplay": {
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "type": "boolean"
+                        },
+                        "muted": {
+                          "type": "boolean"
+                        },
+                        "autoRotate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
                     },
                     "plugin": {
                       "type": "string",

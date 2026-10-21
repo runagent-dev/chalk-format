@@ -59,3 +59,5 @@ export {
   type PageEdit,
   type OverlayBaseRef,
 } from './overlay.js';
+export * from './presentation.js';
+export * from './stream.js';

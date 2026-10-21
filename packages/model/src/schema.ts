@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { presentationSchema } from './presentation.js';
 
 /**
  * The single source of truth for the `.chalk` document model.
@@ -21,7 +22,7 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 9;
+export const CHALK_FORMAT_VERSION = 10;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -71,6 +72,8 @@ export const imageObjectSchema = z.object({
   width: z.number(),
   height: z.number(),
   displayMode: mediaDisplayModeSchema.optional(),
+  /** How the author wants it presented (schema v10, spec 1.3). */
+  presentation: presentationSchema.optional(),
 });
 
 export const ellipseObjectSchema = z.object({
@@ -169,6 +172,8 @@ export const embedObjectSchema = z.looseObject({
   url: z.string().optional(),
   poster: z.string().optional(),
   displayMode: mediaDisplayModeSchema.optional(),
+  /** How the author wants it presented (schema v10, spec 1.3). */
+  presentation: presentationSchema.optional(),
   /** What runs an `embed: 'plugin'` object (schema v8). A reader without that plugin draws the
    *  poster card instead and keeps the object (spec 1.1 §2.2). */
   plugin: z.string().regex(PLUGIN_ID_PATTERN).optional(),

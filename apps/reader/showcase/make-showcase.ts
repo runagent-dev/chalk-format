@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { convertPdfToChalk } from '@chalk-format/convert-pdf';
-import { packLesson, unpackLesson } from '@chalk-format/container';
+import { packLesson, unpackLesson, publishStreamed } from '@chalk-format/container';
 import { getPageSize, hashBytes, type LessonObject, type LessonPage } from '@chalk-format/model';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -95,8 +95,11 @@ const at = (b: Box) => {
 };
 const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
 
-{ const b = at(frames.model3d!); put(b.page, { id: 'screw-gauge', type: 'embed', embed: 'model3d', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.model, poster: ids.modelPoster }); }
-{ const b = at(frames.video!); put(b.page, { id: 'pendulum-video', type: 'embed', embed: 'video', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.video, poster: ids.videoPoster }); }
+{ const b = at(frames.model3d!); put(b.page, { id: 'screw-gauge', type: 'embed', embed: 'model3d', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.model, poster: ids.modelPoster,
+  // spec 1.3: turning on the page as soon as you get there, with its own label, icon and colour
+  presentation: { show: 'live', autoRotate: true, label: 'স্ক্রু গজ', icon: 'ruler', accent: '#2f6f4e' } }); }
+{ const b = at(frames.video!); put(b.page, { id: 'pendulum-video', type: 'embed', embed: 'video', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.video, poster: ids.videoPoster,
+  presentation: { label: 'সরল দোলকের দোলন', loop: true } }); }
 { const b = at(frames.audio!); put(b.page, { id: 'tuning-fork', type: 'embed', embed: 'audio', x: b.x, y: b.y, width: b.width, height: b.height, assetId: ids.audio }); }
 {
   const b = at(frames.lab!);
@@ -104,6 +107,8 @@ const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
     id: 'pendulum-lab', type: 'embed', embed: 'plugin', plugin: 'chalk.lab', x: b.x, y: b.y, width: b.width, height: b.height, poster: ids.labPoster,
     lab: { id: 'org.chalk-format.examples.pendulum', version: '1.0.0', title: 'সরল দোলক · Simple pendulum', entry: ids.lab,
       params: { length: 1, swings: 10, readings: 3 }, capabilities: ['state', 'progress'] },
+    // a lab needs room: a tap opens it full screen
+    presentation: { open: 'fullscreen' },
   });
 }
 {
@@ -123,7 +128,8 @@ const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
 {
   // page 4: the tuning fork again as a small marker (icon display mode) beside the table
   const p = lesson.pages[3]!, { width, height } = getPageSize(p), kx = width / 210, ky = height / 297;
-  put(p, { id: 'tuning-fork-icon', type: 'embed', embed: 'audio', x: Math.round(176 * kx), y: Math.round(233 * ky), width: 56, height: 56, assetId: ids.audio, displayMode: 'icon' });
+  put(p, { id: 'tuning-fork-icon', type: 'embed', embed: 'audio', x: Math.round(176 * kx), y: Math.round(233 * ky), width: 56, height: 56, assetId: ids.audio, displayMode: 'icon',
+  presentation: { label: 'সুরশলাকা · ৪৪০ Hz', accent: '#c2621a' } });
 }
 
 // ---------- 4. pack ----------
@@ -147,3 +153,30 @@ writeFileSync(path.join(out, 'showcase.chalk'), bytes);
 }
 const runs = lesson.pages.reduce((n, p) => n + (p.textLayer?.length ?? 0), 0);
 console.log(`showcase.chalk: ${(bytes.length / 1024 / 1024).toFixed(2)} MB, ${lesson.pages.length} pages, ${runs} text runs, ${assets.size} assets`);
+
+// ---------- 5. streamed books (spec 1.4) ----------
+// The sample as a directory, and a 60-page book (the sample's pages over and over) to show loading by window:
+// the reader fetches book.json, then only the pages around the one being read.
+async function publish(l: typeof lesson, a: typeof assets, dir: string, labels?: Map<string, string>) {
+  const { files, index } = await publishStreamed(l, a, labels ? { labels } : {});
+  rmSync(dir, { recursive: true, force: true });
+  for (const [p, b] of files) { mkdirSync(path.dirname(path.join(dir, p)), { recursive: true }); writeFileSync(path.join(dir, p), b); }
+  const total = [...files.values()].reduce((n, b) => n + b.byteLength, 0);
+  console.log(`${path.basename(dir)}/: ${index.pages.length} pages, book.json ${(files.get('book.json')!.byteLength / 1024).toFixed(1)} KB, ${(total / 1024 / 1024).toFixed(2)} MB in all`);
+}
+await publish(lesson, assets, path.join(out, 'showcase'));
+{
+  const bn = new Intl.NumberFormat('bn-BD');
+  const long = structuredClone(lesson), labels = new Map<string, string>();
+  long.id = 'chalk-showcase-long'; long.title += ' · 60 pages';
+  long.pages = Array.from({ length: 60 }, (_, i) => {
+    const pg = structuredClone(lesson.pages[i % lesson.pages.length]!);
+    pg.id = `long-${i + 1}`; pg.title = `${pg.title} (${i + 1})`;
+    labels.set(pg.id, bn.format(i + 1));
+    return pg;
+  });
+  await publish(long, assets, path.join(out, 'long'), labels);
+  const whole = await packLesson(long, assets);
+  writeFileSync(path.join(out, 'long.chalk'), whole);
+  console.log(`long.chalk: the same 60 pages in one file, ${(whole.length / 1024 / 1024).toFixed(2)} MB`);
+}

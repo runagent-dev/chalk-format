@@ -2,7 +2,7 @@
 // Run: pnpm gen:schema. CI checks the committed files are up to date.
 import { writeFileSync } from 'node:fs';
 import { z } from 'zod';
-import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, indexShardSchema, lessonPageSchema, lessonSchema, overlaySchema, storeDescriptorSchema } from '@chalk-format/model';
+import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, indexShardSchema, streamIndexSchema, streamTextSchema, lessonPageSchema, lessonSchema, overlaySchema, storeDescriptorSchema } from '@chalk-format/model';
 import * as registry from '@chalk-format/store';
 
 // Rules the Zod model states as refinements, which toJSONSchema cannot see: added by hand to the
@@ -70,3 +70,10 @@ write('registry.schema.json', {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $defs: Object.fromEntries(Object.entries(defs).map(([k, v]) => { const { $schema: _s, ...rest } = z.toJSONSchema(v as z.ZodType, { target: 'draft-2020-12', io: 'input' }) as Record<string, unknown>; return [k, rest]; })),
 });
+
+// ---- 1.4: streamed books ----
+// The path rule is a refinement in Zod; stated here so JSON Schema users get it too (relative, no .., no scheme).
+const PATH = { type: 'string', minLength: 1, maxLength: 500, pattern: '^(?![/\\\\])(?![a-zA-Z][a-zA-Z0-9+.-]*:)(?!(?:.*/)?\\.\\.(?:/|$))[^\\\\]+$' };
+const withPaths = (j: Record<string, unknown>): Record<string, unknown> => JSON.parse(JSON.stringify(j), (k, v) => (k === 'file' || k === 'path') && v && typeof v === 'object' && (v as { type?: string }).type === 'string' ? PATH : v);
+write('stream-index.schema.json', withPaths({ ...header('stream-index.schema.json', 'Chalk streamed book index, book.json (spec 1.4 §3)'), ...z.toJSONSchema(streamIndexSchema, { target: 'draft-2020-12', io: 'input' }) }));
+write('stream-text.schema.json', { ...header('stream-text.schema.json', 'Chalk streamed book search text (spec 1.4 §4)'), ...z.toJSONSchema(streamTextSchema, { target: 'draft-2020-12', io: 'input' }) });

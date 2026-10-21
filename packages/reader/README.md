@@ -17,6 +17,9 @@ read. Try it in [`apps/reader`](../../apps/reader) (`pnpm --filter @chalk-format
 - **Labs** (spec 1.1) through [`@chalk-format/lab`](../lab): poster until tapped, then a sandboxed frame
   with no network; one at a time, paused off screen, state saved, progress reported. On a phone a lab opens in
   a full-reader view.
+- **Presentation as the author chose it** (spec 1.3): live or as a card, what a tap opens (in place, a
+  dialog, full screen), label, icon and accent colour, autoplay (video, silently; sound always waits for a tap), loop, muted, auto-rotate. A live model or lab
+  starts once at least half of it is on screen and it is big enough there to use; otherwise its card opens it.
 - **The student's notes:** pen, highlighter, eraser, text, shapes and select, with undo. They are a standard
   Chalk overlay (spec 1.0 §4): kept in the browser, handed to the host, saved and opened as a `.chalk` file.
 - **PDF pages without a rendered image** drawn with pdf.js, when the host gives `pdfWorkerSrc`.
@@ -74,12 +77,72 @@ merge, arrays replace).
 | `labs.autoStart` | `false` | Start the lab on a page as the page opens. |
 | `persistence` | `'local'` | Keep notes and lab state in this browser, or `'none'`. |
 | `pdfWorkerSrc` | `null` | pdf.js's worker URL, to draw PDF pages that carry no rendered image. With Vite: `import src from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`. |
+| `presentation.icons` | built-in | Your artwork per icon name (`ruler`, `atom`, … spec 1.3 §2) or per kind (`video audio model3d lab image plugin snip`): an element or `(size) => element`. A name wins over a kind. |
+| `presentation.defaults` | none | Presentation for objects whose author set nothing, per kind, e.g. `{ model3d: { show: 'live', autoRotate: true, accent: '#7c3aed' }, lab: { open: 'fullscreen' } }`. What the author set wins. Accents are `#rrggbb`. |
+| `presentation.authorAccents` | `true` | `false`: ignore the colours authors chose; your `defaults` accents (or the theme's) everywhere. |
+| `presentation.live` | `true` | `false`: nothing starts by itself (no live models or labs, no autoplay), e.g. to save data. |
+| `renderers` | none | Your own player or viewer: `{ video, audio, model3d }`, each `(p) => element` given `{ object, src, poster, presentation, where: 'page' \| 'popup', locale, theme }`. With your own `model3d`, `<model-viewer>` and three.js are never loaded. |
 
 ### Theming
 
 Every colour, font, space and radius is a CSS custom property on `.chalk-reader` (`--chalk-desk`,
 `--chalk-surface`, `--chalk-accent`, `--chalk-font`, …; see `styles.css`). Override them on the container, or on
 `.chalk-reader[data-theme="dark"]` for the dark theme. Nothing leaks outside `.chalk-reader`.
+
+## Streamed books (spec 1.4)
+
+Give `source` a streamed book's directory (ending in `/`) or its `book.json`: the reader opens it from the index,
+shows every page at once (placeholders with thumbnails until they arrive), and loads the current page first, then
+outward to `config.streaming.window` pages each way (default 5). A long jump goes straight there and loads only
+around it; search loads the book's text file and finds words on pages not loaded yet; author mode loads the rest
+of the book first. `openStreamedBook(url)` gives the same book outside the component. Publish with
+`tools/chalk-stream.ts publish book.chalk out/`.
+
+| Option | Default | |
+|---|---|---|
+| `streaming.window` | `5` | Pages kept loaded each way around the current one. |
+
+## Author mode
+
+With `config.authoring.enabled`, the reader can also edit the book. A Read / Author switch sits at the start of the
+dock (or drive it yourself with the `mode` prop and `onModeChange`).
+
+- **Author mode** looks like an editor (a dotted desk, outlined pages) and has a tool rail on the left, as in
+  ChalkBoard: select (V), pen (P), highlighter (H), eraser (E), text (T), shapes (R rectangle, O ellipse, L line,
+  A arrow), colour and thickness, and + to add media. Everything drawn goes into the book itself (in read mode
+  the same tools write the student's notes). The eraser takes drawings, text and shapes; media is removed by
+  selecting it.
+- **The sidebar (right)** holds every setting, and shows what the moment needs, as in a design tool:
+  - an object selected: position and size (X, Y, W, H), bring to front / send to back, then its kind's settings:
+    media presentation (spec 1.3: full size or small icon, thumbnail or live, what a tap opens, label, icon,
+    colour, playback), a text's words, size and colour, a shape's line, fill and thickness, a drawing's colour;
+  - a drawing tool out: what it draws next (colour, thickness, fill, text size);
+  - a media kind picked from +: choose or drop the file, and how it will be presented once added;
+  - nothing selected: the book's and the page's titles, the page background, and a list of what is on the page.
+  Escape in a field leaves the field; a second Escape clears the selection.
+- **Select:** click any object; drag to move it, the corner handle to resize it (media keeps its proportions),
+  arrows to nudge, Delete to remove; the object under the mouse is outlined.
+- **Add media** from the rail or by dropping files on a page: images, video (a poster is taken from its frames),
+  audio, `.glb` models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
+- Made for a computer (mouse and keyboard); it still works by touch.
+- **Read mode** is the student's reader over the edited book, notes included, so you see exactly what students will.
+- **Save** writes a `.chalk` file with every asset it can reach (`onSave(bytes, lesson)` to keep it yourself;
+  otherwise it downloads). `onLessonChange` reports every edit. Closing the tab with unsaved changes asks first.
+
+| Option | Default | |
+|---|---|---|
+| `authoring.enabled` | `false` | Allow author mode. Off for a student app. `readOnly` turns it off. |
+| `authoring.startIn` | `'read'` | The mode the reader opens in. |
+| `authoring.locale` | `'en'` | Language of the author's tools (sidebar, rail, author dock). `locale` stays the students' language; book content is never translated. |
+| `authoring.dock` | mode, pages, page turning, zoom, undo, redo, save, theme, language | The dock in author mode (the tools are in the rail). |
+
+## Restyling media
+
+The book says how the author wants each piece of media presented (spec 1.3: live or a card, what a tap opens,
+label, icon, colour). How it looks is yours: theme variables (`--chalk-*`) for the reader as a whole,
+`presentation` for icons, colours per kind and defaults, `renderers` to replace a player outright. Cards and
+markers carry `data-kind` (`video`, `model3d`, …) for CSS of your own. Try it all in the showcase's Configure
+panel, which prints the config for what you set.
 
 ## Notes for hosts
 
