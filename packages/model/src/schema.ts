@@ -21,7 +21,7 @@ import { z } from 'zod';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 8;
+export const CHALK_FORMAT_VERSION = 9;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -111,8 +111,9 @@ export const vectorObjectSchema = z.object({
   strokeWidth: z.number().optional(),
 });
 
-/** `sha256:` + 64 lowercase hex digits: the only ids a lab entry may use (hosts verify the bytes). */
-const sha256AssetIdSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+/** A content-addressed id: a c1 key (spec 1.2 §3, schema v9) or `sha256:` + 64 lowercase hex digits. The only
+ *  ids a lab entry may use (hosts verify the bytes). */
+const sha256AssetIdSchema = z.string().regex(/^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$/);
 
 /** A namespaced plugin id: `chalk.*` is reserved for this spec, others use reverse DNS (spec 1.1 §2.2). */
 export const PLUGIN_ID_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;

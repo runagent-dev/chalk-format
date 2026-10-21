@@ -123,4 +123,11 @@ describe('migrateToLatest', () => {
     expect(migrateToLatest(v7, 7)).toBe(v7);
     expect(() => parseLesson(migrateToLatest(v7, 7))).not.toThrow();
   });
+
+  it('upgrades a v8 document (sha256 ids only) to the latest unchanged', () => {
+    const v8 = { id: 'l', title: 'T', locale: 'bn', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', snipPages: [],
+      pages: [{ id: 'p', title: 'P', background: { type: 'image', assetId: 'sha256:' + 'a'.repeat(64) }, objects: [] }] };
+    expect(migrateToLatest(v8, 8)).toBe(v8);
+    expect(() => parseLesson(migrateToLatest(v8, 8))).not.toThrow();
+  });
 });

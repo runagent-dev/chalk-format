@@ -44,6 +44,10 @@ export const MIGRATIONS: Record<number, Migration> = {
   // plugin 'chalk.lab', a `lab` descriptor (spec 1.1). A v7 document has
   // neither, which is already valid under v8, so identity again.
   7: (doc) => doc,
+  // v8 → v9: content-addressed ids may also be c1 keys (spec 1.2), and lab
+  // entries accept them. A v8 document uses sha256 ids only, which stay
+  // valid, so identity again.
+  8: (doc) => doc,
 };
 
 /**

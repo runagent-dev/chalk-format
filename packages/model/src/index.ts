@@ -1,6 +1,8 @@
 export * from './lesson.js';
 export * from './helpers.js';
 export * from './hash.js';
+export * from './keys.js';
+export * from './stores.js';
 export {
   sniffMediaType,
   mediaKindOf,

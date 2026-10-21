@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v8/page.schema.json",
+  "$id": "https://chalk-format.dev/schema/v9/page.schema.json",
   "title": "Chalk page (pages/page-N.json)",
-  "x-chalk-format-version": 8,
+  "x-chalk-format-version": 9,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
@@ -481,13 +481,13 @@
                   },
                   "entry": {
                     "type": "string",
-                    "pattern": "^sha256:[0-9a-f]{64}$"
+                    "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
                   },
                   "assets": {
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "pattern": "^sha256:[0-9a-f]{64}$"
+                      "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
                     }
                   },
                   "params": {
