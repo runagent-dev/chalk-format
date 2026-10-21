@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { getPageSize, isLabObject, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
@@ -29,6 +29,8 @@ import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
 import { searchBook } from './search.js';
+import { isStreamSource, isStreamed, openStreamedBook, windowAround } from './stream.js';
+import type { StreamText } from '@chalk-format/model';
 
 export type ChalkReaderProps = {
   /** The book: bytes, a File/Blob or a URL. Or pass an already opened `book`. */
@@ -78,7 +80,9 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
     if (!props.source) return;
     let live = true, mine: Book | null = null;
     setOpened({ book: null, error: null });
-    openBook(props.source, props.resolveAsset ? { resolveAsset: props.resolveAsset } : {}).then(
+    const o = props.resolveAsset ? { resolveAsset: props.resolveAsset } : {};
+    // a streamed book (spec 1.4) is named by its index or its directory; anything else is a .chalk
+    (isStreamSource(props.source) ? openStreamedBook(props.source, o) : openBook(props.source, o)).then(
       (b) => { if (live) { mine = b; setOpened({ book: b, error: null }); } else b.dispose(); },
       (e: unknown) => { if (live) setOpened({ book: null, error: e instanceof Error ? e.message : String(e) }); },
     );
@@ -90,6 +94,8 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
   if (!opened.book) return <Shell config={config} className={props.className} style={props.style}><div className="chalk-state" role="status"><span className="chalk-spinner" aria-hidden />{t.loading}</div></Shell>;
   return <Reader key={opened.book.lesson.id} {...props} book={opened.book} config={config} handleRef={ref} />;
 });
+
+const noSubscribe = () => () => {};
 
 function Shell({ config, className, style, children, theme }: { config: ReaderConfig; className?: string | undefined; style?: CSSProperties | undefined; children: React.ReactNode; theme?: 'light' | 'dark' }) {
   const dark = theme ?? (config.theme === 'system' ? (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : config.theme);
@@ -105,6 +111,11 @@ function useSystemDark() {
 
 function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: ReaderConfig; handleRef: React.ForwardedRef<ReaderHandle> }) {
   const { book: original, config } = props;
+  // a streamed book changes as its pages arrive: draw again each time
+  useSyncExternalStore(isStreamed(original) ? original.subscribe : noSubscribe, () => original.lesson);
+  const streamed = isStreamed(original) ? original : null;
+  // its search file, once a search begins (spec 1.4 §4)
+  const [streamText, setStreamText] = useState<StreamText | null>(null);
   // authoring: the reader shows the author's working copy, in both modes. Read mode is the student's reader over
   // it (notes and all); author mode edits the book itself, without the notes.
   const authoringOn = config.authoring.enabled;
@@ -112,7 +123,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // controlled by the host when it passes `mode` (the dock's switch then only asks, through onModeChange)
   const [modeState, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
   const mode = props.mode ?? modeState;
-  const author = authoringOn && mode === 'author';
+  // editing needs every page: a streamed book loads the rest first, then author mode begins
+  const author = authoringOn && mode === 'author' && (!streamed || streamed.complete);
   // the notes sit on the book as it was when author mode began, and move onto the edited book once, on the way
   // back to reading (not on every step of a drag)
   const notesBase = useRef(original.lesson);
@@ -170,7 +182,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const activeRef = useRef(active); activeRef.current = active;
   const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject; full?: boolean } | null>(null);
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
-  const hits = useMemo(() => (panel === 'search' || deferredQuery ? searchBook(lesson, deferredQuery) : []), [lesson, deferredQuery, panel]);
+  const hits = useMemo(() => {
+    if (panel !== 'search' && !deferredQuery) return [];
+    const st = streamText;
+    const searchable = streamed && st ? { ...lesson, pages: lesson.pages.map((p) => (streamed.isLoaded(p.id) ? p : { ...p, textLayer: st.pages[p.id] ?? [] })) } : lesson;
+    return searchBook(searchable, deferredQuery);
+  }, [lesson, deferredQuery, panel, streamText, streamed]);
   // the pen: tool, colours and size
   const A = config.annotations;
   const [tool, setTool] = useState<ToolId>(A.defaultTool);
@@ -276,6 +293,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   // the live embed on a page, drawn in screen pixels above it
   const pageActive = useCallback((pg: LessonPage, i: number, scale: number) => {
+    if (streamed && !streamed.isLoaded(pg.id)) return <div className="chalk-page-loading" role="status" aria-label={t.loading}><span className="chalk-spinner" /></div>;
     if (!active || active.page !== i) return undefined;
     const o = pg.objects.find((x) => x.id === active.id);
     if (!o || o.type !== 'embed') return undefined;
@@ -283,7 +301,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (isLabObject(o)) return <LabFrame book={book} o={o} style={style} locale={locale} theme={dark} storage={storage}
       onProgress={(p) => onLabProgress?.(p, { objectId: o.id, labId: o.lab.id, page: i })} onStop={() => setActive(null)} />;
     return <ModelViewer book={book} o={o} style={style} />;
-  }, [active, book, locale, dark, storage, onLabProgress]);
+  }, [active, book, locale, dark, storage, onLabProgress, streamed, t.loading]);
 
   // a live embed stops once its page is well out of view (it would be off screen, using the phone's power)
   useEffect(() => { if (active && Math.abs(active.page - page) > 1) setActive(null); }, [page, active]);
@@ -317,6 +335,21 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [page, pages, config.labs.autoStart, config.features, pr, author]);
 
   const noActive = useCallback(() => undefined, []);
+  // streamed books: the pages around the current one, nearest first (spec 1.4 §5)
+  // once the reader settles on a page: scrolling past pages does not ask for each of them
+  useEffect(() => {
+    if (!streamed) return;
+    const id = setTimeout(() => streamed.want(windowAround(page, pages.length, config.streaming.window)), 150);
+    return () => clearTimeout(id);
+  }, [streamed, page, pages.length, config.streaming.window]);
+  const wantsAuthor = authoringOn && mode === 'author';
+  useEffect(() => {
+    if (!streamed || !wantsAuthor || streamed.complete) return;
+    setToast(authorStrings(config.authoring.locale).loadingAll);
+    streamed.loadAll().catch((e: unknown) => setToast(e instanceof Error ? e.message : String(e)));
+  }, [streamed, wantsAuthor]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // search a streamed book with its text file: pages not loaded yet are searched by their text runs
+  useEffect(() => { if (streamed && (panel === 'search' || query)) void streamed.searchText().then(setStreamText); }, [streamed, panel, query]);
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
 
   // search hits on each page; the current one marked

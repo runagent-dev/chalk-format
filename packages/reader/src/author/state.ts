@@ -11,9 +11,15 @@ const HISTORY = 200;
  */
 export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
   const [h, setH] = useState(() => ({ stack: [base.lesson], i: 0, gesture: null as string | null }));
-  const lesson = h.stack[h.i]!;
   // the lesson as last saved: what "unsaved changes" compares against
   const [saved, setSaved] = useState(base.lesson);
+  // a streamed book's pages arrive after it opened: follow them while nothing has been edited
+  const [seenLesson, setSeenLesson] = useState(base.lesson);
+  if (seenLesson !== base.lesson) {
+    setSeenLesson(base.lesson);
+    if (h.stack.length === 1) { setH({ stack: [base.lesson], i: 0, gesture: null }); setSaved(base.lesson); }
+  }
+  const lesson = h.stack[h.i]!;
   // media added while authoring; a version number so the derived book updates when one arrives
   const added = useRef(new Map<string, { type: string; bytes: Uint8Array; url: string }>());
   const [addedVersion, setAddedVersion] = useState(0);

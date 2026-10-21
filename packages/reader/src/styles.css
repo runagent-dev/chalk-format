@@ -520,3 +520,6 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   /* author mode on a phone: the sidebar is a short bottom sheet, so the object being changed stays in view */
   .chalk-sidebar { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(46%, 440px); border-radius: 16px 16px 0 0; border-bottom: 0; }
 }
+
+/* a page of a streamed book still on its way: its thumbnail, and a quiet spinner */
+.chalk-page-loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in oklch, var(--chalk-surface) 35%, transparent); pointer-events: none; }
