@@ -10,3 +10,10 @@ coverage/
 *.chalk
 *.pdf
 !conformance/**/*.chalk
+
+# reader showcase: generated sample books, build output
+apps/reader/public/samples/
+apps/reader/dist/
+
+# showcase build scratch
+apps/reader/showcase/.tmp*

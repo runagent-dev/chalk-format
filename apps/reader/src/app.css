@@ -1,0 +1,65 @@
+/* The showcase page around the reader: one thin bar, then the reader fills the window. */
+:root {
+  --app-paper: oklch(97% 0.006 85);
+  --app-ink: oklch(25% 0.015 260);
+  --app-muted: oklch(47% 0.015 260);
+  --app-line: oklch(86% 0.012 80);
+  --app-accent: oklch(48% 0.13 255);
+  --app-focus: oklch(55% 0.17 255);
+  --app-font: "Noto Sans", "Noto Sans Bengali", system-ui, sans-serif;
+  --app-bar: 52px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --app-paper: oklch(24% 0.01 80); --app-ink: oklch(94% 0.008 85); --app-muted: oklch(74% 0.012 85); --app-line: oklch(38% 0.012 80); --app-accent: oklch(72% 0.12 255); --app-focus: oklch(76% 0.14 255); }
+}
+html, body { margin: 0; height: 100%; overflow-x: clip; background: var(--app-paper); color: var(--app-ink); font-family: var(--app-font); }
+#root { height: 100%; }
+.app { display: flex; flex-direction: column; height: 100dvh; }
+.app-bar { flex: none; display: flex; align-items: center; gap: 12px; height: var(--app-bar); padding: 0 16px; border-bottom: 1px solid var(--app-line); }
+.app-mark { margin-right: auto; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
+.app-mark span { color: var(--app-accent); }
+.app-field select, .app-btn {
+  height: 34px; padding: 0 12px; border: 1px solid var(--app-line); border-radius: 8px; background: transparent;
+  color: inherit; font: inherit; font-size: 0.875rem; white-space: nowrap; cursor: pointer; max-width: 46vw;
+}
+.app-btn:hover, .app-field select:hover { border-color: var(--app-muted); }
+.app-btn:focus-visible, .app-field select:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 1px; }
+.app-main { flex: 1; min-height: 0; display: flex; }
+.app-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 480px) { .app-mark span { display: none; } }
+
+/* ---------- the configuration playground ---------- */
+:root { --app-surface: oklch(99% 0.004 85); --app-surface-2: oklch(95.5% 0.008 85); --app-accent-soft: oklch(92% 0.035 255); --app-mono: ui-monospace, "SF Mono", Menlo, monospace; }
+@media (prefers-color-scheme: dark) { :root { --app-surface: oklch(27% 0.012 80); --app-surface-2: oklch(31% 0.012 80); --app-accent-soft: oklch(36% 0.06 255); } }
+.app-main { position: relative; }
+.app-btn[aria-pressed="true"] { background: var(--app-accent-soft); border-color: var(--app-accent); color: var(--app-accent); }
+.pg {
+  flex: none; width: 340px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--app-line); background: var(--app-surface);
+}
+.pg-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--app-line); }
+.pg-head h2 { margin: 0 auto 0 0; font-size: 1rem; font-weight: 600; }
+.pg-close { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.pg-close:hover { background: var(--app-surface-2); }
+.pg-close:focus-visible { outline: 2px solid var(--app-focus); }
+.pg-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 24px; }
+.pg-body section { padding: 12px 0; border-bottom: 1px solid var(--app-line); }
+.pg-body h3 { margin: 0 0 8px; font-size: 0.8125rem; font-weight: 600; color: var(--app-muted); }
+.pg-choice { margin: 0 0 10px; padding: 0; border: 0; min-width: 0; }
+.pg-choice legend { padding: 0; margin-bottom: 4px; font-size: 0.8125rem; }
+.pg-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.pg-seg label { position: relative; padding: 5px 10px; border: 1px solid var(--app-line); border-radius: 999px; font-size: 0.8125rem; cursor: pointer; white-space: nowrap; }
+.pg-seg label:hover { border-color: var(--app-muted); }
+.pg-seg label.is-on { background: var(--app-accent-soft); border-color: var(--app-accent); color: var(--app-accent); }
+.pg-seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pg-seg label:has(input:focus-visible) { outline: 2px solid var(--app-focus); outline-offset: 1px; }
+.pg-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin-bottom: 8px; }
+.pg-check { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0; font-size: 0.8125rem; cursor: pointer; }
+.pg-check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-check.is-wide { grid-column: 1 / -1; }
+.pg-check.is-mono span { font-family: var(--app-mono); font-size: 0.75rem; }
+.pg-check input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--app-accent); }
+.pg-code { margin: 0 0 8px; padding: 10px 12px; max-height: 320px; overflow: auto; border-radius: 8px; background: var(--app-surface-2); font-family: var(--app-mono); font-size: 0.75rem; line-height: 1.5; white-space: pre; }
+@media (max-width: 760px) {
+  .pg { position: absolute; left: 0; right: 0; bottom: 0; z-index: 60; width: auto; height: 70%; border-left: 0; border-top: 1px solid var(--app-line); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px oklch(20% 0.02 260 / 0.2); }
+}

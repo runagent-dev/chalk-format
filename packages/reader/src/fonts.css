@@ -1,0 +1,6 @@
+/* Noto Sans + Noto Sans Bengali, bundled: the reader must show Bengali and Latin text (spec 1.0 §3.4).
+   Import once, next to styles.css; a host that already loads these fonts can skip it. */
+@import "@fontsource/noto-sans/400.css";
+@import "@fontsource/noto-sans/600.css";
+@import "@fontsource/noto-sans-bengali/400.css";
+@import "@fontsource/noto-sans-bengali/600.css";
