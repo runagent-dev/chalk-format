@@ -132,7 +132,7 @@ describe('CHALK_FORMAT_VERSION', () => {
   });
 
   it('is 9 now that asset ids may be c1 keys (spec 1.2)', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(10);
+    expect(CHALK_FORMAT_VERSION).toBe(11);
   });
 });
 
