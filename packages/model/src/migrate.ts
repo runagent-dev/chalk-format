@@ -48,6 +48,8 @@ export const MIGRATIONS: Record<number, Migration> = {
   // entries accept them. A v8 document uses sha256 ids only, which stay
   // valid, so identity again.
   8: (doc) => doc,
+  // v9 → v10: images and embeds gained an optional `presentation` (spec 1.3)
+  9: (doc) => doc,
 };
 
 /**

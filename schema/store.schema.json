@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v9/store.schema.json",
+  "$id": "https://chalk-format.dev/schema/v10/store.schema.json",
   "title": "Chalk store descriptor (spec 1.2 §5.1)",
-  "x-chalk-format-version": 9,
+  "x-chalk-format-version": 10,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {

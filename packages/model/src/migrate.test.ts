@@ -130,4 +130,12 @@ describe('migrateToLatest', () => {
     expect(migrateToLatest(v8, 8)).toBe(v8);
     expect(() => parseLesson(migrateToLatest(v8, 8))).not.toThrow();
   });
+
+  it('upgrades a v9 document (no presentation) to the latest unchanged', () => {
+    const v9 = { id: 'l', title: 'T', locale: 'bn', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', snipPages: [],
+      pages: [{ id: 'p', title: 'P', background: { type: 'blank' }, objects: [
+        { id: 'i', type: 'image', x: 0, y: 0, width: 10, height: 10, assetId: 'c1:' + 'a'.repeat(25) + 'a', displayMode: 'icon' }] }] };
+    expect(migrateToLatest(v9, 9)).toBe(v9);
+    expect(() => parseLesson(migrateToLatest(v9, 9))).not.toThrow();
+  });
 });
