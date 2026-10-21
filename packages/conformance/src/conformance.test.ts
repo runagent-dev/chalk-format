@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { unpackLesson, unpackOverlay, validateLessonPackage } from '@chalk-format/container';
@@ -59,4 +60,37 @@ describe('JSON Schema rejects what the model rejects', () => {
     expect(validPage({ ...base, objects: [{ id: 'r', type: 'rect', x: 0, y: 0 }] })).toBe(false));
   it('rejects an unknown background type', () =>
     expect(validPage({ ...base, background: { type: 'video' } })).toBe(false));
+});
+
+// ---- 1.2: keys and stores ----
+describe('asset keys (spec 1.2 §3)', () => {
+  // an implementation independent of @chalk-format/model: node's crypto and a plain base32
+  const b32 = (b: Uint8Array) => { let bits = ''; for (const x of b) bits += x.toString(2).padStart(8, '0'); bits = bits.padEnd(Math.ceil(bits.length / 5) * 5, '0');
+    return bits.match(/.{5}/g)!.map((c) => 'abcdefghijklmnopqrstuvwxyz234567'[parseInt(c, 2)]).join(''); };
+  const V = JSON.parse(readFileSync(new URL('keys.json', ROOT), 'utf8')) as { vectors: { base64: string; sha256: string; key: string; name: string }[] };
+  for (const v of V.vectors) it(`vector: ${v.name}`, () => {
+    const d = createHash('sha256').update(Buffer.from(v.base64, 'base64')).digest();
+    expect(d.toString('hex')).toBe(v.sha256);
+    expect('c1:' + b32(d.subarray(0, 16))).toBe(v.key);
+  });
+});
+
+describe('store examples (spec 1.2 §5)', () => {
+  const store = ajv.compile(schema('store.schema.json')), shard = ajv.compile(schema('index-shard.schema.json'));
+  for (const f of readdirSync(new URL('stores/', ROOT))) it(`${f} is valid`, () => {
+    const doc = JSON.parse(readFileSync(new URL(`stores/${f}`, ROOT), 'utf8'));
+    const v = f.startsWith('index-') ? shard : store;
+    expect(v(doc), JSON.stringify(v.errors)).toBe(true);
+  });
+  it('rejects a derived store without a template, and a base without a trailing slash', () => {
+    expect(store({ id: 'x', kind: 'derived' })).toBe(false);
+    expect(store({ id: 'x', kind: 'api', base: 'https://x.example' })).toBe(false);
+  });
+  it('reads a thin book\'s facts and suggested stores', async () => {
+    const r = await unpackLesson(bytes('valid/thin-sources.chalk'));
+    expect(r.assetSources.map((d) => d.id)).toEqual(['publisher-cdn', 'publisher-archive']);
+    const video = [...r.assetInfo.entries()].find(([, i]) => i.renditions?.length);
+    expect(video?.[1]).toMatchObject({ size: 18_400_211, meta: { width: 1280, duration: 94.5 } });
+    expect(r.missingAssetIds).toEqual([video![0]]);
+  });
 });

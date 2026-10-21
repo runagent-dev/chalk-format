@@ -5,7 +5,7 @@
 // they are). Delete a file to regenerate it.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import JSZip from 'jszip';
-import { hashBytes, type Lesson, type LessonPage, type Overlay } from '@chalk-format/model';
+import { assetKey, hashBytes, type Lesson, type LessonPage, type Overlay, type StoreDescriptor } from '@chalk-format/model';
 import { packLesson, packOverlay, type AssetBundle } from '@chalk-format/container';
 
 const ROOT = new URL('../../../conformance/', import.meta.url);
@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.1';
+const CURRENT = '1.2';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
@@ -109,6 +109,54 @@ write('invalid', 'lab-without-descriptor.chalk', await rawZip({ 'manifest.json':
   { kind: 'lesson', since: '1.1', covers: "plugin 'chalk.lab' without a lab descriptor" });
 write('invalid', 'lab-entry-not-content-addressed.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 8 }), 'pages/page-1.json': labPage({ entry: 'pendulum.html' }) }),
   { kind: 'lesson', since: '1.1', covers: 'lab.entry is a file name, not a sha256: id (hosts could not verify what they run)' });
+
+// ── 1.2: asset stores ────────────────────────────────────────────────────
+// Every id a c1 key (spec 1.2 §3), fat: the page image, an image object, a poster and a lab's entry.
+const k = { png: await assetKey(PNG), lab: await assetKey(PENDULUM), glb: await assetKey(GLB) };
+const c1Assets: AssetBundle = new Map([[k.png, { type: 'image/png', bytes: PNG }], [k.lab, { type: 'text/html', bytes: PENDULUM }], [k.glb, { type: 'model/gltf-binary', bytes: GLB }]]);
+write('valid', 'c1-keys.chalk', await packLesson(lesson({ coverAssetId: k.png, pages: [page('p1', {
+  background: { type: 'image', assetId: k.png },
+  objects: [
+    { id: 'img', type: 'image', x: 10, y: 10, assetId: k.png, width: 64, height: 64 },
+    { id: 'm', type: 'embed', embed: 'model3d', x: 100, y: 10, width: 200, height: 200, assetId: k.glb, poster: k.png },
+    { ...labObject, poster: k.png, lab: { ...labObject.lab, entry: k.lab, assets: [k.glb] } },
+  ],
+})] }), c1Assets), { kind: 'lesson', since: '1.2', covers: 'every asset id a c1 key, carried in the file: page image, image object, poster, 3D model, lab entry and lab asset' });
+
+// Thin: the media is external, with sizes, meta, renditions, and the stores the publisher suggests.
+const video = 'c1:' + 'v'.repeat(25) + 'a', video360 = 'c1:' + 'w'.repeat(25) + 'a';
+const sources: StoreDescriptor[] = [
+  { id: 'publisher-cdn', kind: 'derived', template: 'https://media.example.org/c1/{h0}/{h1}/{h}', media: ['video/*', 'image/*'], priority: 10 },
+  { id: 'publisher-archive', kind: 'indexed', base: 'https://archive.example.org/chalk/', priority: 20 },
+];
+write('valid', 'thin-sources.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
+  { id: 'v', type: 'embed', embed: 'video', x: 10, y: 10, width: 640, height: 360, assetId: video, poster: k.png },
+] })] }), new Map([[k.png, { type: 'image/png', bytes: PNG }]]), {
+  mode: 'thin', alwaysInline: new Set([k.png]), assetSources: sources,
+  assetInfo: new Map([[video, { type: 'video/mp4', size: 18_400_211, meta: { width: 1280, height: 720, duration: 94.5 },
+    renditions: [{ id: video360, type: 'video/mp4', size: 6_100_022, meta: { width: 640, height: 360 } }] }]]),
+}), { kind: 'lesson', since: '1.2', covers: 'thin book: external video with size, meta and a rendition; the poster carried inline; suggested stores (derived, indexed)' });
+
+const badKey = 'C1:' + k.png.slice(3).toUpperCase();
+write('invalid', 'c1-malformed-key.chalk', await rawZip({
+  'manifest.json': manifest({ formatVersion: 9, assets: [{ id: badKey, type: 'image/png', path: 'assets/C1_X', inline: true }] }),
+  'pages/page-1.json': blankPage, 'assets/C1_X': PNG,
+}), { kind: 'lesson', since: '1.2', covers: 'an asset id that looks like a c1 key but is not canonical (upper case)' });
+write('invalid', 'c1-bearer-source.chalk', await rawZip({
+  'manifest.json': manifest({ formatVersion: 9, assetSources: [{ id: 'private', kind: 'api', base: 'https://store.example.org/', auth: 'bearer' }] }),
+  'pages/page-1.json': blankPage,
+}), { kind: 'lesson', since: '1.2', covers: "a book's suggested store asks for credentials (books carry none)" });
+
+// store examples (spec 1.2 §5), validated against schema/store.schema.json and index-shard.schema.json
+mkdirSync(new URL('stores/', ROOT), { recursive: true });
+const shardKey = k.glb.slice(3);
+const storeFiles: Record<string, unknown> = {
+  'derived.json': { id: 'media-r2', kind: 'derived', template: 'https://media.example.org/c1/{h0}/{h1}/{h}', media: ['video/*', 'image/*', 'model/*', 'audio/*'], priority: 10, verify: 'first' },
+  'indexed.json': { id: 'school-server', kind: 'indexed', base: 'http://192.168.1.10/chalk/', priority: 0 },
+  'api.json': { id: 'registry', kind: 'api', base: 'https://store.example.org/', priority: 50, auth: 'bearer', verify: 'always' },
+  [`index-${shardKey.slice(0, 2)}.json`]: { v: 1, entries: { [shardKey]: { p: 'physics/class9/screw-gauge.glb', s: GLB.length, t: 'model/gltf-binary' } } },
+};
+for (const [name, doc] of Object.entries(storeFiles)) writeFileSync(new URL(`stores/${name}`, ROOT), JSON.stringify(doc, null, 2) + '\n');
 
 // ── invalid ──────────────────────────────────────────────────────────────
 write('invalid', 'no-manifest.chalk', await rawZip({ 'pages/page-1.json': blankPage }), { kind: 'lesson', covers: 'manifest.json missing' });
