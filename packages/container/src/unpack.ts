@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { migrateToLatest, parseLesson, type Lesson } from '@chalk-format/model';
+import { assetInfoSchema, isC1Key, migrateToLatest, parseLesson, storeDescriptorSchema, type AssetInfo, type Lesson, type StoreDescriptor } from '@chalk-format/model';
 import { CHALKBOOK_FORMAT, type Manifest, type ManifestAssetEntry } from './manifest.js';
 import type { AssetBundle, AssetPayload } from './pack.js';
 
@@ -70,6 +70,10 @@ export interface UnpackResult {
    * Absent-in-manifest defaults to `fat` for backward compatibility.
    */
   bundling: 'fat' | 'thin';
+  /** Facts the manifest gives per asset id: size, meta, renditions (spec 1.2 §4.2). */
+  assetInfo: Map<string, AssetInfo>;
+  /** Stores the book suggests for its external assets (spec 1.2 §4.4); invalid descriptors are dropped. */
+  assetSources: StoreDescriptor[];
 }
 
 export function checkEntryCount(zip: JSZip, limits?: UnpackLimits): void {
@@ -160,6 +164,21 @@ export async function unpackLesson(
     }
   }
 
+  // 1.2: a key in any form but the canonical one, and a book that asks for credentials, are not readable
+  for (const e of manifest.assets ?? []) {
+    for (const id of [e.id, ...(e.renditions ?? []).map((r) => r.id)]) {
+      if (/^c1:/i.test(id) && !isC1Key(id)) throw new Error(`malformed c1 key: ${id}`);
+    }
+  }
+  if (manifest.assetSources !== undefined) {
+    if (!Array.isArray(manifest.assetSources)) throw new Error('manifest.assetSources must be an array');
+    for (const d of manifest.assetSources) {
+      const r = storeDescriptorSchema.safeParse(d);
+      if (!r.success) throw new Error(`invalid store descriptor in assetSources: ${r.error.issues[0]?.message ?? 'shape'}`);
+      if ((r.data.auth ?? 'none') !== 'none') throw new Error(`store ${r.data.id}: a book's suggested stores carry no credentials`);
+    }
+  }
+
   const { assets, missingAssetIds } = await readAssetsFromZip(
     zip,
     manifest.assets ?? [],
@@ -185,5 +204,11 @@ export async function unpackLesson(
   const lesson: Lesson = parseLesson(migrateToLatest(rawLesson, fromVersion));
 
   const bundling = manifest.bundling === 'thin' ? 'thin' : 'fat';
-  return { lesson, assets, missingAssetIds, bundling };
+  const assetInfo = new Map<string, AssetInfo>();
+  for (const e of manifest.assets ?? []) {
+    const info = assetInfoSchema.safeParse({ size: e.size, meta: e.meta, renditions: e.renditions });
+    if (info.success && (e.size !== undefined || e.meta || e.renditions)) assetInfo.set(e.id, info.data);
+  }
+  const assetSources = (manifest.assetSources ?? []).map((d) => storeDescriptorSchema.parse(d));   // checked above
+  return { lesson, assets, missingAssetIds, bundling, assetInfo, assetSources };
 }

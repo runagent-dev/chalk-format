@@ -1,4 +1,4 @@
-import type { OverlayBaseRef } from '@chalk-format/model';
+import type { AssetMeta, OverlayBaseRef, Rendition, StoreDescriptor } from '@chalk-format/model';
 
 export const CHALKBOOK_FORMAT = 'chalkbook.lesson' as const;
 export const CHALKBOOK_VERSION = '0.1.0' as const;
@@ -19,6 +19,12 @@ export type ManifestAssetEntry = {
    * this field are read as fat — backward compatible.
    */
   inline?: boolean;
+  /** Bytes (spec 1.2 §4.2). Writers give it for every asset; MUST for external ones. */
+  size?: number;
+  /** Width, height, duration, pages (spec 1.2 §4.2). */
+  meta?: AssetMeta;
+  /** Other versions of the same media item (spec 1.2 §4.3). */
+  renditions?: Rendition[];
 };
 
 export type ManifestMetadata = {
@@ -60,6 +66,8 @@ export type Manifest = {
    * manifest for an AssetService to fetch by id. Absent = fat.
    */
   bundling?: 'fat' | 'thin';
+  /** Stores the publisher suggests for external assets, tried last (spec 1.2 §4.4). No credentials. */
+  assetSources?: StoreDescriptor[];
   metadata: ManifestMetadata;
 };
 

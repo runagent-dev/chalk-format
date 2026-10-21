@@ -1,7 +1,10 @@
 import JSZip from 'jszip';
 import {
   CHALK_FORMAT_VERSION,
-  isSha256AssetId,
+  isContentAddressedId,
+  storeDescriptorSchema,
+  type AssetInfo,
+  type StoreDescriptor,
   referencedAssetIds,
   validateLessonModel,
   type Lesson,
@@ -49,6 +52,13 @@ export interface PackOptions {
    * than none.
    */
   metadata?: { author?: string; license?: string };
+  /**
+   * Facts about assets (spec 1.2 §4.2): size, meta, renditions, and the type of external assets whose bytes
+   * are not given. Carried bytes always set their own size.
+   */
+  assetInfo?: ReadonlyMap<string, AssetInfo & { type?: string }>;
+  /** Stores the publisher suggests for external assets (spec 1.2 §4.4). Must not ask for credentials. */
+  assetSources?: StoreDescriptor[];
 }
 
 /**
@@ -86,7 +96,7 @@ export async function packLesson(
   // decoder resolves them from the asset service instead of "missing".
   const bundled = new Set(assetEntries.map((e) => e.id));
   for (const id of referencedAssetIds(lesson)) {
-    if (bundled.has(id) || !isSha256AssetId(id)) continue;
+    if (bundled.has(id) || !isContentAddressedId(id)) continue;
     assetEntries.push({
       id,
       type: 'application/octet-stream',
@@ -94,6 +104,21 @@ export async function packLesson(
       inline: false,
     });
   }
+
+  // 1.2 facts: what the caller knows about each asset; carried bytes keep their own size
+  for (const e of assetEntries) {
+    const info = options?.assetInfo?.get(e.id);
+    if (!info) continue;
+    if (info.type && !e.inline) e.type = info.type;
+    if (info.size !== undefined && !e.inline) e.size = info.size;
+    if (info.meta) e.meta = info.meta;
+    if (info.renditions?.length) e.renditions = info.renditions;
+  }
+  const sources = options?.assetSources?.map((d) => {
+    const parsed = storeDescriptorSchema.parse(d);
+    if (parsed.auth && parsed.auth !== 'none') throw new Error(`store ${parsed.id}: a book's suggested stores carry no credentials (auth must be 'none')`);
+    return parsed;
+  });
 
   const manifest: Manifest = {
     format: CHALKBOOK_FORMAT,
@@ -113,6 +138,7 @@ export async function packLesson(
     })),
     assets: assetEntries,
     bundling: thin ? 'thin' : 'fat',
+    ...(sources?.length ? { assetSources: sources } : {}),
     metadata: {
       createdAt: lesson.createdAt,
       updatedAt: lesson.updatedAt,
@@ -169,11 +195,11 @@ export function writeAssetsToZip(
       );
     }
     pathToId.set(path, id);
-    const inline = !thin || !isSha256AssetId(id) || (alwaysInline?.has(id) ?? false);
+    const inline = !thin || !isContentAddressedId(id) || (alwaysInline?.has(id) ?? false);
     // STORE, not DEFLATE: asset bytes (images/PDFs/video/3D) are already
     // compressed formats — re-deflating them costs CPU for near-zero gain.
     if (inline) zip.file(path, payload.bytes, { compression: 'STORE' });
-    assetEntries.push({ id, type: payload.type, path, inline });
+    assetEntries.push({ id, type: payload.type, path, inline, size: payload.bytes.byteLength });
   }
   return assetEntries;
 }

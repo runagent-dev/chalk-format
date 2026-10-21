@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { lessonPageSchema } from '@chalk-format/model';
+import { isC1Key, lessonPageSchema, storeDescriptorSchema } from '@chalk-format/model';
 import { CHALKBOOK_FORMAT } from './manifest.js';
 import { checkEntryCount, type UnpackInput, type UnpackLimits } from './unpack.js';
 
@@ -138,6 +138,12 @@ export async function validateLessonPackage(
           });
           continue;
         }
+        // a c1 key is valid only in its canonical form (spec 1.2 §3.1)
+        const ids = [a.id, ...(Array.isArray(a.renditions) ? a.renditions.map((r: unknown) => (isRecord(r) ? String(r.id) : '')) : [])];
+        for (const id of ids) if (/^c1:/i.test(id) && !isC1Key(id)) issues.push({ severity: 'error', message: `malformed c1 key: ${id}` });
+        if (a.inline === false && a.size === undefined && typeof manifest.formatVersion === 'number' && manifest.formatVersion >= 9) {
+          issues.push({ severity: 'warning', message: `external asset without a size: ${a.id}` });
+        }
         if (a.path.includes('..')) {
           issues.push({ severity: 'error', message: `unsafe path in asset entry: ${a.path}` });
           continue;
@@ -154,6 +160,15 @@ export async function validateLessonPackage(
           issues.push({ severity: 'error', message: `asset file missing: ${a.path}` });
         }
       }
+    }
+  }
+
+  if (manifest.assetSources !== undefined) {
+    if (!Array.isArray(manifest.assetSources)) issues.push({ severity: 'error', message: 'manifest.assetSources must be an array' });
+    else for (const d of manifest.assetSources) {
+      const r = storeDescriptorSchema.safeParse(d);
+      if (!r.success) issues.push({ severity: 'error', message: `invalid store descriptor: ${r.error.issues[0]?.message ?? 'shape'}` });
+      else if ((r.data.auth ?? 'none') !== 'none') issues.push({ severity: 'error', message: `store ${r.data.id}: a book's suggested stores carry no credentials` });
     }
   }
 
