@@ -26,7 +26,8 @@
     "typescript-eslint": "^8.18.0",
     "tsx": "^4.19.2",
     "zod": "^4.4.3",
-    "@chalk-format/model": "workspace:*"
+    "@chalk-format/model": "workspace:*",
+    "@chalk-format/store": "workspace:*"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
