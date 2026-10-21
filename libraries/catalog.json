@@ -1,0 +1,33 @@
+{
+  "about": "Shared library builds for Chalk labs (spec 1.5 §2). Built by tools/lab-libraries.ts; same version, same bytes, same keys.",
+  "libraries": [
+    {
+      "specifier": "three",
+      "version": "0.183.2",
+      "file": "build/three-0.183.2-core.js",
+      "size": 720844,
+      "key": "c1:e5oeyylksj2lwuoz7caib5abb4"
+    },
+    {
+      "specifier": "three/addons/controls/OrbitControls.js",
+      "version": "0.183.2",
+      "file": "build/three-0.183.2-OrbitControls.js",
+      "size": 19732,
+      "key": "c1:3ieckri5glzee42orejuzbhwie"
+    },
+    {
+      "specifier": "three/addons/loaders/GLTFLoader.js",
+      "version": "0.183.2",
+      "file": "build/three-0.183.2-GLTFLoader.js",
+      "size": 45637,
+      "key": "c1:5dsc5ytwaa4wclubuk56nqe7oy"
+    },
+    {
+      "specifier": "three/addons/renderers/CSS2DRenderer.js",
+      "version": "0.183.2",
+      "file": "build/three-0.183.2-CSS2DRenderer.js",
+      "size": 2469,
+      "key": "c1:4hz5hrfsx3uzrxa3mx55r6i4qm"
+    }
+  ]
+}
