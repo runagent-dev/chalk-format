@@ -91,6 +91,7 @@ export function PresentationFields({ o, setP, setDisplay, setLabTitle, t }: {
   const pr = usePresenter();
   if (o.type !== 'image' && o.type !== 'embed') return null;
   const own: Presentation = o.presentation ?? {};
+  // what the author chose, else what applies (the host's default, else the spec's)
   const p = pr.present(o);
   const icon = o.displayMode === 'icon';
   return (
@@ -98,23 +99,24 @@ export function PresentationFields({ o, setP, setDisplay, setLabTitle, t }: {
       <Section title={t.presentation}>
         <Seg label={t.display} value={o.displayMode ?? 'full'} options={[['full', t.full], ['icon', t.icon]]} onChange={setDisplay} />
         {o.type === 'embed' && !icon && (o.embed === 'model3d' || o.embed === 'video' || isLabObject(o)) && (
-          <Seg label={t.show} value={own.show ?? 'card'} options={[['card', t.card], ['live', t.live]]} onChange={(v) => setP('show', v === 'card' ? undefined : v)} />
+          <Seg label={t.show} value={(own.show === 'live' || own.show === 'card' ? own.show : p.show)} options={[['card', t.card], ['live', t.live]]} onChange={(v) => setP('show', v)} />
         )}
         {o.type === 'embed' && o.embed !== 'audio' && (
           <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['fullscreen', t.fullscreen]] : [['inline', t.inline], ['popup', t.popup], ['fullscreen', t.fullscreen]]}
-            onChange={(v) => setP('open', v === (icon ? 'popup' : 'inline') ? undefined : v)} />
+            onChange={(v) => setP('open', v)} />
         )}
         {o.type === 'image' && (
           <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['fullscreen', t.fullscreen]] : [['none', t.none], ['popup', t.popup], ['fullscreen', t.fullscreen]]}
-            onChange={(v) => setP('open', v === (icon ? 'popup' : 'none') ? undefined : v)} />
+            onChange={(v) => setP('open', v)} />
         )}
         {o.type === 'embed' && (o.embed === 'video' || o.embed === 'audio' || o.embed === 'model3d') && (
           <fieldset className="chalk-insp-field">
             <legend>{t.playback}</legend>
-            {o.embed !== 'model3d' && <Toggle label={t.autoplay} checked={!!own.autoplay} onChange={(v) => setP('autoplay', v)} />}
-            {o.embed !== 'model3d' && <Toggle label={t.loop} checked={!!own.loop} onChange={(v) => setP('loop', v)} />}
-            {o.embed === 'video' && <Toggle label={t.muted} checked={!!own.muted} onChange={(v) => setP('muted', v)} />}
-            {o.embed === 'model3d' && <Toggle label={t.autoRotate} checked={!!own.autoRotate} onChange={(v) => setP('autoRotate', v)} />}
+            {/* only video starts by itself, and silently: sound waits for a tap (spec 1.3 §1) */}
+            {o.embed === 'video' && <Toggle label={t.autoplay} checked={own.autoplay ?? p.autoplay} onChange={(v) => setP('autoplay', v)} />}
+            {o.embed !== 'model3d' && <Toggle label={t.loop} checked={own.loop ?? p.loop} onChange={(v) => setP('loop', v)} />}
+            {o.embed === 'video' && <Toggle label={t.muted} checked={own.muted ?? p.muted} onChange={(v) => setP('muted', v)} />}
+            {o.embed === 'model3d' && <Toggle label={t.autoRotate} checked={own.autoRotate ?? p.autoRotate} onChange={(v) => setP('autoRotate', v)} />}
           </fieldset>
         )}
       </Section>

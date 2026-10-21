@@ -86,7 +86,7 @@ export function AuthorSidebar(p: {
           setDisplay={(v) => { const n = { ...d }; if (v === 'icon') n.displayMode = 'icon'; else delete n.displayMode; setD(n); }}
           setP={(k, v) => {
             const next: Record<string, unknown> = { ...(d.presentation ?? {}), [k]: v };
-            if (v === undefined || v === '' || v === false) delete next[k];
+            if (v === undefined || v === '') delete next[k];
             setD({ ...d, presentation: next as Presentation });
           }} />
       </div>

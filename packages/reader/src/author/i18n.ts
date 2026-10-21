@@ -3,7 +3,7 @@ import type { Locale } from '../config.js';
 /** Author mode's own words (the reader's are in ../i18n.ts). */
 const STRINGS = {
   en: {
-    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saved: 'Book saved',
+    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saved: 'Book saved', saveFailed: 'The book was not saved',
     unsaved: 'Unsaved changes', leave: 'This book has unsaved changes. Leave anyway?', notPlaceable: 'This file cannot be added',
     properties: 'Properties', nothing: 'Select something on the page to change how it is shown. Add media with the + button, or drop files on a page.',
     display: 'On the page', full: 'Full size', icon: 'Small icon',
@@ -11,7 +11,7 @@ const STRINGS = {
     open: 'A tap opens it', inline: 'In place', popup: 'In a window', fullscreen: 'Full screen', none: 'Nothing',
     label: 'Label', labelHint: 'Shown on the thumbnail, and read out by screen readers',
     iconPick: 'Icon', iconDefault: 'Default', accent: 'Colour', accentNone: "Reader's colour",
-    playback: 'Playback', autoplay: 'Play by itself', loop: 'Play again at the end', muted: 'Without sound', autoRotate: 'Turn slowly',
+    playback: 'Playback', autoplay: 'Play by itself (silently)', loop: 'Play again at the end', muted: 'Without sound', autoRotate: 'Turn slowly',
     presentation: 'Presentation', look: 'Appearance', style: 'Style', position: 'Position and size', front: 'Bring to front', back: 'Send to back',
     book: 'Book', title: 'Title', page: 'Page', pageTitle: 'Page title', background: 'Background', bgPicture: 'a picture (from the PDF)',
     layers: 'On this page', noLayers: 'Nothing on this page yet.', chooseFile: 'Choose a file', dropHere: 'or drop it here, or on a page',
@@ -23,7 +23,7 @@ const STRINGS = {
     image: 'Image', video: 'Video', audio: 'Sound', model3d: '3D model', lab: 'Lab', plugin: 'Widget', snip: 'Snip', other: 'Object',
   },
   bn: {
-    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saved: 'বই সংরক্ষিত হয়েছে',
+    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saved: 'বই সংরক্ষিত হয়েছে', saveFailed: 'বইটি সংরক্ষণ করা যায়নি',
     unsaved: 'পরিবর্তন সংরক্ষণ করা হয়নি', leave: 'বইটির পরিবর্তন সংরক্ষণ করা হয়নি। তবুও বের হবেন?', notPlaceable: 'এই ফাইলটি যোগ করা যায় না',
     properties: 'বৈশিষ্ট্য', nothing: 'পাতার কিছু নির্বাচন করুন, তারপর এটি কীভাবে দেখাবে তা বদলান। + বোতাম দিয়ে মিডিয়া যোগ করুন, অথবা ফাইল পাতার ওপর ছেড়ে দিন।',
     display: 'পাতায়', full: 'পূর্ণ আকারে', icon: 'ছোট আইকন',
@@ -31,7 +31,7 @@ const STRINGS = {
     open: 'ট্যাপ করলে খুলবে', inline: 'এখানেই', popup: 'আলাদা জানালায়', fullscreen: 'পূর্ণ পর্দায়', none: 'কিছু না',
     label: 'লেবেল', labelHint: 'থাম্বনেইলে দেখা যাবে, স্ক্রিন রিডার পড়ে শোনাবে',
     iconPick: 'আইকন', iconDefault: 'স্বাভাবিক', accent: 'রং', accentNone: 'রিডারের রং',
-    playback: 'চালানো', autoplay: 'নিজে থেকে চালু হবে', loop: 'শেষ হলে আবার চলবে', muted: 'শব্দ ছাড়া', autoRotate: 'ধীরে ঘুরবে',
+    playback: 'চালানো', autoplay: 'নিজে থেকে চালু হবে (শব্দ ছাড়া)', loop: 'শেষ হলে আবার চলবে', muted: 'শব্দ ছাড়া', autoRotate: 'ধীরে ঘুরবে',
     presentation: 'উপস্থাপন', look: 'চেহারা', style: 'ধরন', position: 'অবস্থান ও আকার', front: 'সবার সামনে আনুন', back: 'সবার পেছনে পাঠান',
     book: 'বই', title: 'শিরোনাম', page: 'পাতা', pageTitle: 'পাতার শিরোনাম', background: 'পটভূমি', bgPicture: 'একটি ছবি (PDF থেকে)',
     layers: 'এই পাতায় যা আছে', noLayers: 'এই পাতায় এখনো কিছু নেই।', chooseFile: 'একটি ফাইল বেছে নিন', dropHere: 'অথবা এখানে বা পাতার ওপর ছেড়ে দিন',

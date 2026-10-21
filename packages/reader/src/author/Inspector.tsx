@@ -35,11 +35,12 @@ export function Inspector({ o, pageId, apply, onDelete, t }: {
 }) {
   const media = o.type === 'image' || o.type === 'embed';
   const setObj = (patch: Record<string, unknown>, gesture?: string) => apply(edit.replace(pageId, { ...o, ...patch } as LessonObject), gesture);
-  /** Set one presentation field (undefined clears it); the field goes away when nothing is left in it. */
+  /** Set one presentation field. A choice is kept even when it equals the default (false, 'card', 'inline'), so a
+   *  host's default cannot override it; only "Default" (undefined) and an empty label clear the field. */
   const setP = (k: keyof Presentation, v: unknown, gesture?: string) => {
     if (!media) return;
     const next: Record<string, unknown> = { ...(o.presentation ?? {}), [k]: v };
-    if (v === undefined || v === '' || v === false) delete next[k];
+    if (v === undefined || v === '') delete next[k];
     const rest: Record<string, unknown> = { ...o };
     delete rest.presentation;
     apply(edit.replace(pageId, (Object.keys(next).length ? { ...rest, presentation: next } : rest) as LessonObject), gesture);

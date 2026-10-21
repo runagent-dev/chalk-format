@@ -44,10 +44,13 @@ for (const [name, opts] of [['desktop', { viewport: { width: 1280, height: 800 }
   // the sound comes out of the book first, which can take a moment on a cold server
   await p.waitForFunction(() => (document.querySelector('.chalk-audio audio')?.currentTime ?? 0) > 1, null, { timeout: 6000 }).catch(() => {});
   r.audio = await p.evaluate(() => { const a = document.querySelector('.chalk-audio audio'); return a ? { playing: !a.paused, t: +a.currentTime.toFixed(1) } : 'no audio element'; });
+  // the first tap on pause pauses (it once started again at once)
+  await press('.chalk-audio-play', { timeout: 5000 }); await p.waitForTimeout(600);
+  r.audioPaused = await p.evaluate(() => document.querySelector('.chalk-audio audio')?.paused === true);
   // the author's icon marker: label as its name, and its accent colour
   r.marker = await p.evaluate(() => { const m = document.querySelector('.chalk-marker[aria-label="সুরশলাকা · ৪৪০ Hz"]'); return m ? getComputedStyle(m).backgroundColor : 'missing'; });
   const ok = r.model3d === 'loaded' && r.model3dRotates && r.video?.playing && r.video.t > 1 && r.video.loop && !r.video.muted && r.lab === 'running' && r.labWhere === 'full screen' && r.labClosed
-    && r.audio?.playing && r.audio.t > 0.5 && r.marker === 'rgb(194, 98, 26)' && !errs.length;
+    && r.audio?.playing && r.audio.t > 0.5 && r.audioPaused && r.marker === 'rgb(194, 98, 26)' && !errs.length;
   failed ||= !ok;
   console.log(name.padEnd(8), ok ? 'OK  ' : 'FAIL', JSON.stringify(r), errs.length ? 'errors: ' + errs.join(' | ') : '');
   await p.close();

@@ -29,7 +29,7 @@ default below, which is what 1.2 readers already did.
 | `label` | string, 1–200 characters | both | the kind's name | The caption on a card; the accessible name of everything; shown next to an icon on hover or focus |
 | `icon` | an icon name (§2) | both | the kind's icon | The icon on the card or marker |
 | `accent` | `#rrggbb` | both | the reader's colour | The colour of the marker and the card's icon disc |
-| `autoplay` | boolean | video, audio | `false` | Starts when shown. Readers MAY require `muted` for video, and MUST NOT start sound the student did not ask for (browsers block it anyway) |
+| `autoplay` | boolean | video | `false` | Starts by itself, without sound, while on screen. A tap then plays it as authored (with sound unless `muted`). Readers MUST NOT start sound the student did not ask for, so audio objects ignore `autoplay` |
 | `loop` | boolean | video, audio | `false` | Starts again at the end |
 | `muted` | boolean | video | `false` | Starts without sound |
 | `autoRotate` | boolean | model3d | `false` | Turns slowly until touched |

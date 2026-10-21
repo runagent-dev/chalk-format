@@ -52,7 +52,8 @@ export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObj
   const poster = useAssetUrl(book, o.poster);
   const el = useRef<HTMLVideoElement>(null);
   const [tapped, setTapped] = useState(false);
-  usePlayWhileVisible(el, playing && p.autoplay && !tapped);
+  // `src` too: the element only exists once the media's URL is known (the effect must run again then)
+  usePlayWhileVisible(el, Boolean(src) && playing && p.autoplay && !tapped);
   if (!playing) return <EmbedCard book={book} o={o} label={label} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
   const R = pr.renderers.video;
   if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
@@ -71,16 +72,16 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const el = useRef<HTMLAudioElement>(null);
   const [state, setState] = useState({ playing: false, time: 0, duration: 0 });
   const pr = usePresenter(), p = pr.present(o);
-  // autoplay (spec 1.3): load at once, and play while on screen if the browser allows sound without a tap
+  // sound starts only when the student asks (spec 1.3 §1): audio has no autoplay
   const R = pr.renderers.audio;
   // a host's own player gets the media at once; ours loads it on the first tap
-  const [want, setWant] = useState(p.autoplay || Boolean(R));
+  const [want, setWant] = useState(Boolean(R));
   const src = useAssetUrl(book, want ? o.assetId : undefined) ?? (want ? o.url : undefined);
-  const [tapped, setTapped] = useState(false);
-  useEffect(() => { if (want && src && tapped) void el.current?.play(); }, [want, src, tapped]);
-  usePlayWhileVisible(el, Boolean(src) && p.autoplay && !tapped);
+  // a tap before the media was loaded: play once it is there (once, so a later pause stays paused)
+  const playWhenReady = useRef(false);
+  useEffect(() => { if (src && playWhenReady.current) { playWhenReady.current = false; void el.current?.play(); } }, [src]);
   const fmt = (s: number) => num(locale, `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
-  const toggle = () => { setTapped(true); const a = el.current; if (!want || !a) { setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
+  const toggle = () => { const a = el.current; if (!want || !a) { playWhenReady.current = true; setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
   const style = { '--h': `${o.height}px` } as CSSProperties;
   const poster = useAssetUrl(book, o.poster);
   if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;

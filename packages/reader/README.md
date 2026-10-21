@@ -18,7 +18,7 @@ read. Try it in [`apps/reader`](../../apps/reader) (`pnpm --filter @chalk-format
   with no network; one at a time, paused off screen, state saved, progress reported. On a phone a lab opens in
   a full-reader view.
 - **Presentation as the author chose it** (spec 1.3): live or as a card, what a tap opens (in place, a
-  dialog, full screen), label, icon and accent colour, autoplay, loop, muted, auto-rotate. A live model or lab
+  dialog, full screen), label, icon and accent colour, autoplay (video, silently; sound always waits for a tap), loop, muted, auto-rotate. A live model or lab
   starts once at least half of it is on screen and it is big enough there to use; otherwise its card opens it.
 - **The student's notes:** pen, highlighter, eraser, text, shapes and select, with undo. They are a standard
   Chalk overlay (spec 1.0 §4): kept in the browser, handed to the host, saved and opened as a `.chalk` file.
