@@ -91,6 +91,27 @@
     "covers": "presentation on images, models, video, audio and a lab; unknown show, open and icon values and an unknown field (accepted, defaults)"
   },
   {
+    "file": "valid/lab-libraries.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.5",
+    "covers": "a lab with a library the reader supplies, and its own import map for running on its own"
+  },
+  {
+    "file": "invalid/lab-library-not-content-addressed.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.5",
+    "covers": "a library whose asset is not content-addressed"
+  },
+  {
+    "file": "invalid/lab-library-duplicate.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.5",
+    "covers": "the same library specifier twice"
+  },
+  {
     "file": "invalid/presentation-accent.chalk",
     "valid": false,
     "kind": "lesson",

@@ -18,6 +18,7 @@ interactive **labs**: simulations that run offline in a sandbox), with a searcha
 | [`spec/1.2`](spec/1.2/README.md) | Chalk 1.2: asset stores (`formatVersion` 9): short `c1:` keys, stores that turn keys into bytes, the reader's resolution rules, and the [registry API](spec/1.2/registry-api.md) authoring tools use (with a [reference database](spec/1.2/registry.sql)) |
 | [`spec/1.3`](spec/1.3/README.md) | Chalk 1.3: presentation (`formatVersion` 10): how the author wants each image or embed presented (live or a card, what a tap opens, label, icon, accent, autoplay), from fixed lists, never CSS |
 | [`spec/1.4`](spec/1.4/README.md) | Chalk 1.4: streamed books: the same book as static files (an index, one file per page, a search file), so a reader opens a 300-page textbook at once and fetches only the pages around the one being read |
+| [`spec/1.5`](spec/1.5/README.md) | Chalk 1.5: lab libraries and lab manifests (`formatVersion` 11): labs import shared libraries (three.js, …) the reader supplies, so twenty 3D labs carry three.js once; a manifest per lab lets a store list it and an authoring tool place and set it up |
 | [`schema/`](schema) | JSON Schemas generated from the model, for non-TypeScript readers: lesson, page, overlay, store descriptor, index shard, registry API |
 | [`conformance/`](conformance) | Sample packages every reader must accept (`valid/`) or reject (`invalid/`), key test vectors (`keys.json`), store examples (`stores/`) |
 | `packages/model` | The data model (Zod, single source of truth), migrations, overlays, asset ids, media sniffing |
@@ -95,6 +96,19 @@ host.setVisible(false);   // when the page scrolls away: the lab stops rendering
 import { connectLab } from '@chalk-format/lab/client';
 const lab = await connectLab({ id: 'org.example.pendulum', version: '1.0.0' });
 ```
+
+## Labs for a store
+
+A lab is one HTML file (spec 1.1). One that uses three.js names it in `lab.libraries` instead of bundling it
+(spec 1.5): the reader supplies the shared, verified build, so a book carries it once and a student downloads it
+once. Written like any ES module project (`import * as THREE from 'three'`), and with its own import map it still
+runs when opened on its own. A **lab manifest** describes it for a store: titles in Bengali and English, subject,
+poster, libraries, and its settings as a small JSON Schema an authoring tool turns into a form.
+
+- Example: [`examples/labs/screw-gauge.html`](examples/labs/screw-gauge.html) with
+  [`screw-gauge.lab.json`](examples/labs/screw-gauge.lab.json).
+- Shared builds: [`libraries/catalog.json`](libraries/catalog.json), built by `npx tsx tools/lab-libraries.ts`
+  (reproducible: CI checks the keys).
 
 ## Streamed books
 

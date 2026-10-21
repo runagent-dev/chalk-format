@@ -2,7 +2,7 @@
 // Run: pnpm gen:schema. CI checks the committed files are up to date.
 import { writeFileSync } from 'node:fs';
 import { z } from 'zod';
-import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, indexShardSchema, streamIndexSchema, streamTextSchema, lessonPageSchema, lessonSchema, overlaySchema, storeDescriptorSchema } from '@chalk-format/model';
+import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, indexShardSchema, labManifestSchema, streamIndexSchema, streamTextSchema, lessonPageSchema, lessonSchema, overlaySchema, storeDescriptorSchema } from '@chalk-format/model';
 import * as registry from '@chalk-format/store';
 
 // Rules the Zod model states as refinements, which toJSONSchema cannot see: added by hand to the
@@ -77,3 +77,6 @@ const PATH = { type: 'string', minLength: 1, maxLength: 500, pattern: '^(?![/\\\
 const withPaths = (j: Record<string, unknown>): Record<string, unknown> => JSON.parse(JSON.stringify(j), (k, v) => (k === 'file' || k === 'path') && v && typeof v === 'object' && (v as { type?: string }).type === 'string' ? PATH : v);
 write('stream-index.schema.json', withPaths({ ...header('stream-index.schema.json', 'Chalk streamed book index, book.json (spec 1.4 §3)'), ...z.toJSONSchema(streamIndexSchema, { target: 'draft-2020-12', io: 'input' }) }));
 write('stream-text.schema.json', { ...header('stream-text.schema.json', 'Chalk streamed book search text (spec 1.4 §4)'), ...z.toJSONSchema(streamTextSchema, { target: 'draft-2020-12', io: 'input' }) });
+
+// ---- 1.5: lab manifests ----
+write('lab-manifest.schema.json', { ...header('lab-manifest.schema.json', 'Chalk lab manifest, what a store keeps about a lab (spec 1.5 §4)'), ...z.toJSONSchema(labManifestSchema, { target: 'draft-2020-12', io: 'input' }) });

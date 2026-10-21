@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v10/stream-index.schema.json",
+  "$id": "https://chalk-format.dev/schema/v11/stream-index.schema.json",
   "title": "Chalk streamed book index, book.json (spec 1.4 §3)",
-  "x-chalk-format-version": 10,
+  "x-chalk-format-version": 11,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {

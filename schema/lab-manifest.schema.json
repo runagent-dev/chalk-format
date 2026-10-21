@@ -1,0 +1,312 @@
+{
+  "$id": "https://chalk-format.dev/schema/v11/lab-manifest.schema.json",
+  "title": "Chalk lab manifest, what a store keeps about a lab (spec 1.5 §4)",
+  "x-chalk-format-version": 11,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "chalk.lab"
+    },
+    "manifestVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "subject": {
+      "type": "string"
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entry": {
+      "type": "string",
+      "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
+    },
+    "poster": {
+      "type": "string",
+      "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
+      }
+    },
+    "libraries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "specifier": {
+            "type": "string",
+            "pattern": "^(?![./])(?![a-z][a-z0-9+.-]*:)[A-Za-z0-9@][\\w@./+-]{0,199}$"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "asset": {
+            "type": "string",
+            "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
+          }
+        },
+        "required": [
+          "specifier",
+          "version",
+          "asset"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "size": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minHeight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "object"
+        },
+        "properties": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "number",
+                  "integer",
+                  "boolean",
+                  "string"
+                ]
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "default": {
+                "type": [
+                  "number",
+                  "boolean",
+                  "string"
+                ]
+              },
+              "minimum": {
+                "type": "number"
+              },
+              "maximum": {
+                "type": "number"
+              },
+              "multipleOf": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "enum": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "x-chalk-unit": {
+                "type": "string",
+                "maxLength": 20
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": [
+        "type",
+        "properties"
+      ],
+      "additionalProperties": {}
+    },
+    "presets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "params": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "params"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "license": {
+      "type": "string"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "format",
+    "manifestVersion",
+    "id",
+    "version",
+    "title",
+    "entry"
+  ],
+  "additionalProperties": {}
+}
