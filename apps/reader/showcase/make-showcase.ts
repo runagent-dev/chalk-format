@@ -5,13 +5,14 @@
 // Every embed goes where chapter.html has a matching [data-embed] frame, so the layout lives in one place.
 //
 //   pnpm --filter @chalk-format/reader-app showcase
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { convertPdfToChalk } from '@chalk-format/convert-pdf';
 import { packLesson, unpackLesson, publishStreamed } from '@chalk-format/container';
-import { getPageSize, hashBytes, type LessonObject, type LessonPage } from '@chalk-format/model';
+import { assetKey, getPageSize, hashBytes, labManifestSchema, labObjectFromManifest, type LessonObject, type LessonPage } from '@chalk-format/model';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -89,6 +90,17 @@ const ids = {
   lab: await add(new Uint8Array(readFileSync(path.join(repo, 'examples/labs/pendulum.html'))), 'text/html'), labPoster: await add(media('lab-poster.png'), 'image/png'),
   snip: await add(new Uint8Array(snipPng), 'image/png'),
 };
+// the screw-gauge lab (spec 1.5): its file, poster and the shared three.js builds it imports, under their c1 keys,
+// placed from its manifest the way an authoring tool would
+const labManifest = labManifestSchema.parse(JSON.parse(readFileSync(path.join(repo, 'examples/labs/screw-gauge.lab.json'), 'utf8')));
+{
+  if (!existsSync(path.join(repo, 'libraries/build'))) execSync('npx tsx tools/lab-libraries.ts', { cwd: repo, stdio: 'inherit' });
+  const catalog = JSON.parse(readFileSync(path.join(repo, 'libraries/catalog.json'), 'utf8')).libraries as { key: string; file: string }[];
+  const put1 = async (file: string, type: string, want: string) => { const bytes = new Uint8Array(readFileSync(file)); const k = await assetKey(bytes); if (k !== want) throw new Error(`${file}: key ${k}, the manifest says ${want}`); assets.set(k, { type, bytes }); };
+  await put1(path.join(repo, 'examples/labs/screw-gauge.html'), 'text/html', labManifest.entry);
+  await put1(path.join(repo, 'examples/labs/screw-gauge-poster.png'), 'image/png', labManifest.poster!);
+  for (const l of labManifest.libraries ?? []) await put1(path.join(repo, 'libraries', catalog.find((c) => c.key === l.asset)!.file), 'text/javascript', l.asset);
+}
 const at = (b: Box) => {
   const p = lesson.pages[b.page]!, { width, height } = getPageSize(p), kx = width / 210, ky = height / 297;
   return { page: p, x: Math.round(b.x * kx), y: Math.round(b.y * ky), width: Math.round(b.w * kx), height: Math.round(b.h * ky), kx, ky };
@@ -130,6 +142,11 @@ const put = (p: LessonPage, o: LessonObject) => { p.objects.push(o); };
   const p = lesson.pages[3]!, { width, height } = getPageSize(p), kx = width / 210, ky = height / 297;
   put(p, { id: 'tuning-fork-icon', type: 'embed', embed: 'audio', x: Math.round(176 * kx), y: Math.round(233 * ky), width: 56, height: 56, assetId: ids.audio, displayMode: 'icon',
   presentation: { label: 'সুরশলাকা · ৪৪০ Hz', accent: '#c2621a' } });
+}
+
+{
+  const b = at(frames.lab2!);
+  put(b.page, { ...labObjectFromManifest(labManifest, { id: 'screw-gauge-lab', x: b.x, y: b.y, width: b.width, locale: 'bn' }), height: b.height } as LessonObject);
 }
 
 // ---------- 4. pack ----------
