@@ -42,6 +42,25 @@ pnpm --filter @chalk-format/cli start convert ./book.pdf -o book.chalk \
     --title "Higher Math" --locale bn --license "All rights reserved"
 ```
 
+### See the reference reader
+
+```bash
+pnpm install
+pnpm --filter @chalk-format/reader-app dev      # http://localhost:5190
+```
+
+The showcase opens a bilingual sample book (pages from a PDF, video, audio, a 3D screw gauge, the pendulum
+lab, a snip). The first start builds the sample (about half a minute); edits to `packages/reader` reload the
+page. In the app: the book picker (top right) switches samples, **Open a book** loads any `.chalk` file, and
+**Configure** changes the reader live and shows the matching code. Use the browser's device toolbar for the
+phone layout.
+
+```bash
+pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books after changing apps/reader/showcase/
+pnpm --filter @chalk-format/reader-app build      # production build into apps/reader/dist/
+node tools/reader-shots.mjs out/shots              # desktop + phone screenshots of the running app
+```
+
 ## Working on the format
 
 - `packages/model/src/schema.ts` is the source of truth. After changing it:
