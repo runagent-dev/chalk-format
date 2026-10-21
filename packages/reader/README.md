@@ -77,12 +77,25 @@ merge, arrays replace).
 | `labs.autoStart` | `false` | Start the lab on a page as the page opens. |
 | `persistence` | `'local'` | Keep notes and lab state in this browser, or `'none'`. |
 | `pdfWorkerSrc` | `null` | pdf.js's worker URL, to draw PDF pages that carry no rendered image. With Vite: `import src from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`. |
+| `presentation.icons` | built-in | Your artwork per icon name (`ruler`, `atom`, … spec 1.3 §2) or per kind (`video audio model3d lab image plugin snip`): an element or `(size) => element`. A name wins over a kind. |
+| `presentation.defaults` | none | Presentation for objects whose author set nothing, per kind, e.g. `{ model3d: { show: 'live', autoRotate: true, accent: '#7c3aed' }, lab: { open: 'fullscreen' } }`. What the author set wins. Accents are `#rrggbb`. |
+| `presentation.authorAccents` | `true` | `false`: ignore the colours authors chose; your `defaults` accents (or the theme's) everywhere. |
+| `presentation.live` | `true` | `false`: nothing starts by itself (no live models or labs, no autoplay), e.g. to save data. |
+| `renderers` | none | Your own player or viewer: `{ video, audio, model3d }`, each `(p) => element` given `{ object, src, poster, presentation, where: 'page' \| 'popup', locale, theme }`. With your own `model3d`, `<model-viewer>` and three.js are never loaded. |
 
 ### Theming
 
 Every colour, font, space and radius is a CSS custom property on `.chalk-reader` (`--chalk-desk`,
 `--chalk-surface`, `--chalk-accent`, `--chalk-font`, …; see `styles.css`). Override them on the container, or on
 `.chalk-reader[data-theme="dark"]` for the dark theme. Nothing leaks outside `.chalk-reader`.
+
+## Restyling media
+
+The book says how the author wants each piece of media presented (spec 1.3: live or a card, what a tap opens,
+label, icon, colour). How it looks is yours: theme variables (`--chalk-*`) for the reader as a whole,
+`presentation` for icons, colours per kind and defaults, `renderers` to replace a player outright. Cards and
+markers carry `data-kind` (`video`, `model3d`, …) for CSS of your own. Try it all in the showcase's Configure
+panel, which prints the config for what you set.
 
 ## Notes for hosts
 

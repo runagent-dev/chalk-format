@@ -3,11 +3,12 @@ import type {} from '../model-viewer-jsx.js';
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { PauseIcon, PlayIcon } from '@phosphor-icons/react';
 import { mountLab, type LabHost, type StateKey } from '@chalk-format/lab';
-import { resolvePresentation, type EmbedObject, type LabObject } from '@chalk-format/model';
+import type { EmbedObject, LabObject } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import type { Locale } from '../config.js';
 import { num, strings } from '../i18n.js';
 import { useAssetUrl } from './assets.js';
+import { usePresenter } from '../present.js';
 import { Box, EmbedCard, type Activate } from './Markers.js';
 
 /** Where labs keep their saved state (host-api §4.1). The reader adds the book and object to the key. */
@@ -44,7 +45,7 @@ function usePlayWhileVisible(el: RefObject<HTMLMediaElement | null>, on: boolean
  * open it elsewhere (popup, full screen) goes to `onOpen`.
  */
 export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObject; label: string; onOpen?: Activate | undefined }) {
-  const p = resolvePresentation(o);
+  const pr = usePresenter(), p = pr.present(o);
   const [playing, setPlaying] = useState(p.show === 'live');
   const { id, url } = mediaUrl(book, o);
   const src = useAssetUrl(book, playing ? id : undefined) ?? (playing ? url : undefined);
@@ -53,6 +54,8 @@ export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObj
   const [tapped, setTapped] = useState(false);
   usePlayWhileVisible(el, playing && p.autoplay && !tapped);
   if (!playing) return <EmbedCard book={book} o={o} label={label} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
+  const R = pr.renderers.video;
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>
       {/* browsers start a video by itself only without sound; a tap is the student asking, so then it plays as authored */}
@@ -67,9 +70,11 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const t = strings(locale);
   const el = useRef<HTMLAudioElement>(null);
   const [state, setState] = useState({ playing: false, time: 0, duration: 0 });
-  const p = resolvePresentation(o);
+  const pr = usePresenter(), p = pr.present(o);
   // autoplay (spec 1.3): load at once, and play while on screen if the browser allows sound without a tap
-  const [want, setWant] = useState(p.autoplay);
+  const R = pr.renderers.audio;
+  // a host's own player gets the media at once; ours loads it on the first tap
+  const [want, setWant] = useState(p.autoplay || Boolean(R));
   const src = useAssetUrl(book, want ? o.assetId : undefined) ?? (want ? o.url : undefined);
   const [tapped, setTapped] = useState(false);
   useEffect(() => { if (want && src && tapped) void el.current?.play(); }, [want, src, tapped]);
@@ -77,6 +82,8 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const fmt = (s: number) => num(locale, `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
   const toggle = () => { setTapped(true); const a = el.current; if (!want || !a) { setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
   const style = { '--h': `${o.height}px` } as CSSProperties;
+  const poster = useAssetUrl(book, o.poster);
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>
       <div className="chalk-audio-bar" style={style}>
@@ -98,19 +105,22 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
 }
 
 /** A 3D model in <model-viewer>, loaded on first use: drag to turn, pinch or scroll to zoom. */
-export function ModelViewer({ book, o, style }: { book: Book; o: EmbedObject; style: CSSProperties }) {
+export function ModelViewer({ book, o, style, where = 'page' }: { book: Book; o: EmbedObject; style: CSSProperties; where?: 'page' | 'popup' }) {
   const src = useAssetUrl(book, o.assetId) ?? o.url;
   const poster = useAssetUrl(book, o.poster);
-  const p = resolvePresentation(o);
+  const pr = usePresenter(), p = pr.present(o);
   const [loaded, setLoaded] = useState(false);
-  useEffect(() => { let live = true; void import('@google/model-viewer').then(() => { if (live) setLoaded(true); }); return () => { live = false; }; }, []);
+  const R = pr.renderers.model3d;
+  // <model-viewer> (and three.js) only loads when the reader draws the model itself
+  useEffect(() => { if (R) return; let live = true; void import('@google/model-viewer').then(() => { if (live) setLoaded(true); }); return () => { live = false; }; }, [R]);
   return (
     <div className="chalk-live chalk-model" style={style} aria-label={p.label}>
-      {loaded && src && (
+      {R && R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where, ...pr.env })}
+      {!R && loaded && src && (
         <model-viewer src={src} poster={poster ?? undefined} camera-controls="" touch-action="pan-y" shadow-intensity="0.7" exposure="1.05"
           environment-image="neutral" interaction-prompt="none" {...(p.autoRotate ? { 'auto-rotate': '' } : {})} style={{ width: '100%', height: '100%', background: 'transparent' }} />
       )}
-      {!loaded && <span className="chalk-spinner" aria-hidden />}
+      {!R && !loaded && <span className="chalk-spinner" aria-hidden />}
     </div>
   );
 }

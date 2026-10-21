@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { DEFAULT_PRESENTATION, type MediaRenderers, type PresentationConfig } from './present.js';
 
 /**
  * Everything about the reader that a host app can set. One `config` prop, partial: what is not given keeps
@@ -77,6 +78,11 @@ export type ReaderConfig = {
   /** pdf.js's worker script (a URL), to draw PDF pages that carry no rendered image. Unset: a placeholder.
    *  With Vite: `import src from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`. */
   pdfWorkerSrc: string | null;
+  /** How media is presented: your icons, colours and defaults, and whether authors' colours and live media are
+   *  used (spec 1.3 §5). The author's choices are kept wherever you do not override them. */
+  presentation: PresentationConfig;
+  /** Your own player or viewer for a kind, in place of the reader's (the browser's video and audio, <model-viewer>). */
+  renderers: MediaRenderers;
 };
 
 export const DEFAULT_CONFIG: ReaderConfig = {
@@ -106,9 +112,11 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   labs: { autoStart: false },
   persistence: 'local',
   pdfWorkerSrc: null,
+  presentation: DEFAULT_PRESENTATION,
+  renderers: {},
 };
 
-type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] | ((...a: never[]) => unknown) ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
 export type ReaderConfigInput = DeepPartial<ReaderConfig>;
 
 const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;

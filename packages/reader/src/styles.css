@@ -115,7 +115,11 @@ button.chalk-box { cursor: pointer; }
 .chalk-card-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 14px; font-size: 20px; font-weight: 600; text-align: left; background: oklch(18% 0.02 260 / 0.82); }
 button.chalk-card:hover .chalk-card-glyph { background: var(--chalk-object-accent, oklch(18% 0.02 260 / 0.78)); filter: brightness(1.08); }
 .chalk-marker { display: grid; place-items: center; border-radius: 50%; background: var(--chalk-object-accent, oklch(48% 0.13 255)); color: var(--chalk-object-accent-ink, oklch(99% 0 0)); box-shadow: 0 2px 6px oklch(25% 0.05 255 / 0.35); }
-.chalk-marker.is-snip { background: oklch(55% 0.14 155); }
+.chalk-marker.is-snip { background: var(--chalk-object-accent, oklch(55% 0.14 155)); }
+/* a host's own icon (config.presentation.icons), fitted to the space an icon gets */
+.chalk-glyph { display: grid; place-items: center; line-height: 0; }
+.chalk-glyph > :is(svg, img) { width: 100%; height: 100%; }
+.chalk-modal-custom { position: relative; width: 100%; aspect-ratio: 16 / 9; }
 button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-offset: 3px; }
 
 /* ---------- the dock ---------- */

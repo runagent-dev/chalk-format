@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react';
-import { getPageSize, resolvePresentation, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
+import { getPageSize, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
 import type { Book } from '../book.js';
+import { usePresenter, type Presenter } from '../present.js';
 import { useAssetUrl } from './assets.js';
 import { inkPath } from './ink.js';
 import { TextLayer } from './TextLayer.js';
@@ -39,6 +40,7 @@ export type PageViewProps = {
  */
 export const PageView = memo(function PageView(p: PageViewProps) {
   const { width, height } = getPageSize(p.page);
+  const pr = usePresenter();
   return (
     <div className="chalk-page" style={{ width: width * p.scale, height: height * p.scale }} aria-label={p.label} role="img">
       {p.live && (
@@ -46,7 +48,7 @@ export const PageView = memo(function PageView(p: PageViewProps) {
           <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc} />
           {/* the text layer sits on the background, under the objects: cards and players stay clickable */}
           {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.textLayer} />}
-          {runs(p.page.objects).map((run, i) =>
+          {runs(p.page.objects, pr).map((run, i) =>
             run.kind === 'svg'
               ? <svg key={i} className="chalk-layer" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>{run.items.map((o) => <VectorObject key={o.id} o={o} book={p.book} />)}</svg>
               : <HtmlItem key={run.item.id} o={run.item} page={p.page} render={p.renderHtmlObject} />)}
@@ -65,11 +67,11 @@ export const PageView = memo(function PageView(p: PageViewProps) {
 
 type Run = { kind: 'svg'; items: LessonObject[] } | { kind: 'html'; item: LessonObject };
 // an image the author made openable (spec 1.3) is drawn as HTML, so it can be tapped
-const isHtml = (o: LessonObject) => o.type === 'text' || o.type === 'embed' || o.type === 'snip' || (o.type === 'image' && (o.displayMode === 'icon' || resolvePresentation(o).open !== 'none'));
-function runs(objects: readonly LessonObject[]): Run[] {
+const isHtml = (o: LessonObject, pr: Presenter) => o.type === 'text' || o.type === 'embed' || o.type === 'snip' || (o.type === 'image' && (o.displayMode === 'icon' || pr.present(o).open !== 'none'));
+function runs(objects: readonly LessonObject[], pr: Presenter): Run[] {
   const out: Run[] = [];
   for (const o of objects) {
-    if (isHtml(o)) { out.push({ kind: 'html', item: o }); continue; }
+    if (isHtml(o, pr)) { out.push({ kind: 'html', item: o }); continue; }
     const last = out[out.length - 1];
     if (last && last.kind === 'svg') last.items.push(o); else out.push({ kind: 'svg', items: [o] });
   }
