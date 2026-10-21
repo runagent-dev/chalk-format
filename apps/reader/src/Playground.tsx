@@ -119,6 +119,11 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
           <Choice label="Keep notes in" value={config.persistence} options={['local', 'none']} onChange={(v) => set({ persistence: v })} />
         </section>
         <section>
+          <h3>Authoring</h3>
+          <Check wide label="Allow author mode (place media, choose how it is shown, save)" checked={config.authoring.enabled}
+            onChange={(v) => set({ authoring: { ...config.authoring, enabled: v } })} />
+        </section>
+        <section>
           <h3>Media</h3>
           <div className="pg-checks">
             <Check wide label="Use the colours authors chose" checked={pres.authorAccents} onChange={(v) => setPres({ authorAccents: v })} />
