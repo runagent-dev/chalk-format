@@ -6,8 +6,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/samples.mjs && (test -f public/samples/showcase.chalk || pnpm showcase) && vite",
-    "build": "node scripts/samples.mjs && (test -f public/samples/showcase.chalk || pnpm showcase) && vite build",
+    "dev": "node scripts/samples.mjs && (test -f public/samples/long/book.json || pnpm showcase) && vite",
+    "build": "node scripts/samples.mjs && (test -f public/samples/long/book.json || pnpm showcase) && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

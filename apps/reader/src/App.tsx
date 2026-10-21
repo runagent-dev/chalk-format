@@ -12,6 +12,10 @@ const SAMPLES = [
   { id: 'pdf-only', label: 'Pages drawn from the PDF', url: '/samples/pdf-only.chalk' },
   { id: 'all-features', label: 'Every object type', url: '/samples/all-features.chalk' },
   { id: 'lab', label: 'A lab', url: '/samples/lab.chalk' },
+  // streamed books (spec 1.4): the index first, then only the pages around the one being read
+  { id: 'streamed', label: 'Streamed: the physics sample', url: '/samples/showcase/' },
+  { id: 'long', label: 'Streamed: a 60-page book', url: '/samples/long/' },
+  { id: 'long-chalk', label: 'The 60-page book as one .chalk', url: '/samples/long.chalk' },
 ];
 
 /** The showcase: pick a sample or open your own .chalk file. */

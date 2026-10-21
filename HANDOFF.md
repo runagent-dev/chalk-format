@@ -19,6 +19,7 @@ optional text layer), assets addressed by `sha256:`, and optionally an overlay (
 |---|---|
 | `main` | Chalk 1.0 Core (7), **1.1 labs** (8), **1.2 asset stores** (9), and **the reference reader** (PRs #1–#3, merged) |
 | `feat/presentation` | **Chalk 1.3 presentation** (`formatVersion` 10) + **host restyling** + **author mode**, on top of `main`, **not pushed**. Spec `spec/1.3/`; `presentation` on images and embeds (live or card, what a tap opens, label, icon, accent, playback); `config.presentation` / `config.renderers` (host icons, colours, defaults, own players); `config.authoring` (Read/Author switch, select/move/resize, properties panel, add media, save). |
+| `feat/streamed-books` | **Chalk 1.4 streamed books**, on top of `feat/presentation` (PR #4): spec `spec/1.4/`; `publishStreamed` / `assembleStreamed` (container); `openStreamedBook` in the reader (index first, ±window, priority, cancelled jumps, search through `text.json`, author mode loads all); `tools/chalk-stream.ts`; showcase samples `Streamed: …` (incl. a 60-page book); `tools/reader-stream-e2e.mjs` watches the network. Not yet: reading a `.chalk` by byte ranges (spec §7), host stores for streamed books' external media, thumbnails for books that have none. |
 | CI | `.github/workflows/ci.yml`: lint, typecheck, tests, and "schema/ matches the model" |
 
 The plan and phase status for the reader live in [`docs/reader-plan.md`](docs/reader-plan.md).
@@ -51,6 +52,8 @@ pnpm --filter @chalk-format/reader-app dev        # the showcase at http://local
 pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books
 pnpm --filter @chalk-format/reader-app build      # production build (apps/reader/dist)
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]
+node tools/reader-stream-e2e.mjs [url] [shots]    # a streamed 60-page book: what is fetched on open, on a jump, for search, for author mode
+npx tsx tools/chalk-stream.ts publish book.chalk out/dir/   # a .chalk as a streamed book (and `pack dir/ book.chalk` back)
 node tools/reader-media-e2e.mjs [url]             # real clicks (desktop) and taps (phone): 3D, video, lab, audio play
 npx tsx tools/reader-author-e2e.mjs [url] [shots] # author mode with real input: select, properties, undo, move, resize, add files, save and reopen
 ```

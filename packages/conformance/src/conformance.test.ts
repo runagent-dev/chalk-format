@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
-import { unpackLesson, unpackOverlay, validateLessonPackage } from '@chalk-format/container';
+import { assembleStreamed, parseStreamIndex, unpackLesson, unpackOverlay, validateLessonPackage } from '@chalk-format/container';
 
 const ROOT = new URL('../../../conformance/', import.meta.url);
 type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; covers: string };
@@ -92,5 +92,29 @@ describe('store examples (spec 1.2 §5)', () => {
     const video = [...r.assetInfo.entries()].find(([, i]) => i.renditions?.length);
     expect(video?.[1]).toMatchObject({ size: 18_400_211, meta: { width: 1280, duration: 94.5 } });
     expect(r.missingAssetIds).toEqual([video![0]]);
+  });
+});
+
+// ---- 1.4: streamed books ----
+describe('a streamed book (spec 1.4 §8)', () => {
+  const dir = new URL('streamed/presentation/', ROOT);
+  const read = async (p: string) => new Uint8Array(readFileSync(new URL(p, dir)));
+  it('has an index valid against schema/stream-index.schema.json', () => {
+    const v = ajv.compile(schema('stream-index.schema.json'));
+    const index = JSON.parse(readFileSync(new URL('book.json', dir), 'utf8'));
+    expect(v(index), JSON.stringify(v.errors)).toBe(true);
+    expect(v({ ...index, pages: [{ id: 'x', file: '../x.json' }] })).toBe(false);
+  });
+  it('is the same book as valid/presentation.chalk', async () => {
+    const a = await unpackLesson(bytes('valid/presentation.chalk'));
+    const b = await assembleStreamed(read);
+    expect(b.lesson).toEqual(a.lesson);
+    expect([...b.assets.keys()].sort()).toEqual([...a.assets.keys()].sort());
+  });
+  it('has a search file valid against schema/stream-text.schema.json', () => {
+    const index = parseStreamIndex(JSON.parse(readFileSync(new URL('book.json', dir), 'utf8')));
+    if (!index.text) return;
+    const v = ajv.compile(schema('stream-text.schema.json'));
+    expect(v(JSON.parse(readFileSync(new URL(index.text.file, dir), 'utf8'))), JSON.stringify(v.errors)).toBe(true);
   });
 });

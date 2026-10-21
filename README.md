@@ -17,6 +17,7 @@ interactive **labs**: simulations that run offline in a sandbox), with a searcha
 | [`spec/1.1`](spec/1.1/README.md) | Chalk 1.1: labs (`formatVersion` 8) and the [Host API](spec/1.1/host-api.md) labs use to talk to the reader |
 | [`spec/1.2`](spec/1.2/README.md) | Chalk 1.2: asset stores (`formatVersion` 9): short `c1:` keys, stores that turn keys into bytes, the reader's resolution rules, and the [registry API](spec/1.2/registry-api.md) authoring tools use (with a [reference database](spec/1.2/registry.sql)) |
 | [`spec/1.3`](spec/1.3/README.md) | Chalk 1.3: presentation (`formatVersion` 10): how the author wants each image or embed presented (live or a card, what a tap opens, label, icon, accent, autoplay), from fixed lists, never CSS |
+| [`spec/1.4`](spec/1.4/README.md) | Chalk 1.4: streamed books: the same book as static files (an index, one file per page, a search file), so a reader opens a 300-page textbook at once and fetches only the pages around the one being read |
 | [`schema/`](schema) | JSON Schemas generated from the model, for non-TypeScript readers: lesson, page, overlay, store descriptor, index shard, registry API |
 | [`conformance/`](conformance) | Sample packages every reader must accept (`valid/`) or reject (`invalid/`), key test vectors (`keys.json`), store examples (`stores/`) |
 | `packages/model` | The data model (Zod, single source of truth), migrations, overlays, asset ids, media sniffing |
@@ -93,6 +94,24 @@ host.setVisible(false);   // when the page scrolls away: the lab stops rendering
 // in a lab (or speak the protocol by hand, as examples/labs/pendulum.html does)
 import { connectLab } from '@chalk-format/lab/client';
 const lab = await connectLab({ id: 'org.example.pendulum', version: '1.0.0' });
+```
+
+## Streamed books
+
+A `.chalk` is one file: a reader must download all of it. For textbooks, publish it as a **streamed book**
+(spec 1.4) and serve the directory from a CDN:
+
+```bash
+npx tsx tools/chalk-stream.ts publish physics-9.chalk out/physics-9/   # book.json, pages/, assets/, text
+```
+
+The reader then fetches `book.json` (page count, sizes, thumbnails, which assets each page needs), shows the whole
+book at once, and loads the current page first and then ±5 around it. A jump loads the new place first; search
+uses one small text file; author mode loads the rest before editing. Every file except `book.json` is named by
+its content, so a CDN can keep it for ever.
+
+```tsx
+<ChalkReader source="https://cdn.example.org/books/physics-9/" config={{ streaming: { window: 5 } }} />
 ```
 
 ## Asset stores
