@@ -19,6 +19,7 @@ optional text layer), assets addressed by `sha256:`, and optionally an overlay (
 |---|---|
 | `main` | Chalk 1.0 Core (`formatVersion` 7) + **Chalk 1.1 labs** (`formatVersion` 8, PR #1, merged) |
 | `feat/web-reader` | **The reference reader**: 7 commits on top of `main`, **not pushed, no PR yet**. The user was asked whether to push and open a PR, and where to deploy the showcase (GitHub Pages, Cloudflare, or their Coolify server). No answer yet. |
+| `feat/asset-stores` | **Chalk 1.2: asset stores** (`formatVersion` 9): 5 commits on top of `main`, in the worktree `../chalk-format-stores`, **not pushed**. Spec `spec/1.2/` (keys, stores, resolution, the registry API, a reference Postgres schema), `packages/store` (resolver, registry client), model/container support, schemas, conformance. All checks pass (307 tests). Independent of `feat/web-reader`; the reader does not use the resolver yet. |
 | CI | `.github/workflows/ci.yml`: lint, typecheck, tests, and "schema/ matches the model" |
 
 The plan and phase status for the reader live in [`docs/reader-plan.md`](docs/reader-plan.md).
@@ -128,7 +129,13 @@ All built from committed sources by `apps/reader/showcase/make-showcase.ts`:
 2. **Phase 6 is not finished:** an accessibility audit with a screen reader, a performance check on a cheap Android phone, a smaller first download (179 KB gzip: React + zod validation + JSZip; pdf.js and model-viewer already load on demand), deploying the showcase.
 3. **Push `feat/web-reader` and open a PR:** waiting for the user.
 4. **Switching chalkboard to chalk-format:** not started. Do it on a separate branch in a separate worktree. Chalkboard's `feat/interactive-lab-embed` branch has a stale uncommitted WIP (from 2026-08-29) that adds `embed: "lab"` as `formatVersion` 8, which conflicts with Chalk 1.1. Don't build on it, and don't touch that working tree.
-5. **Spec roadmap** (`spec/1.1/README.md` §6): general fallbacks for other new object types (`requires`), host-provided data queries (the reserved `data` capability), learner-state packages, navigation (TOC, links), reflowable text.
+5. **Asset stores (1.2), next steps:** push and PR `feat/asset-stores`; make the reader use `@chalk-format/store`'s
+   resolver (host stores from config, the book's `assetSources`, a Cache Storage cache, `locate()` for video);
+   build a registry service (open questions for the user: Cloudflare R2 or MinIO on Coolify for the bucket, and
+   whether the service is its own app or part of `runagent-middleware-v2`); the authoring UI on top of it
+   (the user asked for "a good authoring UI": media library with search and upload, placing media and labs, lab
+   settings, page editing, saving a new book).
+6. **Spec roadmap** (`spec/1.1/README.md` §6): general fallbacks for other new object types (`requires`), host-provided data queries (the reserved `data` capability), learner-state packages, navigation (TOC, links), reflowable text.
 
 ## Pitfalls already hit
 
