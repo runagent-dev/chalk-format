@@ -2,7 +2,8 @@
 // Run: pnpm gen:schema. CI checks the committed files are up to date.
 import { writeFileSync } from 'node:fs';
 import { z } from 'zod';
-import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, lessonPageSchema, lessonSchema, overlaySchema } from '@chalk-format/model';
+import { CHALK_FORMAT_VERSION, LAB_PARAMS_MAX_BYTES, LAB_PLUGIN_ID, indexShardSchema, lessonPageSchema, lessonSchema, overlaySchema, storeDescriptorSchema } from '@chalk-format/model';
+import * as registry from '@chalk-format/store';
 
 // Rules the Zod model states as refinements, which toJSONSchema cannot see: added by hand to the
 // embed object so JSON Schema readers enforce them too (spec 1.1 §2).
@@ -28,18 +29,44 @@ function addEmbedRules(node: unknown): number {
   return Object.values(o).reduce((n: number, x) => n + addEmbedRules(x), 0);
 }
 
-const out = (name: string, schema: z.ZodType, title: string) => {
-  const json = {
-    $id: `https://chalk-format.dev/schema/v${CHALK_FORMAT_VERSION}/${name}`,
-    title,
-    'x-chalk-format-version': CHALK_FORMAT_VERSION,
-    ...z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input' }),
-  };
-  if (!addEmbedRules(json)) throw new Error(`${name}: no embed object found to add the plugin/lab rules to`);
+const header = (name: string, title: string) => ({
+  $id: `https://chalk-format.dev/schema/v${CHALK_FORMAT_VERSION}/${name}`,
+  title,
+  'x-chalk-format-version': CHALK_FORMAT_VERSION,
+});
+const write = (name: string, json: object) => {
   writeFileSync(new URL(`../schema/${name}`, import.meta.url), JSON.stringify(json, null, 2) + '\n');
   console.log(`schema/${name}`);
+};
+const out = (name: string, schema: z.ZodType, title: string) => {
+  const json = { ...header(name, title), ...z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input' }) };
+  if (!addEmbedRules(json)) throw new Error(`${name}: no embed object found to add the plugin/lab rules to`);
+  write(name, json);
 };
 
 out('lesson.schema.json', lessonSchema, 'Chalk lesson (assembled model)');
 out('page.schema.json', lessonPageSchema, 'Chalk page (pages/page-N.json)');
 out('overlay.schema.json', overlaySchema, 'Chalk overlay (overlay.json)');
+
+// ---- 1.2: asset stores ----
+// The descriptor's kind-dependent rules are refinements in Zod; stated here so JSON Schema users get them too.
+write('store.schema.json', {
+  ...header('store.schema.json', 'Chalk store descriptor (spec 1.2 §5.1)'),
+  ...z.toJSONSchema(storeDescriptorSchema, { target: 'draft-2020-12', io: 'input' }),
+  allOf: [
+    { if: { properties: { kind: { const: 'derived' } } }, then: { required: ['template'] } },
+    { if: { properties: { kind: { enum: ['indexed', 'api'] } } }, then: { required: ['base'] } },
+    { if: { required: ['base'] }, then: { properties: { base: { pattern: '/$' } } } },
+  ],
+});
+write('index-shard.schema.json', { ...header('index-shard.schema.json', 'Chalk index shard (spec 1.2 §5.3)'), ...z.toJSONSchema(indexShardSchema, { target: 'draft-2020-12', io: 'input' }) });
+const defs = {
+  assetRecord: registry.assetRecordSchema, checkRequest: registry.checkRequestSchema, checkResponse: registry.checkResponseSchema,
+  uploadRequest: registry.uploadRequestSchema, uploadResponse: registry.uploadResponseSchema, registerRequest: registry.registerRequestSchema,
+  searchQuery: registry.searchQuerySchema, searchResponse: registry.searchResponseSchema, storesResponse: registry.storesResponseSchema, error: registry.errorSchema,
+};
+write('registry.schema.json', {
+  ...header('registry.schema.json', 'Chalk registry API v1: requests and responses (spec/1.2/registry-api.md)'),
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $defs: Object.fromEntries(Object.entries(defs).map(([k, v]) => { const { $schema: _s, ...rest } = z.toJSONSchema(v as z.ZodType, { target: 'draft-2020-12', io: 'input' }) as Record<string, unknown>; return [k, rest]; })),
+});

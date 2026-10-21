@@ -1,0 +1,8 @@
+{
+  "id": "registry",
+  "kind": "api",
+  "base": "https://store.example.org/",
+  "priority": 50,
+  "auth": "bearer",
+  "verify": "always"
+}

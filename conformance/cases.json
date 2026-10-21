@@ -56,6 +56,34 @@
     "covers": "lab.entry is a file name, not a sha256: id (hosts could not verify what they run)"
   },
   {
+    "file": "valid/c1-keys.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.2",
+    "covers": "every asset id a c1 key, carried in the file: page image, image object, poster, 3D model, lab entry and lab asset"
+  },
+  {
+    "file": "valid/thin-sources.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.2",
+    "covers": "thin book: external video with size, meta and a rendition; the poster carried inline; suggested stores (derived, indexed)"
+  },
+  {
+    "file": "invalid/c1-malformed-key.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.2",
+    "covers": "an asset id that looks like a c1 key but is not canonical (upper case)"
+  },
+  {
+    "file": "invalid/c1-bearer-source.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.2",
+    "covers": "a book's suggested store asks for credentials (books carry none)"
+  },
+  {
     "file": "invalid/no-manifest.chalk",
     "valid": false,
     "kind": "lesson",

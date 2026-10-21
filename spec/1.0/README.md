@@ -173,4 +173,5 @@ and replaced `background`/`title`/`width`/`height`; plus `newPages`, an optional
 - Structured, reflowable text (headings, paragraphs, math, tables) for small screens.
 - Quizzes and interactive elements as data; learner-state packages.
 - Fonts, multilingual text, accessibility (alt text, captions, reading order).
-- Publishing metadata (ISBN, publisher, edition, curriculum), signatures, `assetSources` for thin bundles.
+- Publishing metadata (ISBN, publisher, edition, curriculum), signatures.
+- `assetSources` for thin bundles: **specified in [Chalk 1.2](../1.2/README.md)** (asset stores).
