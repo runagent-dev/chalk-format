@@ -20,8 +20,8 @@ import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface } from './author/AuthorSurface.js';
-import { Inspector } from './author/Inspector.js';
-import { ACCEPT, objectFromFile, type MediaKind } from './author/insert.js';
+import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
+import { ACCEPT, mediaKindOf, objectFromFile, type MediaKind } from './author/insert.js';
 import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
 import { edit } from './annotate/state.js';
@@ -114,7 +114,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const author = authoringOn && mode === 'author';
   const [sel, setSel] = useState<{ pageId: string; id: string } | null>(null);
   const [authorTool, setAuthorToolState] = useState<AuthorTool>('select');
-  const setAuthorTool = useCallback((x: AuthorTool) => { setAuthorToolState(x); if (x !== 'select') setSel(null); }, []);
+  // the media type being added (its options are in the sidebar), what drawing tools draw, how added media starts
+  const [adding, setAdding] = useState<MediaKind | null>(null);
+  const [toolSettings, setToolSettings] = useState<ToolSettings>(DEFAULT_TOOLS);
+  const [insertDefaults, setInsertDefaults] = useState<InsertDefaults>({});
+  const setAuthorTool = useCallback((x: AuthorTool) => { setAuthorToolState(x); setAdding(null); if (x !== 'select') setSel(null); }, []);
+  const authorPen: Pen = useMemo(() => {
+    const s = toolSettings, base = { tool: authorTool, color: s.pen.color, highlight: s.highlighter.color, size: s.pen.size, textSize: s.text.fontSize };
+    if (authorTool === 'highlighter') return { ...base, size: s.highlighter.size };
+    if (authorTool === 'text') return { ...base, color: s.text.color };
+    if (authorTool === 'rect' || authorTool === 'ellipse' || authorTool === 'line' || authorTool === 'arrow') return { ...base, color: s.shape.stroke, size: s.shape.width, fill: s.shape.fill };
+    return base;
+  }, [toolSettings, authorTool]);
   const book = authoringOn ? au.book : original;
   const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
@@ -322,7 +333,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   const at_ = authorStrings(locale);
   const setMode = useCallback((m: 'read' | 'author') => {
-    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select');
+    setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null);
     props.onModeChange?.(m);
   }, [props.onModeChange]);   // eslint-disable-line react-hooks/exhaustive-deps
   // media files onto a page: where they were dropped, or the middle of the page for the + button
@@ -331,13 +342,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     let last: string | null = null, refused = 0;
     for (const [n, f] of files.entries()) {
       const p0 = where ?? { x: size.width / 2, y: size.height / 2 };
-      const o = await objectFromFile(f, size, { x: p0.x + n * 24, y: p0.y + n * 24 }, au.addAsset).catch(() => null);
-      if (!o) { refused++; continue; }
+      const made = await objectFromFile(f, size, { x: p0.x + n * 24, y: p0.y + n * 24 }, au.addAsset).catch(() => null);
+      if (!made) { refused++; continue; }
+      // how the author said media of this kind should start (sidebar, while adding)
+      const k = mediaKindOf(f), d = k ? insertDefaults[k] : undefined;
+      const o = d && (made.type === 'image' || made.type === 'embed')
+        ? { ...made, ...(d.displayMode ? { displayMode: d.displayMode } : {}), ...(d.presentation && Object.keys(d.presentation).length ? { presentation: d.presentation } : {}) } as LessonObject
+        : made;
       au.apply(edit.add(pg.id, o)); last = o.id;
     }
-    if (last) setSel({ pageId: pg.id, id: last });
+    if (last) { setSel({ pageId: pg.id, id: last }); setAdding(null); }
     if (refused) setToast(at_.notPlaceable);
-  }, [au, at_]);
+  }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
   useEffect(() => { if (authoringOn && props.mode && props.mode !== mode) setMode(props.mode); }, [props.mode]);   // eslint-disable-line react-hooks/exhaustive-deps
   const saveBook = useCallback(async () => {
@@ -377,10 +393,11 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
           onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
           onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
-      : <Surface page={pg} scale={scale} pen={{ ...pen, tool: authorTool }} editable={erasable} apply={au.apply} textPrompt={t.textPrompt} />
-  ), [sel, au.apply, addFiles, at_, authorTool, pen, erasable, t.textPrompt]);
-  // + in the rail: a file picker for that kind of media
-  const pickMedia = useCallback((kind: MediaKind) => {
+      : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={t.textPrompt} />
+  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, t.textPrompt]);
+  // + in the rail: that kind of media, with its options in the sidebar
+  const pickMedia = useCallback((kind: MediaKind) => { setAuthorToolState('select'); setSel(null); setAdding(kind); }, []);
+  const chooseFile = useCallback((kind: MediaKind) => {
     const input = mediaFile.current; if (!input) return;
     input.accept = { image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind];
     input.click();
@@ -389,6 +406,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (!sel) return null;
     return lesson.pages.find((p) => p.id === sel.pageId)?.objects.find((o) => o.id === sel.id) ?? null;
   }, [sel, lesson]);
+  const sidebar = author && (rootWidth >= 720 || !!selectedObject || !!adding);
   // a selection that was undone away is gone
   useEffect(() => { if (sel && !selectedObject) setSel(null); }, [sel, selectedObject]);
   // on a phone the properties sheet covers the lower part: bring a newly selected object up above it
@@ -415,7 +433,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   return (
     <PresenterProvider value={pr}>
-    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? (author && selectedObject ? 'inspector' : undefined)} data-mode={authoringOn ? mode : undefined} lang={locale} style={props.style} onKeyDown={onKey}>
+    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? undefined} data-sidebar={sidebar ? '' : undefined} data-mode={authoringOn ? mode : undefined} lang={locale} style={props.style} onKeyDown={onKey}>
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={author ? renderPreview : renderHtmlObject}
@@ -431,15 +449,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
-      {author && (
-        <AuthorRail tool={authorTool} onTool={setAuthorTool} color={color} onColor={setColor} highlight={highlight} onHighlight={setHighlight}
-          size={size} onSize={setSize} colors={A.colors} highlighterColors={A.highlighterColors} sizes={A.sizes} onMedia={pickMedia} locale={locale} t={at_} />
-      )}
-      {author && selectedObject && !panel && (
-        <Panel title={at_.properties} closeLabel={t.close} onClose={() => setSel(null)}>
-          <Inspector o={selectedObject} pageId={sel?.pageId ?? null} apply={au.apply} t={at_}
-            onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }} />
-        </Panel>
+      {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={locale} t={at_} />}
+      {sidebar && (
+        <AuthorSidebar lesson={au.lesson} page={sel ? au.lesson.pages.find((x) => x.id === sel.pageId) : pages[page]} selected={selectedObject}
+          tool={authorTool} adding={adding} tools={toolSettings} onTools={setToolSettings} defaults={insertDefaults} onDefaults={setInsertDefaults}
+          apply={au.apply} onSelect={(id) => { const pg = pages[page]; if (pg) setSel({ pageId: pg.id, id }); }}
+          onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }}
+          onChooseFile={chooseFile} onDropFiles={(fs) => { const pg = pages[page]; if (pg) void addFiles(fs, pg); }}
+          onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={t.close} locale={locale} t={at_} />
       )}
       {authoringOn && (
         <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden

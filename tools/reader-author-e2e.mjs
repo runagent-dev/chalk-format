@@ -33,7 +33,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('nothing starts by itself in author mode', !(await p.$('.chalk-model')));
   await p.mouse.click(card.x + card.w / 2, card.y + card.h / 2);
   await p.waitForSelector('.chalk-insp');
-  check('a tap selects and shows its properties', (await p.textContent('.chalk-insp-kind')).includes('ত্রিমাত্রিক মডেল'));
+  check('a tap selects and shows its properties', (await p.textContent('.chalk-sidebar-head h2')).includes('ত্রিমাত্রিক মডেল'));
   await shot(p, 'author-selected');
 
   // presentation through the panel
@@ -61,13 +61,18 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('handle resizes it, keeping its proportions', sized.w > after.w + 60 && Math.abs(sized.w / sized.h - after.w / after.h) < 0.02, `${Math.round(after.w)}→${Math.round(sized.w)}`);
   await shot(p, 'author-moved');
 
-  // add media with the + button (the file picker)
+  // add media: + in the rail, a kind, its options in the sidebar (start as live), then the file
+  await p.click('.chalk-rail .is-add');
+  await p.click('.chalk-rail-item:has-text("ভিডিও")');
+  check('+ › video: the sidebar shows adding a video', (await p.textContent('.chalk-sidebar-head h2')).includes('ভিডিও') && !!(await p.$('.chalk-drop')));
+  await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("সরাসরি")');
+  await shot(p, 'author-adding');
   await p.setInputFiles('.chalk-reader input[type="file"][multiple]', [media('screw-gauge-poster.png'), media('pendulum.webm')]);
   await p.waitForFunction(() => document.querySelectorAll('[data-chalk-id^="video"], [data-chalk-id^="image"]').length >= 1, null, { timeout: 15000 }).catch(() => {});
   await p.waitForTimeout(800);
   const added = await p.evaluate(() => [...document.querySelectorAll('[data-chalk-id]')].map((e) => e.getAttribute('data-chalk-id')).filter((i) => /^(image|video)/.test(i)));
   check('added files appear on the page', added.some((i) => i.startsWith('video')), JSON.stringify(added));
-  check('the last one added is selected', (await p.textContent('.chalk-insp-kind')).includes('ভিডিও'));
+  check('the last one added is selected', (await p.textContent('.chalk-sidebar-head h2')).includes('ভিডিও'));
   check('a new video gets a poster from its frames', await p.evaluate(() => { const v = [...document.querySelectorAll('[data-chalk-id^="video"]')].pop(); return !!v?.querySelector('img'); }));
   check('unsaved changes are marked', !!(await p.$('.chalk-dock-save.is-dirty')));
   await shot(p, 'author-added');
@@ -87,7 +92,11 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('pen draws into the page', (await count('.chalk-page path')) > inkBefore);
   await p.keyboard.press('r');
   check('R picks the rectangle', await p.evaluate(() => document.querySelector('.chalk-surface')?.classList.contains('is-rect')));
+  check('the sidebar shows the tool\'s settings', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র') && !!(await p.$('.chalk-sidebar fieldset:has(legend:text("ভরাট"))')));
+  await p.click('.chalk-sidebar fieldset:has(legend:text("ভরাট")) .chalk-insp-swatch[aria-label="#2e7d32"]');
+  await shot(p, 'author-tool');
   await drawLine(P(0.55, 0.34), P(0.8, 0.44));
+  check('the tool settings shape what is drawn', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#2e7d32')));
   await p.keyboard.press('t');
   await p.mouse.click(...P(0.15, 0.46)); await p.waitForTimeout(150);
   await p.keyboard.type('লেখকের লেখা'); await p.keyboard.press('Enter'); await p.waitForTimeout(200);
@@ -96,9 +105,19 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   // select the rectangle and fill it from the panel
   await p.keyboard.press('v');
   await p.mouse.click(...P(0.67, 0.39)); await p.waitForSelector('.chalk-insp', { timeout: 5000 });
-  check('a shape is selectable, with its own properties', (await p.textContent('.chalk-insp-kind')).includes('আয়তক্ষেত্র'));
+  check('a shape is selectable, with its own properties', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র'));
   await p.click('.chalk-insp fieldset:has(legend:text("ভরাট")) .chalk-insp-swatch[aria-label="#ef6c00"]');
-  check('the panel fills it', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#ef6c00')));
+  check('the sidebar fills it', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#ef6c00')));
+  const rx = () => p.evaluate(() => Number([...document.querySelectorAll('.chalk-page rect')].find((r) => r.getAttribute('fill') === '#ef6c00')?.getAttribute('x')));
+  const x0 = await rx();
+  await p.fill('.chalk-sidebar .chalk-num:has(span:text-is("X")) input', String(x0 + 50));
+  check('X in the sidebar moves it', (await rx()) === x0 + 50, `${x0}→${await rx()}`);
+  await shot(p, 'author-shape-selected');
+  await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+  check('nothing selected: the sidebar shows the page and what is on it', !!(await p.$('.chalk-objlist')) && (await p.textContent('.chalk-objlist')).includes('আয়তক্ষেত্র'));
+  await shot(p, 'author-page');
+  await p.click('.chalk-objrow:has-text("আয়তক্ষেত্র")');
+  check('a click in that list selects', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র'));
   await p.keyboard.press('Escape');
   // the eraser removes the pen stroke, not media
   await p.keyboard.press('e');
@@ -126,6 +145,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('saved: the new video, its bytes and its poster', !!vid && r.assets.has(vid.assetId) && !!vid.poster && r.assets.has(vid.poster));
   check('saved: the new image', pg.objects.some((o) => o.type === 'image' && r.assets.has(o.assetId)));
   check('saved: c1 keys for added media', /^c1:/.test(vid?.assetId ?? ''));
+  check('saved: the video starts as set while adding it (live)', vid?.presentation?.show === 'live', JSON.stringify(vid?.presentation));
   check('saved: nothing missing', r.missingAssetIds.length === 0, JSON.stringify(r.missingAssetIds));
   const p1 = r.lesson.pages[0].objects;
   check('saved: the rectangle (filled), the text, and no erased stroke', p1.some((o) => o.type === 'rect' && o.fill === '#ef6c00') && p1.some((o) => o.type === 'text' && o.text === 'লেখকের লেখা') && !p1.some((o) => o.type === 'ink'),
@@ -147,10 +167,10 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   const v = await p.evaluate(() => { const r = document.querySelector('[data-chalk-id="pendulum-video"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
   await p.touchscreen.tap(v.x, v.y);
   await p.waitForSelector('.chalk-insp', { timeout: 3000 }).catch(() => {});
-  check('phone: a tap selects; properties in a bottom sheet', !!(await p.$('.chalk-panel .chalk-insp')));
+  check('phone: a tap selects; properties in a bottom sheet', !!(await p.$('.chalk-sidebar .chalk-insp')));
   await p.waitForTimeout(700);
   check('phone: the selection is moved up above the sheet', await p.evaluate(() => {
-    const o = document.querySelector('[data-chalk-id="pendulum-video"]').getBoundingClientRect(), s = document.querySelector('.chalk-panel').getBoundingClientRect();
+    const o = document.querySelector('[data-chalk-id="pendulum-video"]').getBoundingClientRect(), s = document.querySelector('.chalk-sidebar').getBoundingClientRect();
     return o.top >= 0 && o.top < s.top - 40;
   }));
   await shot(p, 'author-phone');

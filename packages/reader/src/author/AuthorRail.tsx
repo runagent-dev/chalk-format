@@ -18,17 +18,15 @@ const MEDIA: { kind: MediaKind; icon: ReactNode }[] = [
 ];
 
 /**
- * The tool rail of author mode (left side): select, pen, highlighter, eraser, text, shapes, media to add, and the
- * colour and thickness of what is drawn next.
+ * The tool rail of author mode (left side): select, pen, highlighter, eraser, text, shapes, and media to add.
+ * Everything about the chosen tool or media is set in the sidebar on the right.
  */
-export function AuthorRail({ tool, onTool, color, onColor, highlight, onHighlight, size, onSize, colors, highlighterColors, sizes, onMedia, locale, t }: {
+export function AuthorRail({ tool, onTool, adding, onMedia, locale, t }: {
   tool: AuthorTool; onTool: (t: AuthorTool) => void;
-  color: string; onColor: (c: string) => void; highlight: string; onHighlight: (c: string) => void; size: number; onSize: (s: number) => void;
-  colors: string[]; highlighterColors: string[]; sizes: number[];
-  onMedia: (kind: MediaKind) => void; locale: Locale; t: AuthorStrings;
+  adding: MediaKind | null; onMedia: (kind: MediaKind) => void; locale: Locale; t: AuthorStrings;
 }) {
   const r = strings(locale);
-  const [fly, setFly] = useState<'shapes' | 'media' | 'style' | null>(null);
+  const [fly, setFly] = useState<'shapes' | 'media' | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [lastShape, setLastShape] = useState<AuthorTool>('rect');
   useEffect(() => { if (SHAPES.includes(tool)) setLastShape(tool); }, [tool]);
@@ -42,12 +40,10 @@ export function AuthorRail({ tool, onTool, color, onColor, highlight, onHighligh
 
   const name = (x: AuthorTool) => `${r[x]} (${KEY_OF[x]})`;
   const btn = (x: AuthorTool) => (
-    <button key={x} type="button" className="chalk-rail-btn" aria-pressed={tool === x} aria-label={name(x)} title={name(x)} onClick={() => { onTool(x); setFly(null); }}>
+    <button key={x} type="button" className="chalk-rail-btn" aria-pressed={tool === x && !adding} aria-label={name(x)} title={name(x)} onClick={() => { onTool(x); setFly(null); }}>
       {TOOL_ICON[x](22)}
     </button>
   );
-  const hl = tool === 'highlighter';
-  const swatches = hl ? highlighterColors : colors, cur = hl ? highlight : color, pick = hl ? onHighlight : onColor;
 
   return (
     <div ref={wrap} className="chalk-rail" role="toolbar" aria-orientation="vertical" aria-label={t.tools}>
@@ -63,43 +59,19 @@ export function AuthorRail({ tool, onTool, color, onColor, highlight, onHighligh
       </span>
       <span className="chalk-rail-sep" />
       <span className="chalk-rail-fly-wrap">
-        <button type="button" className="chalk-rail-btn is-add" aria-expanded={fly === 'media'} aria-label={t.add} title={t.add} onClick={() => setFly(fly === 'media' ? null : 'media')}>
+        <button type="button" className="chalk-rail-btn is-add" aria-pressed={!!adding} aria-expanded={fly === 'media'} aria-label={t.add} title={t.add} onClick={() => setFly(fly === 'media' ? null : 'media')}>
           <PlusIcon size={22} weight="bold" />
         </button>
         {fly === 'media' && (
           <div className="chalk-rail-fly is-list" role="menu" aria-label={t.add}>
             {MEDIA.map((m) => (
-              <button key={m.kind} type="button" role="menuitem" className="chalk-rail-item" onClick={() => { setFly(null); onMedia(m.kind); }}>
+              <button key={m.kind} type="button" role="menuitem" className="chalk-rail-item" aria-current={adding === m.kind || undefined} onClick={() => { setFly(null); onMedia(m.kind); }}>
                 {m.icon}<span>{t[m.kind]}</span>
               </button>
             ))}
           </div>
         )}
       </span>
-      {tool !== 'select' && tool !== 'eraser' && (
-        <>
-          <span className="chalk-rail-sep" />
-          <span className="chalk-rail-fly-wrap">
-            <button type="button" className="chalk-rail-btn" aria-expanded={fly === 'style'} aria-label={`${r.color} · ${r.size}`} title={`${r.color} · ${r.size}`} onClick={() => setFly(fly === 'style' ? null : 'style')}>
-              <span className="chalk-rail-dot" style={{ background: cur, width: 8 + Math.min(14, size), height: 8 + Math.min(14, size) }} />
-            </button>
-            {fly === 'style' && (
-              <div className="chalk-rail-fly is-style" role="group" aria-label={r.color}>
-                <div className="chalk-rail-swatches">
-                  {swatches.map((c) => <button key={c} type="button" className="chalk-rail-swatch" style={{ background: c }} aria-label={c} aria-pressed={c === cur} onClick={() => pick(c)} />)}
-                </div>
-                <div className="chalk-rail-sizes">
-                  {sizes.map((s) => (
-                    <button key={s} type="button" className="chalk-rail-size" aria-label={`${r.size} ${s}`} aria-pressed={s === size} onClick={() => onSize(s)}>
-                      <span style={{ width: Math.min(22, s * 1.6 + 2), height: Math.min(22, s * 1.6 + 2), background: cur }} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </span>
-        </>
-      )}
     </div>
   );
 }

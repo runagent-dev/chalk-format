@@ -99,10 +99,16 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   A arrow), colour and thickness, and + to add media. Everything drawn goes into the book itself (in read mode
   the same tools write the student's notes). The eraser takes drawings, text and shapes; media is removed by
   selecting it.
+- **The sidebar (right)** holds every setting, and shows what the moment needs, as in a design tool:
+  - an object selected: position and size (X, Y, W, H), bring to front / send to back, then its kind's settings:
+    media presentation (spec 1.3: full size or small icon, thumbnail or live, what a tap opens, label, icon,
+    colour, playback), a text's words, size and colour, a shape's line, fill and thickness, a drawing's colour;
+  - a drawing tool out: what it draws next (colour, thickness, fill, text size);
+  - a media kind picked from +: choose or drop the file, and how it will be presented once added;
+  - nothing selected: the book's and the page's titles, the page background, and a list of what is on the page.
+  Escape in a field leaves the field; a second Escape clears the selection.
 - **Select:** click any object; drag to move it, the corner handle to resize it (media keeps its proportions),
-  arrows to nudge, Delete to remove; the object under the mouse is outlined. The properties panel (right) sets
-  how media is presented (spec 1.3: full size or small icon, thumbnail or live, what a tap opens, label, icon,
-  colour, playback), a text's words, size and colour, a shape's line, fill and thickness, a drawing's colour.
+  arrows to nudge, Delete to remove; the object under the mouse is outlined.
 - **Add media** from the rail or by dropping files on a page: images, video (a poster is taken from its frames),
   audio, `.glb` models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
 - Made for a computer (mouse and keyboard); it still works by touch.
