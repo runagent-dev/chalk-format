@@ -1,4 +1,4 @@
-// Author mode with real input (in the reader's default language, Bengali), the way a teacher uses it: select, change how media is presented, undo, move,
+// Author mode with real input (the author's tools in English, the default authoring language), the way a teacher uses it: select, change how media is presented, undo, move,
 // resize, add files, preview as a student, save, and open what was saved.
 //
 //   node tools/reader-author-e2e.mjs [url] [shots-dir]   (default http://localhost:5190/; the showcase must be running)
@@ -33,7 +33,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('nothing starts by itself in author mode', !(await p.$('.chalk-model')));
   await p.mouse.click(card.x + card.w / 2, card.y + card.h / 2);
   await p.waitForSelector('.chalk-insp');
-  check('a tap selects and shows its properties', (await p.textContent('.chalk-sidebar-head h2')).includes('ত্রিমাত্রিক মডেল'));
+  check('a tap selects and shows its properties', (await p.textContent('.chalk-sidebar-head h2')).includes('3D model'));
   await shot(p, 'author-selected');
 
   // presentation through the panel
@@ -42,7 +42,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   await p.click('.chalk-insp-swatch[aria-label="#b42318"]');
   const c2 = await obj('screw-gauge');
   check('label, icon and colour show on the card', c2.label === 'স্ক্রু গজ · দেখো' && (await p.evaluate(() => getComputedStyle(document.querySelector('[data-chalk-id="screw-gauge"] .chalk-card-glyph')).backgroundColor)) === 'rgb(180, 35, 24)');
-  await p.click('.chalk-insp-seg label:has-text("ছোট আইকন")');
+  await p.click('.chalk-insp-seg label:has-text("Small icon")');
   check('small icon makes it a marker', !!(await p.$('.chalk-marker[data-chalk-id="screw-gauge"]')));
   await p.keyboard.press('Control+z');
   await p.waitForTimeout(200);
@@ -63,16 +63,16 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
 
   // add media: + in the rail, a kind, its options in the sidebar (start as live), then the file
   await p.click('.chalk-rail .is-add');
-  await p.click('.chalk-rail-item:has-text("ভিডিও")');
-  check('+ › video: the sidebar shows adding a video', (await p.textContent('.chalk-sidebar-head h2')).includes('ভিডিও') && !!(await p.$('.chalk-drop')));
-  await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("সরাসরি")');
+  await p.click('.chalk-rail-item:has-text("Video")');
+  check('+ › video: the sidebar shows adding a video', (await p.textContent('.chalk-sidebar-head h2')).includes('Video') && !!(await p.$('.chalk-drop')));
+  await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("Live")');
   await shot(p, 'author-adding');
   await p.setInputFiles('.chalk-reader input[type="file"][multiple]', [media('screw-gauge-poster.png'), media('pendulum.webm')]);
   await p.waitForFunction(() => document.querySelectorAll('[data-chalk-id^="video"], [data-chalk-id^="image"]').length >= 1, null, { timeout: 15000 }).catch(() => {});
   await p.waitForTimeout(800);
   const added = await p.evaluate(() => [...document.querySelectorAll('[data-chalk-id]')].map((e) => e.getAttribute('data-chalk-id')).filter((i) => /^(image|video)/.test(i)));
   check('added files appear on the page', added.some((i) => i.startsWith('video')), JSON.stringify(added));
-  check('the last one added is selected', (await p.textContent('.chalk-sidebar-head h2')).includes('ভিডিও'));
+  check('the last one added is selected', (await p.textContent('.chalk-sidebar-head h2')).includes('Video'));
   check('a new video gets a poster from its frames', await p.evaluate(() => { const v = [...document.querySelectorAll('[data-chalk-id^="video"]')].pop(); return !!v?.querySelector('img'); }));
   check('unsaved changes are marked', !!(await p.$('.chalk-dock-save.is-dirty')));
   await shot(p, 'author-added');
@@ -81,7 +81,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('the tool rail is there', !!(await p.$('.chalk-rail')));
   await go(1);
   // a tool other than select closes the properties panel, which moves the page: measure after that
-  await p.click('.chalk-rail button[aria-label^="কলম"]');
+  await p.click('.chalk-rail button[aria-label^="Pen"]');
   await p.waitForTimeout(300);
   const pg1 = await p.evaluate(() => { const r = document.querySelector('.chalk-page').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
   const P = (fx, fy) => [pg1.x + pg1.w * fx, pg1.y + pg1.h * fy];
@@ -92,8 +92,8 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('pen draws into the page', (await count('.chalk-page path')) > inkBefore);
   await p.keyboard.press('r');
   check('R picks the rectangle', await p.evaluate(() => document.querySelector('.chalk-surface')?.classList.contains('is-rect')));
-  check('the sidebar shows the tool\'s settings', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র') && !!(await p.$('.chalk-sidebar fieldset:has(legend:text("ভরাট"))')));
-  await p.click('.chalk-sidebar fieldset:has(legend:text("ভরাট")) .chalk-insp-swatch[aria-label="#2e7d32"]');
+  check('the sidebar shows the tool\'s settings', (await p.textContent('.chalk-sidebar-head h2')).includes('Rectangle') && !!(await p.$('.chalk-sidebar fieldset:has(legend:text("Fill"))')));
+  await p.click('.chalk-sidebar fieldset:has(legend:text("Fill")) .chalk-insp-swatch[aria-label="#2e7d32"]');
   await shot(p, 'author-tool');
   await drawLine(P(0.55, 0.34), P(0.8, 0.44));
   check('the tool settings shape what is drawn', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#2e7d32')));
@@ -105,8 +105,8 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   // select the rectangle and fill it from the panel
   await p.keyboard.press('v');
   await p.mouse.click(...P(0.67, 0.39)); await p.waitForSelector('.chalk-insp', { timeout: 5000 });
-  check('a shape is selectable, with its own properties', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র'));
-  await p.click('.chalk-insp fieldset:has(legend:text("ভরাট")) .chalk-insp-swatch[aria-label="#ef6c00"]');
+  check('a shape is selectable, with its own properties', (await p.textContent('.chalk-sidebar-head h2')).includes('Rectangle'));
+  await p.click('.chalk-insp fieldset:has(legend:text("Fill")) .chalk-insp-swatch[aria-label="#ef6c00"]');
   check('the sidebar fills it', await p.evaluate(() => [...document.querySelectorAll('.chalk-page rect')].some((r) => r.getAttribute('fill') === '#ef6c00')));
   const rx = () => p.evaluate(() => Number([...document.querySelectorAll('.chalk-page rect')].find((r) => r.getAttribute('fill') === '#ef6c00')?.getAttribute('x')));
   const x0 = await rx();
@@ -114,10 +114,10 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   check('X in the sidebar moves it', (await rx()) === x0 + 50, `${x0}→${await rx()}`);
   await shot(p, 'author-shape-selected');
   await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
-  check('nothing selected: the sidebar shows the page and what is on it', !!(await p.$('.chalk-objlist')) && (await p.textContent('.chalk-objlist')).includes('আয়তক্ষেত্র'));
+  check('nothing selected: the sidebar shows the page and what is on it', !!(await p.$('.chalk-objlist')) && (await p.textContent('.chalk-objlist')).includes('Rectangle'));
   await shot(p, 'author-page');
-  await p.click('.chalk-objrow:has-text("আয়তক্ষেত্র")');
-  check('a click in that list selects', (await p.textContent('.chalk-sidebar-head h2')).includes('আয়তক্ষেত্র'));
+  await p.click('.chalk-objrow:has-text("Rectangle")');
+  check('a click in that list selects', (await p.textContent('.chalk-sidebar-head h2')).includes('Rectangle'));
   await p.keyboard.press('Escape');
   // the eraser removes the pen stroke, not media
   await p.keyboard.press('e');
@@ -135,7 +135,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
 
   // save
   await p.click('.app-mode button:has-text("Author")');
-  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('.chalk-dock button[aria-label^="বইটি সংরক্ষণ করুন"]')]);
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('.chalk-dock button[aria-label^="Save the book"]')]);
   const file = await dl.path();
   const r = await unpackLesson(new Uint8Array(readFileSync(file)));
   const pg = r.lesson.pages[1];

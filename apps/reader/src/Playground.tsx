@@ -122,6 +122,9 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
           <h3>Authoring</h3>
           <Check wide label="Allow author mode (place media, choose how it is shown, save)" checked={config.authoring.enabled}
             onChange={(v) => set({ authoring: { ...config.authoring, enabled: v } })} />
+          {config.authoring.enabled && (
+            <Choice label="Language of the author's tools" value={config.authoring.locale} options={['en', 'bn']} onChange={(v) => set({ authoring: { ...config.authoring, locale: v } })} />
+          )}
         </section>
         <section>
           <h3>Media</h3>

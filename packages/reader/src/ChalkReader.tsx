@@ -331,7 +331,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     drawing ? <Surface page={pg} scale={scale} pen={pen} editable={editableOn(pg.id)} apply={ann.apply} textPrompt={t.textPrompt} /> : undefined,
   [drawing, pen, editableOn, ann.apply, t.textPrompt]);
 
-  const at_ = authorStrings(locale);
+  // the author's tools speak the authoring language (English by default), whatever the reader's language is
+  const authorLocale = config.authoring.locale;
+  const at_ = authorStrings(authorLocale);
   const setMode = useCallback((m: 'read' | 'author') => {
     setModeState(m); setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null);
     props.onModeChange?.(m);
@@ -393,8 +395,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
           onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
           onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
-      : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={t.textPrompt} />
-  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, t.textPrompt]);
+      : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={strings(authorLocale).textPrompt} />
+  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale]);
   // + in the rail: that kind of media, with its options in the sidebar
   const pickMedia = useCallback((kind: MediaKind) => { setAuthorToolState('select'); setSel(null); setAdding(kind); }, []);
   const chooseFile = useCallback((kind: MediaKind) => {
@@ -449,14 +451,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
-      {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={locale} t={at_} />}
+      {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={authorLocale} t={at_} />}
       {sidebar && (
         <AuthorSidebar lesson={au.lesson} page={sel ? au.lesson.pages.find((x) => x.id === sel.pageId) : pages[page]} selected={selectedObject}
           tool={authorTool} adding={adding} tools={toolSettings} onTools={setToolSettings} defaults={insertDefaults} onDefaults={setInsertDefaults}
           apply={au.apply} onSelect={(id) => { const pg = pages[page]; if (pg) setSel({ pageId: pg.id, id }); }}
           onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }}
           onChooseFile={chooseFile} onDropFiles={(fs) => { const pg = pages[page]; if (pg) void addFiles(fs, pg); }}
-          onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={t.close} locale={locale} t={at_} />
+          onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={strings(authorLocale).close} locale={authorLocale} t={at_} />
       )}
       {authoringOn && (
         <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden
@@ -479,7 +481,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       {toast && <div className="chalk-toast" role="status">{toast}</div>}
       {dockCfg && (
         <Dock
-          config={config} dock={dockCfg} locale={locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
+          config={config} dock={dockCfg} locale={author ? authorLocale : locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
           canUndo={author ? au.canUndo : ann.canUndo} canRedo={author ? au.canRedo : ann.canRedo}
           author={authoringOn ? { on: author, dirty: au.dirty, t: at_ } : undefined}

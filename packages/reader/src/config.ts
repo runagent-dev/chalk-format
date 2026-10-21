@@ -90,6 +90,9 @@ export type ReaderConfig = {
     enabled: boolean;
     /** The mode the reader opens in. */
     startIn: 'read' | 'author';
+    /** The language of the author's tools (sidebar, rail, author dock). The reader's own language (`locale`) is
+     *  for students; the book's content is never translated. */
+    locale: Locale;
     /** The dock in author mode. The read-mode dock gets a 'mode' button at its start if it has none. */
     dock: (DockItemId | CustomDockItem)[];
   };
@@ -125,7 +128,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   persistence: 'local',
   pdfWorkerSrc: null,
   authoring: {
-    enabled: false, startIn: 'read',
+    enabled: false, startIn: 'read', locale: 'en',
     dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'undo', 'redo', '|', 'save', 'theme', 'language'],
   },
   presentation: DEFAULT_PRESENTATION,

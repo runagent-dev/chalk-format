@@ -120,6 +120,7 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
 |---|---|---|
 | `authoring.enabled` | `false` | Allow author mode. Off for a student app. `readOnly` turns it off. |
 | `authoring.startIn` | `'read'` | The mode the reader opens in. |
+| `authoring.locale` | `'en'` | Language of the author's tools (sidebar, rail, author dock). `locale` stays the students' language; book content is never translated. |
 | `authoring.dock` | mode, pages, page turning, zoom, undo, redo, save, theme, language | The dock in author mode (the tools are in the rail). |
 
 ## Restyling media
