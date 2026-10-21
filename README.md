@@ -23,6 +23,8 @@ interactive **labs**: simulations that run offline in a sandbox), with a searcha
 | `packages/pdf-engine` | PDF page → lesson page mapping (PDF.js), shared by browser and Node |
 | `packages/convert-pdf` | PDF → `.chalk` in Node |
 | `packages/store` | Asset stores: key → URL, the reader's resolver (cache, stores in order, verification), the registry API schemas and client |
+| [`packages/reader`](packages/reader) | **The reference reader**: `<ChalkReader>`, a configurable React component (pages, search, media, 3D, labs, the student's notes as an overlay) |
+| [`apps/reader`](apps/reader) | The reader's showcase site: a bilingual sample book and a configuration playground (`pnpm --filter @chalk-format/reader-app dev`) |
 | `packages/lab` | Running labs: `mountLab` / `createLabHost` for readers, `connectLab` for labs, the sandbox and CSP |
 | [`examples/labs`](examples/labs) | Example labs (one self-contained HTML file each) |
 | `packages/cli` | Command line: `convert` |
@@ -40,6 +42,26 @@ pnpm check                       # lint + typecheck + all tests (incl. conforman
 # Convert a PDF into a .chalk book
 pnpm --filter @chalk-format/cli start convert ./book.pdf -o book.chalk \
     --title "Higher Math" --locale bn --license "All rights reserved"
+```
+
+### See the reference reader
+
+```bash
+pnpm install
+pnpm --filter @chalk-format/reader-app dev      # http://localhost:5190
+```
+
+The showcase opens a bilingual sample book (pages from a PDF, video, audio, a 3D screw gauge, the pendulum
+lab, a snip). The first start builds the sample (about half a minute); edits to `packages/reader` reload the
+page. In the app: the book picker (top right) switches samples, **Open a book** loads any `.chalk` file, and
+**Configure** changes the reader live and shows the matching code. Use the browser's device toolbar for the
+phone layout.
+
+```bash
+pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books after changing apps/reader/showcase/
+pnpm --filter @chalk-format/reader-app build      # production build into apps/reader/dist/
+node tools/reader-shots.mjs out/shots              # desktop + phone screenshots of the running app
+node tools/reader-media-e2e.mjs                    # real clicks and taps: 3D, video, lab and audio must actually play
 ```
 
 ## Working on the format
@@ -93,7 +115,7 @@ const media = await resolver.resolve(object.assetId, 'video/mp4');      // reade
 
 See [spec 1.2 §9](spec/1.2/README.md#9-conformance) for what 1.2 adds and [spec 1.1 §6](spec/1.1/README.md#6-still-on-the-roadmap)
 for what is still open: general fallbacks for other new object types (`requires`), host-provided data queries,
-learner-state packages, navigation (TOC, page labels, links), and a web reader.
+learner-state packages, and navigation (TOC, page labels, links).
 
 ## Origin
 

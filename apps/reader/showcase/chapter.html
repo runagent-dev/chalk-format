@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<title>পদার্থবিজ্ঞান · নমুনা অধ্যায়</title>
+<!--
+  The showcase book's pages, printed to PDF by make-showcase.mjs and converted to .chalk.
+  Elements with data-embed mark where the book's media, 3D model and lab are placed; the script reads
+  their boxes from this layout, so moving a frame here moves the embed in the book.
+-->
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: "Noto Sans Bengali", "Noto Sans", sans-serif; color: #1d2733; font-size: 12.5pt; line-height: 1.55; }
+  .page { position: relative; width: 210mm; height: 297mm; padding: 20mm 18mm 18mm; page-break-after: always; overflow: hidden; background: #fff; }
+  .page:last-child { page-break-after: auto; }
+  .run { position: absolute; left: 18mm; right: 18mm; bottom: 9mm; display: flex; justify-content: space-between; font-size: 9pt; color: #6a7480; border-top: 0.3mm solid #d9dde2; padding-top: 2mm; }
+  .chapter { display: inline-block; padding: 1mm 3mm; border-radius: 1mm; background: #e6eef8; color: #1f4d8f; font-size: 10pt; font-weight: 600; }
+  h1 { font-size: 22pt; line-height: 1.25; margin: 4mm 0 1mm; font-weight: 600; }
+  h1 + .en { margin-top: 0; }
+  h2 { font-size: 15pt; margin: 7mm 0 1mm; font-weight: 600; color: #1f4d8f; }
+  p { margin: 0 0 3mm; }
+  .en { color: #5a6573; font-family: "Noto Sans", sans-serif; font-size: 10.5pt; line-height: 1.45; margin: -1.5mm 0 3mm; }
+  .formula { margin: 3mm 0 4mm; padding: 3mm 5mm; border-left: 1.2mm solid #1f4d8f; background: #f3f6fa; font-size: 13pt; }
+  .formula .en { margin: 1mm 0 0; }
+  .example { margin: 2mm 0 4mm; padding: 3mm 5mm; border: 0.3mm solid #d9dde2; border-radius: 2mm; }
+  .example b { color: #9a3b12; }
+  .frame { position: absolute; margin: 0; border: 0.4mm dashed #b8c2cc; border-radius: 2mm; background: #f6f8fa; }
+  .frame figcaption { position: absolute; left: 0; right: 0; top: calc(100% + 1.5mm); font-size: 9.5pt; color: #5a6573; text-align: center; line-height: 1.35; }
+  figure.svg { margin: 2mm 0 4mm; text-align: center; }
+  figure.svg figcaption { font-size: 9.5pt; color: #5a6573; }
+  .cover { display: flex; flex-direction: column; padding-top: 40mm; }
+  .cover .subject { font-size: 40pt; font-weight: 600; line-height: 1.15; color: #1f4d8f; margin: 0; }
+  .cover .subject-en { font-family: "Noto Sans", sans-serif; font-size: 18pt; color: #5a6573; margin: 1mm 0 10mm; }
+  .cover h1 { font-size: 20pt; }
+  .toc { margin: 10mm 0 0; padding: 0; list-style: none; border-top: 0.3mm solid #d9dde2; }
+  .toc li { display: flex; gap: 4mm; padding: 3mm 0; border-bottom: 0.3mm solid #d9dde2; }
+  .toc .no { width: 8mm; color: #1f4d8f; font-weight: 600; }
+  .toc .en { margin: 0 0 0 auto; }
+  .note { margin-top: auto; margin-bottom: 14mm; padding: 4mm 5mm; background: #f3f6fa; border-radius: 2mm; font-size: 11pt; }
+  .speeds { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 11.5pt; }
+  .speeds th, .speeds td { text-align: left; padding: 2mm 3mm; border-bottom: 0.3mm solid #d9dde2; }
+  .speeds th { font-size: 10pt; color: #5a6573; font-weight: 600; }
+  .q { margin: 0 0 4mm; }
+  .q .no { color: #1f4d8f; font-weight: 600; }
+  .lines { margin-top: 6mm; }
+  .lines div { height: 9mm; border-bottom: 0.3mm solid #c9d1d9; }
+  .lines .label { border: 0; height: auto; font-size: 10pt; color: #5a6573; }
+</style>
+</head>
+<body>
+
+<!-- 1 · cover -->
+<section class="page cover">
+  <p class="subject">পদার্থবিজ্ঞান</p>
+  <p class="subject-en">Physics</p>
+  <h1>নমুনা অধ্যায়: পরিমাপ, দোলন ও শব্দ</h1>
+  <p class="en">Sample chapter: measurement, oscillation and sound</p>
+  <ol class="toc">
+    <li><span class="no">১</span><span>পরিমাপের যন্ত্র</span><span class="en">Measuring instruments</span></li>
+    <li><span class="no">২</span><span>সরল দোলক</span><span class="en">The simple pendulum</span></li>
+    <li><span class="no">৩</span><span>শব্দ ও সুরশলাকা</span><span class="en">Sound and the tuning fork</span></li>
+    <li><span class="no">৪</span><span>অনুশীলনী</span><span class="en">Exercises</span></li>
+  </ol>
+  <div class="note">
+    এই বইয়ের পৃষ্ঠাগুলো একটি PDF থেকে তৈরি। ভিডিও, শব্দ, ত্রিমাত্রিক মডেল ও ল্যাব বইয়ের ভেতরেই আছে, তাই ইন্টারনেট ছাড়াও চলে।
+    <p class="en" style="margin:1.5mm 0 0">These pages come from a PDF. The video, sound, 3D model and lab travel inside the book, so they work offline.</p>
+  </div>
+  <div class="run"><span>Chalk · প্রদর্শনী বই</span><span>১</span></div>
+</section>
+
+<!-- 2 · measuring instruments -->
+<section class="page">
+  <span class="chapter">অধ্যায় ১</span>
+  <h1>পরিমাপের যন্ত্র</h1>
+  <p class="en">Measuring instruments</p>
+
+  <h2>ভার্নিয়ার ক্যালিপার্স</h2>
+  <p>প্রধান স্কেলের ক্ষুদ্রতম এক ঘর ১ mm এবং ভার্নিয়ার স্কেলের ১০ ঘর প্রধান স্কেলের ৯ ঘরের সমান হলে ভার্নিয়ার ধ্রুবক = ১ mm ÷ ১০ = ০.১ mm।</p>
+  <p class="en">If the smallest main-scale division is 1 mm and 10 vernier divisions equal 9 main-scale divisions, the vernier constant is 1 mm ÷ 10 = 0.1 mm.</p>
+  <div class="formula">পাঠ = প্রধান স্কেল পাঠ + (ভার্নিয়ার সমপাতন × ভার্নিয়ার ধ্রুবক)
+    <p class="en">reading = main-scale reading + (vernier coincidence × vernier constant)</p></div>
+  <figure class="svg">
+    <svg width="150mm" height="26mm" viewBox="0 0 600 104" aria-label="main and vernier scales">
+      <g stroke="#1d2733" stroke-width="1.6">
+        <line x1="20" y1="40" x2="580" y2="40" />
+        <g id="main"></g>
+        <line x1="150" y1="44" x2="150" y2="96" stroke-width="0" />
+      </g>
+      <script>
+        // drawn at print time: main scale (1 mm = 20 units) and a vernier of 10 divisions over 9 mm
+        const svgns = 'http://www.w3.org/2000/svg', g = document.getElementById('main');
+        for (let i = 0; i <= 28; i++) { const x = 20 + i * 20, l = document.createElementNS(svgns, 'line'); l.setAttribute('x1', x); l.setAttribute('x2', x); l.setAttribute('y1', i % 5 ? 28 : 18); l.setAttribute('y2', 40); g.appendChild(l);
+          if (i % 10 === 0) { const t = document.createElementNS(svgns, 'text'); t.setAttribute('x', x); t.setAttribute('y', 13); t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', 13); t.setAttribute('stroke', 'none'); t.setAttribute('fill', '#1d2733'); t.textContent = '০১২৩'[i / 10]; g.appendChild(t); } }
+        for (let j = 0; j <= 10; j++) { const x = 140 + j * 18, l = document.createElementNS(svgns, 'line'); l.setAttribute('x1', x); l.setAttribute('x2', x); l.setAttribute('y1', 44); l.setAttribute('y2', j % 5 ? 58 : 66); l.setAttribute('stroke', '#9a3b12'); g.appendChild(l); }
+        const v = document.createElementNS(svgns, 'rect'); v.setAttribute('x', 132); v.setAttribute('y', 42); v.setAttribute('width', 196); v.setAttribute('height', 34); v.setAttribute('fill', 'none'); v.setAttribute('stroke', '#9a3b12'); g.appendChild(v);
+      </script>
+      <text x="340" y="96" font-size="13" fill="#5a6573">ভার্নিয়ার স্কেল · vernier scale</text>
+    </svg>
+    <figcaption>প্রধান স্কেল (উপরে) ও ভার্নিয়ার স্কেল (নিচে)</figcaption>
+  </figure>
+  <div class="example"><b>উদাহরণ:</b> প্রধান স্কেল পাঠ ২৩ mm এবং সমপাতন ৬ হলে দৈর্ঘ্য = ২৩ + ৬ × ০.১ = ২৩.৬ mm।</div>
+
+  <h2>স্ক্রু গজ</h2>
+  <p style="width:84mm">পিচ ০.৫ mm এবং বৃত্তাকার স্কেলে ৫০ ঘর হলে লঘিষ্ঠ গণন = ০.৫ mm ÷ ৫০ = ০.০১ mm। রৈখিক স্কেল পাঠ ৫ mm এবং বৃত্তাকার স্কেল পাঠ ৩৭ হলে ব্যাস = ৫ + ৩৭ × ০.০১ = ৫.৩৭ mm।</p>
+  <p class="en" style="width:84mm">With a pitch of 0.5 mm and 50 circular divisions, the least count is 0.01 mm. Linear reading 5 mm and circular reading 37 give 5.37 mm.</p>
+  <figure class="frame" data-embed="model3d" style="left:108mm; top:196mm; width:84mm; height:64mm">
+    <figcaption>চিত্র ১: স্ক্রু গজ, ঘুরিয়ে দেখো · a screw gauge, turn it around</figcaption>
+  </figure>
+  <div class="run"><span>অধ্যায় ১ · পরিমাপের যন্ত্র</span><span>২</span></div>
+</section>
+
+<!-- 3 · the simple pendulum -->
+<section class="page">
+  <span class="chapter">অধ্যায় ২</span>
+  <h1>সরল দোলক</h1>
+  <p class="en">The simple pendulum</p>
+  <p>একটি ক্ষুদ্র ভারী বস্তুকে (ববকে) ওজনহীন ও অপ্রসারণশীল সুতায় ঝুলিয়ে দিলে তাকে সরল দোলক বলে। ছোট বিস্তারে এর দোলনকাল</p>
+  <div class="formula">T = 2π√(L / g)
+    <p class="en">L is the length from the point of suspension to the centre of the bob; g is the acceleration due to gravity.</p></div>
+  <p>L = ১ m এবং g = ৯.৮ m s⁻² হলে T ≈ ২.০১ s। দোলনকাল ববের ভরের উপর নির্ভর করে না, আর দৈর্ঘ্য চার গুণ করলে দোলনকাল দুই গুণ হয়।</p>
+  <p class="en">For L = 1 m and g = 9.8 m s⁻², T ≈ 2.01 s. The period does not depend on the bob's mass; four times the length doubles the period.</p>
+  <figure class="frame" data-embed="video" style="left:18mm; top:142mm; width:84mm; height:47.25mm">
+    <figcaption>ভিডিও: দুলছে একটি সরল দোলক · video</figcaption>
+  </figure>
+  <figure class="svg" data-snip="pendulum" style="position:absolute; left:112mm; top:136mm; width:80mm; margin:0">
+    <svg width="80mm" height="58mm" viewBox="0 0 320 232" aria-label="a pendulum">
+      <line x1="60" y1="12" x2="260" y2="12" stroke="#1d2733" stroke-width="3" />
+      <line x1="160" y1="12" x2="160" y2="190" stroke="#b8c2cc" stroke-width="1.5" stroke-dasharray="6 5" />
+      <line x1="160" y1="12" x2="228" y2="176" stroke="#1d2733" stroke-width="2" />
+      <circle cx="228" cy="176" r="16" fill="#9a3b12" />
+      <path d="M 160 70 A 58 58 0 0 1 183 66" fill="none" stroke="#1f4d8f" stroke-width="2" />
+      <text x="190" y="62" font-size="16" fill="#1f4d8f">θ</text>
+      <text x="200" y="104" font-size="16" fill="#1d2733">L</text>
+      <text x="110" y="222" font-size="14" fill="#5a6573">বব · bob</text>
+    </svg>
+  </figure>
+  <figure class="frame" data-embed="lab" style="left:18mm; top:204mm; width:174mm; height:60mm">
+    <figcaption>ল্যাব: নিজে দোলনকাল মাপো · lab: time the swings yourself</figcaption>
+  </figure>
+  <div class="run"><span>অধ্যায় ২ · সরল দোলক</span><span>৩</span></div>
+</section>
+
+<!-- 4 · sound -->
+<section class="page">
+  <span class="chapter">অধ্যায় ৩</span>
+  <h1>শব্দ ও সুরশলাকা</h1>
+  <p class="en">Sound and the tuning fork</p>
+  <p>সুরশলাকায় আঘাত করলে এটি একটি নির্দিষ্ট কম্পাঙ্কে কাঁপে। A সুরের সুরশলাকার কম্পাঙ্ক ৪৪০ Hz। মানুষ মোটামুটি ২০ Hz থেকে ২০,০০০ Hz কম্পাঙ্কের শব্দ শুনতে পায়।</p>
+  <p class="en">Struck, a tuning fork vibrates at one frequency; the A fork vibrates at 440 Hz. People hear roughly 20 Hz to 20,000 Hz.</p>
+  <div class="formula">v = f λ
+    <p class="en">speed = frequency × wavelength</p></div>
+  <p>০ °C তাপমাত্রায় বাতাসে শব্দের দ্রুতি প্রায় ৩৩২ m s⁻¹, তাই ৪৪০ Hz শব্দের তরঙ্গদৈর্ঘ্য λ = ৩৩২ ÷ ৪৪০ ≈ ০.৭৫ m।</p>
+  <p class="en">At 0 °C sound travels about 332 m s⁻¹ in air, so a 440 Hz sound has λ = 332 ÷ 440 ≈ 0.75 m.</p>
+  <figure class="frame" data-embed="audio" style="left:18mm; top:156mm; width:84mm; height:24mm">
+    <figcaption>শোনো: ৪৪০ Hz সুরশলাকা · listen</figcaption>
+  </figure>
+  <figure class="svg" style="position:absolute; left:118mm; top:140mm; width:70mm; margin:0">
+    <svg width="70mm" height="62mm" viewBox="0 0 280 248" aria-label="a tuning fork">
+      <path d="M 110 20 L 110 140 Q 110 168 140 168 Q 170 168 170 140 L 170 20" fill="none" stroke="#6a7480" stroke-width="14" stroke-linecap="round" />
+      <line x1="140" y1="168" x2="140" y2="236" stroke="#6a7480" stroke-width="14" stroke-linecap="round" />
+      <path d="M 84 40 q -14 20 0 40 M 64 30 q -22 30 0 60 M 196 40 q 14 20 0 40 M 216 30 q 22 30 0 60" fill="none" stroke="#1f4d8f" stroke-width="3" stroke-linecap="round" />
+    </svg>
+    <figcaption>সুরশলাকা · tuning fork</figcaption>
+  </figure>
+  <h2 style="margin-top:96mm">বিভিন্ন মাধ্যমে শব্দের দ্রুতি</h2>
+  <p class="en">The speed of sound in different media (approximate)</p>
+  <table class="speeds">
+    <tr><th>মাধ্যম · medium</th><th>দ্রুতি · speed (প্রায় · approx.)</th></tr>
+    <tr><td>বাতাস (০ °C) · air (0 °C)</td><td>৩৩২ m s⁻¹</td></tr>
+    <tr><td>পানি · water</td><td>১৪৫০ m s⁻¹</td></tr>
+    <tr><td>ইস্পাত · steel</td><td>৫০০০ m s⁻¹</td></tr>
+  </table>
+  <p>কঠিন মাধ্যমে কণাগুলো কাছাকাছি থাকে, তাই শব্দ বাতাসের চেয়ে অনেক দ্রুত চলে।</p>
+  <p class="en">Particles in a solid are close together, so sound travels much faster than in air.</p>
+  <div class="run"><span>অধ্যায় ৩ · শব্দ ও সুরশলাকা</span><span>৪</span></div>
+</section>
+
+<!-- 5 · exercises -->
+<section class="page">
+  <span class="chapter">অনুশীলনী</span>
+  <h1>অনুশীলনী</h1>
+  <p class="en">Exercises</p>
+  <p class="q"><span class="no">১.</span> ভার্নিয়ার ধ্রুবক ০.১ mm, প্রধান স্কেল পাঠ ৪২ mm এবং সমপাতন ৭ হলে বস্তুটির দৈর্ঘ্য কত?</p>
+  <p class="q"><span class="no">২.</span> ১ m লম্বা একটি সরল দোলকের দোলনকাল কত? (g = ৯.৮ m s⁻²)</p>
+  <p class="q"><span class="no">৩.</span> একটি দোলকের দৈর্ঘ্য চার গুণ করলে তার দোলনকাল কত গুণ হবে?</p>
+  <p class="q"><span class="no">৪.</span> শব্দের দ্রুতি ৩৩২ m s⁻¹ হলে ৫১২ Hz কম্পাঙ্কের শব্দের তরঙ্গদৈর্ঘ্য কত?</p>
+  <div class="lines">
+    <div class="label">তোমার কাজ · your working</div>
+    <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <p class="en" style="margin-top:5mm">উত্তর · answers: ১. ৪২.৭ mm · ২. ≈ ২.০১ s · ৩. দুই গুণ · ৪. ≈ ০.৬৫ m</p>
+  <div class="run"><span>অনুশীলনী</span><span>৫</span></div>
+</section>
+
+</body>
+</html>

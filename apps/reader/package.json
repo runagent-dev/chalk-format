@@ -1,0 +1,33 @@
+{
+  "name": "@chalk-format/reader-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Showcase site for the reference .chalk reader.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/samples.mjs && (test -f public/samples/showcase.chalk || pnpm showcase) && vite",
+    "build": "node scripts/samples.mjs && (test -f public/samples/showcase.chalk || pnpm showcase) && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests",
+    "showcase": "tsx showcase/make-showcase.ts"
+  },
+  "dependencies": {
+    "@chalk-format/reader": "workspace:*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@chalk-format/container": "workspace:*",
+    "@chalk-format/convert-pdf": "workspace:*",
+    "@chalk-format/model": "workspace:*",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "pdfjs-dist": "^5.7.284",
+    "vite": "^7.1.0",
+    "vitest": "^2.1.8"
+  }
+}
