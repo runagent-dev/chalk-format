@@ -84,6 +84,12 @@ export function createLibraryApp(o: LibraryOptions) {
   let storeRow: Promise<unknown> | null = null;
   const ensureStore = () => (storeRow ??= db.query("INSERT INTO stores (id, kind, template, bucket, public) VALUES ('library', 'derived', $1, $2, true) ON CONFLICT (id) DO UPDATE SET template = EXCLUDED.template", [delivery.template, storage.id]));
 
+  // what this address is, for someone who opens it in a browser
+  app.get('/', (c) => c.json({
+    name: o.name ?? 'Chalk library', api: 'Chalk registry API v1 (spec/1.2/registry-api.md)',
+    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /healthz'],
+  }));
+
   // ---- §7 stores for readers: public, cacheable ----
   app.get('/v1/stores', (c) => { c.header('Cache-Control', 'public, max-age=300'); return c.json({ items: [delivery] }); });
 
