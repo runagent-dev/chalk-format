@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChalkReader, DEFAULT_CONFIG, type BookSource, type ReaderConfig } from '@chalk-format/reader';
+import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
 // pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -25,6 +25,8 @@ export function App() {
   const [config, setConfig] = useState<ReaderConfig>(BASE);
   const [configuring, setConfiguring] = useState(false);
   const [mode, setMode] = useState<'read' | 'author'>('read');
+  // the libraries connected in this browser (This device, folders, library servers), kept for next time
+  const [libraries, setLibraries] = useSavedLibraries();
   return (
     <div className="app">
       <header className="app-bar">
@@ -49,7 +51,7 @@ export function App() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} />
+        <ChalkReader key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} libraries={libraries} onLibrariesChange={setLibraries} />
         {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>

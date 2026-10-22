@@ -523,3 +523,53 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 
 /* a page of a streamed book still on its way: its thumbnail, and a quiet spinner */
 .chalk-page-loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in oklch, var(--chalk-surface) 35%, transparent); pointer-events: none; }
+
+/* ---------- media no connected library has ---------- */
+.chalk-card.is-missing, .chalk-audio.is-missing { opacity: 0.75; outline: 2px dashed var(--chalk-danger); outline-offset: -2px; cursor: default; }
+.chalk-card.is-missing img { filter: grayscale(1); }
+.chalk-card-missing { position: absolute; left: 12px; top: 12px; z-index: 1; padding: 6px 16px; border-radius: var(--chalk-radius-pill); background: var(--chalk-danger); color: oklch(99% 0 0); font-size: 22px; font-weight: 600; }
+/* nothing to play: the kind's icon stays as a hint, quietly */
+.chalk-card.is-missing .chalk-card-glyph { opacity: 0.35; }
+.chalk-placeholder.is-missing { fill: none; stroke: var(--chalk-danger); stroke-width: 2; stroke-dasharray: 8 6; }
+.chalk-missing { position: absolute; z-index: 27; top: var(--chalk-space-md); right: var(--chalk-space-md); display: grid; justify-items: end; gap: 6px; }
+.chalk-reader[data-sidebar] .chalk-missing { right: 324px; }
+.chalk-missing-chip { min-height: 32px; padding: 0 12px; border: 1px solid var(--chalk-danger); border-radius: var(--chalk-radius-pill); background: var(--chalk-surface); color: var(--chalk-danger); font: inherit; font-size: var(--chalk-text-sm); font-weight: 600; cursor: pointer; box-shadow: var(--chalk-float-shadow); }
+.chalk-missing-chip:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-missing-list { width: min(320px, calc(100vw - 32px)); max-height: 50vh; overflow: auto; padding: var(--chalk-space-md); background: var(--chalk-surface); color: var(--chalk-ink); border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-md); box-shadow: var(--chalk-float-shadow); font-size: var(--chalk-text-sm); }
+.chalk-missing-list ul { margin: 8px 0; padding: 0; list-style: none; }
+.chalk-missing-list li button { width: 100%; padding: 6px 4px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.chalk-missing-list li button:hover { background: var(--chalk-surface-2); }
+.chalk-missing-list p { margin: 0; color: var(--chalk-ink-muted); }
+
+/* ---------- the gallery (author mode): media across the connected libraries ---------- */
+.chalk-gallery { display: grid; gap: var(--chalk-space-md); }
+.chalk-gallery-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.chalk-gallery-search { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink-muted); }
+.chalk-gallery-search:focus-within { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-gallery-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-md); }
+.chalk-gallery-search input:focus { outline: none; }
+.chalk-gallery select, .chalk-gallery-upload select { min-height: 32px; padding: 0 8px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-sm); }
+.chalk-gallery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.chalk-tile { display: grid; gap: 4px; width: 100%; padding: 6px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; text-align: left; cursor: pointer; }
+.chalk-tile:hover { border-color: var(--chalk-accent); }
+.chalk-tile:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
+.chalk-tile-thumb { display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 4px; background: var(--chalk-surface-2); color: var(--chalk-ink-muted); }
+.chalk-tile-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.chalk-tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--chalk-text-sm); font-weight: 600; }
+.chalk-tile-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; color: var(--chalk-ink-muted); }
+.chalk-gallery-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* ---------- connected libraries ---------- */
+.chalk-libs { display: grid; gap: var(--chalk-space-sm); }
+.chalk-libs-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.chalk-libs-list li { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 6px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); }
+.chalk-libs-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--chalk-line); }
+.chalk-libs-dot.is-ok { background: oklch(62% 0.15 150); }
+.chalk-libs-dot.is-offline, .chalk-libs-dot.is-no-permission { background: var(--chalk-danger); }
+.chalk-libs-dot.is-sign-in { background: oklch(75% 0.15 75); }
+.chalk-libs-name { flex: 1; min-width: 0; display: grid; font-size: var(--chalk-text-sm); font-weight: 600; }
+.chalk-libs-name small { font-weight: 400; color: var(--chalk-ink-muted); }
+.chalk-libs-actions { display: flex; gap: 2px; }
+.chalk-libs-actions .chalk-icon-btn { width: 28px; height: 28px; }
+.chalk-libs-form { display: grid; gap: 6px; }
+.chalk-libs-form input { min-height: 34px; padding: 4px 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-sm); }

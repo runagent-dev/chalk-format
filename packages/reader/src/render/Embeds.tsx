@@ -44,7 +44,7 @@ function usePlayWhileVisible(el: RefObject<HTMLMediaElement | null>, on: boolean
  * asked for it live (spec 1.3), started by itself while on screen if they asked for autoplay. A tap that should
  * open it elsewhere (popup, full screen) goes to `onOpen`.
  */
-export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObject; label: string; onOpen?: Activate | undefined }) {
+export function VideoEmbed({ book, o, label, onOpen, notFound }: { book: Book; o: EmbedObject; label: string; onOpen?: Activate | undefined; notFound?: string | undefined }) {
   const pr = usePresenter(), p = pr.present(o);
   const [playing, setPlaying] = useState(p.show === 'live');
   const { id, url } = mediaUrl(book, o);
@@ -54,7 +54,7 @@ export function VideoEmbed({ book, o, label, onOpen }: { book: Book; o: EmbedObj
   const [tapped, setTapped] = useState(false);
   // `src` too: the element only exists once the media's URL is known (the effect must run again then)
   usePlayWhileVisible(el, Boolean(src) && playing && p.autoplay && !tapped);
-  if (!playing) return <EmbedCard book={book} o={o} label={label} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
+  if (!playing) return <EmbedCard book={book} o={o} label={label} notFound={notFound} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
   const R = pr.renderers.video;
   if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
   return (
@@ -84,9 +84,12 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const toggle = () => { const a = el.current; if (!want || !a) { playWhenReady.current = true; setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
   const style = { '--h': `${o.height}px` } as CSSProperties;
   const poster = useAssetUrl(book, o.poster);
+  // whether it can be played at all: null is "no book or library has it"
+  const avail = useAssetUrl(book, R ? undefined : o.assetId);
   if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
   return (
-    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>
+    <Box x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-audio ${avail === null && o.assetId ? 'is-missing' : ''}`} label={p.label} id={o.id}>
+      {avail === null && o.assetId && <span className="chalk-card-missing">{t.notFound}</span>}
       <div className="chalk-audio-bar" style={style}>
         <button type="button" className="chalk-audio-play" aria-label={state.playing ? '❚❚' : t.play} onClick={toggle}>
           {state.playing ? <PauseIcon weight="fill" /> : <PlayIcon weight="fill" />}

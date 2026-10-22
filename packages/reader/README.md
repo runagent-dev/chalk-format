@@ -89,6 +89,32 @@ Every colour, font, space and radius is a CSS custom property on `.chalk-reader`
 `--chalk-surface`, `--chalk-accent`, `--chalk-font`, …; see `styles.css`). Override them on the container, or on
 `.chalk-reader[data-theme="dark"]` for the dark theme. Nothing leaks outside `.chalk-reader`.
 
+## Libraries
+
+A **library** is where authors find and put media: **This device** (in the browser, works offline), a **folder** on
+the computer or a USB drive, or a **library server** (the registry API of spec 1.2, over R2 or any S3-compatible
+bucket). The reader takes a list, first first: what a book does not carry comes from the first library that has it,
+and what none has is shown as **not found** (a marked card, and "3 items not found" with a list of what and where).
+Changing the list asks again, so connecting the right library makes the missing media appear.
+
+```tsx
+import { ChalkReader, useSavedLibraries } from '@chalk-format/reader';
+import { registryLibrary } from '@chalk-format/store';
+
+// people connect their own (kept in this browser): This device, folders, library servers
+const [libraries, setLibraries] = useSavedLibraries();
+<ChalkReader libraries={libraries} onLibrariesChange={setLibraries} … />
+
+// or the app connects them itself
+<ChalkReader libraries={[registryLibrary({ url: 'https://library.example.org', token: () => session.token })]} … />
+```
+
+In author mode, **+ › Video** (or any kind) opens a gallery over the libraries: search, pick, placed; **Upload new**
+puts a file into the library chosen (a video's poster with it) and places it. The book's page view lists the
+libraries: reorder them, connect a folder (scanned for media already in it) or a library server (address, and a
+token if it asks). Books keep only keys, never library addresses or credentials, so a book reads the same on any
+device that connects libraries holding its media; saving self-contained carries the media from the libraries.
+
 ## Streamed books (spec 1.4)
 
 Give `source` a streamed book's directory (ending in `/`) or its `book.json`: the reader opens it from the index,

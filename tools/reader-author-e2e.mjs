@@ -65,7 +65,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(o
   // add media: + in the rail, a kind, its options in the sidebar (start as live), then the file
   await p.click('.chalk-rail .is-add');
   await p.click('.chalk-rail-item:has-text("Video")');
-  check('+ › video: the sidebar shows adding a video', (await p.textContent('.chalk-sidebar-head h2')).includes('Video') && !!(await p.$('.chalk-drop')));
+  check('+ › video: the sidebar shows adding a video', (await p.textContent('.chalk-sidebar-head h2')).includes('Video') && !!(await p.$('.chalk-drop, .chalk-gallery')));
   await p.click('.chalk-sidebar .chalk-insp-seg label:has-text("Live")');
   await shot(p, 'author-adding');
   await p.setInputFiles('.chalk-reader input[type="file"][multiple]', [media('screw-gauge-poster.png'), media('pendulum.webm')]);

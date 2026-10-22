@@ -34,7 +34,8 @@
     "@google/model-viewer": "^4.4.0",
     "@phosphor-icons/react": "^2.1.10",
     "perfect-freehand": "^1.2.3",
-    "three": "^0.183.0"
+    "three": "^0.183.0",
+    "@chalk-format/store": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

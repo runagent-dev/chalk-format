@@ -19,7 +19,7 @@ const typeOf = (file: { name: string; type: string }, kind: MediaKind) =>
   kind === 'model3d' ? 'model/gltf-binary' : kind === 'lab' ? 'text/html' : file.type || 'application/octet-stream';
 
 /** The media's own size in pixels, where it has one. */
-async function naturalSize(kind: MediaKind, url: string): Promise<{ width: number; height: number } | null> {
+export async function naturalSize(kind: MediaKind, url: string): Promise<{ width: number; height: number } | null> {
   if (kind === 'image') {
     const img = new Image(); img.src = url;
     await img.decode().catch(() => {});
@@ -43,7 +43,7 @@ function loadVideo(url: string): Promise<HTMLVideoElement | null> {
 }
 
 /** A still from early in the video (not the very first frame, which is often black), as a WebP poster. */
-async function videoPoster(url: string): Promise<Blob | null> {
+export async function videoPoster(url: string): Promise<Blob | null> {
   const v = await loadVideo(url);
   if (!v || !v.videoWidth) return null;
   v.currentTime = Math.min(1, (v.duration || 2) / 4);
@@ -56,7 +56,7 @@ async function videoPoster(url: string): Promise<Blob | null> {
 }
 
 /** A box for the media: its proportions, at most 60 % of the page either way, centred on `at`. */
-function place(size: { width: number; height: number }, page: { width: number; height: number }, at: { x: number; y: number }) {
+export function place(size: { width: number; height: number }, page: { width: number; height: number }, at: { x: number; y: number }) {
   const k = Math.min(1, (page.width * 0.6) / size.width, (page.height * 0.6) / size.height);
   const width = Math.round(size.width * k), height = Math.round(size.height * k);
   const x = Math.round(Math.min(Math.max(0, at.x - width / 2), page.width - width));
@@ -100,4 +100,25 @@ export async function objectFromFile(
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** What kinds of library items a media kind takes (spec 1.5 lab manifests for labs). */
+export const KIND_TYPES: Record<MediaKind, string[]> = {
+  image: ['image/*'], video: ['video/*'], audio: ['audio/*'], model3d: ['model/gltf-binary'], lab: ['application/vnd.chalk.lab+json'],
+};
+
+/**
+ * A library item placed on a page around `at`, with its proportions (from the facts the library keeps, so nothing
+ * is downloaded to place it). Videos and models show the item's poster. Labs are placed from their manifest.
+ */
+export function objectFromItem(item: { key: string; type: string; meta?: { width?: number | undefined; height?: number | undefined } | undefined; poster?: string | undefined }, page: { width: number; height: number }, at: { x: number; y: number }): LessonObject | null {
+  const t = item.type.toLowerCase();
+  const kind: MediaKind | null = t.startsWith('image/') ? 'image' : t.startsWith('video/') ? 'video' : t.startsWith('audio/') ? 'audio' : t === 'model/gltf-binary' ? 'model3d' : null;
+  if (!kind) return null;
+  const natural = item.meta?.width && item.meta?.height ? { width: item.meta.width, height: item.meta.height } : null;
+  const fallback = { image: { width: 800, height: 600 }, video: { width: 1280, height: 720 }, audio: { width: 640, height: 120 }, model3d: { width: 720, height: 720 }, lab: { width: 960, height: 720 } }[kind];
+  const box = place(kind === 'audio' ? fallback : natural ?? fallback, page, at);
+  const id = generateId(kind);
+  if (kind === 'image') return { id, type: 'image', ...box, assetId: item.key };
+  return { id, type: 'embed', embed: kind, ...box, assetId: item.key, ...(item.poster ? { poster: item.poster } : {}) } as LessonObject;
 }

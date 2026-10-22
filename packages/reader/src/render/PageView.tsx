@@ -133,7 +133,9 @@ function VectorObject({ o, book }: { o: LessonObject; book: Book }) {
 
 function ImageObject({ o, book }: { o: Extract<LessonObject, { type: 'image' }>; book: Book }) {
   const url = useAssetUrl(book, o.assetId);
-  return url ? <image href={url} x={o.x} y={o.y} width={o.width} height={o.height} preserveAspectRatio="none" /> : <rect x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-placeholder" />;
+  if (url) return <image href={url} x={o.x} y={o.y} width={o.width} height={o.height} preserveAspectRatio="none" />;
+  // still coming (undefined), or nowhere to be found (null): a dashed box for the latter, so it reads as missing
+  return <rect x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-placeholder ${url === null ? 'is-missing' : ''}`} />;
 }
 
 function HtmlItem({ o, page, render }: { o: LessonObject; page: LessonPage; render: HtmlObjectRenderer }) {
