@@ -10,7 +10,13 @@ export interface Db {
   close(): Promise<void>;
 }
 
-const SCHEMA = new URL('../../../spec/1.2/registry.sql', import.meta.url);
+/** The reference schema: next to the bundle in a deployment (dist/registry.sql), else from the repository. */
+function schemaSql(): string {
+  for (const u of [new URL('./registry.sql', import.meta.url), new URL('../../../spec/1.2/registry.sql', import.meta.url)]) {
+    try { return readFileSync(u, 'utf8'); } catch { /* try the next place */ }
+  }
+  throw new Error('registry.sql not found');
+}
 
 /**
  * `schema`: Postgres only: everything the library makes (tables, its migration record, the pg_trgm extension) goes
@@ -52,7 +58,7 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
   await db.query('CREATE TABLE IF NOT EXISTS chalk_library_schema (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
   const done = new Set((await db.query<{ version: number }>('SELECT version FROM chalk_library_schema')).map((r) => r.version));
   if (!done.has(1)) {
-    await exec(readFileSync(SCHEMA, 'utf8'));
+    await exec(schemaSql());
     await db.query('INSERT INTO chalk_library_schema (version) VALUES (1)');
   }
 }

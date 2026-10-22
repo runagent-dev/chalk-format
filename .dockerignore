@@ -1,0 +1,7 @@
+node_modules
+**/node_modules
+**/dist
+apps/reader/public/samples
+out
+.git
+**/.env

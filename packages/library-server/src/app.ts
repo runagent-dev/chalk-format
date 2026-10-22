@@ -238,6 +238,9 @@ export function createLibraryApp(o: LibraryOptions) {
     return c.body(Readable.toWeb(createReadStream(file)) as ReadableStream, 200, { ...headers, 'Content-Length': String(size) });
   });
 
+  // an error the API did not expect: logged for the operator, a plain answer for the caller
+  app.onError((e, c) => { console.error(`${c.req.method} ${c.req.path}:`, e); return fail(c, 500, 'internal', 'the library could not do that'); });
+
   app.get('/healthz', async (c) => { await db.query('SELECT 1'); return c.json({ ok: true, name: o.name ?? 'Chalk library' }); });
   return app;
 }
