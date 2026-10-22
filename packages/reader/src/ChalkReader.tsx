@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { getPageSize, isLabObject, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
+import { LAB_MANIFEST_TYPE, getPageSize, isLabObject, labManifestSchema, labObjectFromManifest, generateId, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
 import { num, strings } from './i18n.js';
@@ -21,7 +21,8 @@ import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface } from './author/AuthorSurface.js';
 import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
-import { ACCEPT, mediaKindOf, objectFromFile, type MediaKind } from './author/insert.js';
+import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, videoPoster, type MediaKind } from './author/insert.js';
+import type { LibraryItem } from '@chalk-format/store';
 import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
 import { edit } from './annotate/state.js';
@@ -30,6 +31,8 @@ import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
 import { searchBook } from './search.js';
 import { isStreamSource, isStreamed, openStreamedBook, windowAround } from './stream.js';
+import { newLookup, resetLookup, withLibraries } from './libraries.js';
+import type { Library } from '@chalk-format/store';
 import type { StreamText } from '@chalk-format/model';
 
 export type ChalkReaderProps = {
@@ -38,6 +41,11 @@ export type ChalkReaderProps = {
   book?: Book;
   /** Fetches assets a thin book does not carry. */
   resolveAsset?: AssetResolver;
+  /** Libraries to find media in, first first (this device, a folder, a library server): what a book does not carry
+   *  comes from the first that has it; what none has is shown as not found. Author mode's gallery lists them. */
+  libraries?: Library[];
+  /** The libraries were connected, removed or reordered in the reader's own panel. */
+  onLibrariesChange?: (libraries: Library[]) => void;
   config?: ReaderConfigInput;
   /** 0-based page index, whenever it changes. */
   onPageChange?: (index: number, page: LessonPage) => void;
@@ -97,6 +105,40 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
 
 const noSubscribe = () => () => {};
 
+/** "3 items not found": what the connected libraries do not have, and where in the book it is used. */
+function MissingChip({ lesson, missing, t, locale, onGo }: { lesson: Lesson; missing: ReadonlySet<string>; t: ReturnType<typeof strings>; locale: Locale; onGo: (page: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const uses = useMemo(() => {
+    const out: { key: string; page: number; what: string }[] = [];
+    lesson.pages.forEach((p, i) => {
+      if (missing.has((p.background as { assetId?: string }).assetId ?? '')) out.push({ key: '', page: i, what: t.page });
+      for (const o of p.objects) {
+        const ids = o.type === 'image' ? [o.assetId] : o.type === 'embed' ? [o.assetId, o.poster, o.lab?.entry].filter(Boolean) as string[] : [];
+        const hit = ids.find((k) => missing.has(k));
+        if (!hit) continue;
+        const what = o.type === 'image' ? t.image : o.type === 'embed' ? (isLabObject(o) ? o.lab.title : o.presentation?.label ?? (o.embed === 'model3d' ? t.model3d : o.embed === 'video' ? t.video : o.embed === 'audio' ? t.audio : o.embed)) : '';
+        out.push({ key: hit, page: i, what });
+      }
+    });
+    return out;
+  }, [lesson, missing, missing.size, t]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="chalk-missing">
+      <button type="button" className="chalk-missing-chip" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {t.missingCount.replace('{n}', num(locale, missing.size))}
+      </button>
+      {open && (
+        <div className="chalk-missing-list" role="dialog" aria-label={t.missingTitle}>
+          <strong>{t.missingTitle}</strong>
+          <ul>{uses.map((u, i) => <li key={i}><button type="button" onClick={() => { onGo(u.page); setOpen(false); }}>{u.what} · {t.page} {num(locale, u.page + 1)}</button></li>)}</ul>
+          <p>{t.missingHint}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+const NO_LIBRARIES: Library[] = [];
+
 function Shell({ config, className, style, children, theme }: { config: ReaderConfig; className?: string | undefined; style?: CSSProperties | undefined; children: React.ReactNode; theme?: 'light' | 'dark' }) {
   const dark = theme ?? (config.theme === 'system' ? (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : config.theme);
   return <div className={`chalk-reader ${className ?? ''}`} data-theme={dark} lang={config.locale} style={style}>{children}</div>;
@@ -119,7 +161,15 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // authoring: the reader shows the author's working copy, in both modes. Read mode is the student's reader over
   // it (notes and all); author mode edits the book itself, without the notes.
   const authoringOn = config.authoring.enabled;
-  const au = useAuthoring(original, props.onLessonChange);
+  // libraries: one lookup per set of libraries (a new set asks again: switching libraries can find what was missing)
+  const libs = props.libraries ?? NO_LIBRARIES;
+  const lookup = useRef(newLookup()).current;
+  const [seenLibs, setSeenLibs] = useState(libs);
+  if (seenLibs !== libs) { setSeenLibs(libs); resetLookup(lookup); }
+  const [, missingChanged] = useState(0);
+  useEffect(() => { const f = () => missingChanged((n) => n + 1); lookup.listeners.add(f); return () => { lookup.listeners.delete(f); }; }, [lookup]);
+  const originalWithLibraries = useMemo(() => withLibraries(original, libs, lookup), [original, libs, lookup]);
+  const au = useAuthoring(original, props.onLessonChange, { bytes: originalWithLibraries.assetBytes });
   // controlled by the host when it passes `mode` (the dock's switch then only asks, through onModeChange)
   const [modeState, setModeState] = useState<'read' | 'author'>(authoringOn ? config.authoring.startIn : 'read');
   const mode = props.mode ?? modeState;
@@ -144,7 +194,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (authorTool === 'rect' || authorTool === 'ellipse' || authorTool === 'line' || authorTool === 'arrow') return { ...base, color: s.shape.stroke, size: s.shape.width, fill: s.shape.fill };
     return base;
   }, [toolSettings, authorTool]);
-  const book = authoringOn ? au.book : original;
+  const book = useMemo(() => withLibraries(authoringOn ? au.book : original, libs, lookup), [authoringOn, au.book, original, libs, lookup]);
   const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
   const viewer = useRef<ViewerHandle>(null);
@@ -274,12 +324,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (o.displayMode === 'icon') return <IconMarker o={o} label={label} onActivate={canRun ? () => openElsewhere(o, p.open) : undefined} />;
     if (!canRun) return <EmbedCard book={book} o={o} caption={o.embed === 'plugin' && !lab ? t.unsupported : lab?.lab.title} label={label} />;
     const elsewhere = p.open === 'popup' || p.open === 'fullscreen' ? () => openElsewhere(o, p.open) : undefined;
-    if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} onOpen={elsewhere} />;
+    if (o.embed === 'video') return <VideoEmbed book={book} o={o} label={label} onOpen={elsewhere} notFound={t.notFound} />;
     if (o.embed === 'audio') return <AudioEmbed book={book} o={o} locale={locale} />;
     // in its box on the page, unless that box is too small on this screen to use: then a larger view
     // a lab needs room for its controls; a model only needs to be big enough to turn
     const start = elsewhere ?? ((el: HTMLElement) => { if (tooSmall(el, Boolean(lab))) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); });
-    return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} />;
+    return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} notFound={t.notFound} />;
   }, [book, config.features, t, locale, pages, openElsewhere, pr]);
 
   // previews (thumbnails, snips inside a dialog): the same cards and markers, but inert
@@ -288,7 +338,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (o.type === 'image') return o.displayMode === 'icon' ? <IconMarker o={o} label="" /> : <OpenableImage book={book} o={o} label="" />;
     if (o.type !== 'embed') return null;
     if (o.displayMode === 'icon') return <IconMarker o={o} label="" />;
-    return <EmbedCard book={book} o={o} caption={isLabObject(o) ? o.lab.title : undefined} />;
+    return <EmbedCard book={book} o={o} caption={isLabObject(o) ? o.lab.title : undefined} notFound={t.notFound} />;
   }, [book, t]);
 
   // the live embed on a page, drawn in screen pixels above it
@@ -402,6 +452,47 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (refused) setToast(at_.notPlaceable);
   }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
+  // a library item onto the current page: placed from the facts the library keeps (a lab from its manifest), with
+  // how the author said media of this kind should start
+  const placeItem = useCallback(async (item: LibraryItem, lib: Library) => {
+    const pg = pages[page]; if (!pg) return;
+    const size = getPageSize(pg), mid = { x: size.width / 2, y: size.height / 2 };
+    let made: LessonObject | null;
+    if (item.type === LAB_MANIFEST_TYPE) {
+      const raw = await lib.get(item.key);
+      try { made = raw ? labObjectFromManifest(labManifestSchema.parse(JSON.parse(new TextDecoder().decode(raw.bytes))), { id: generateId('lab'), x: 0, y: 0, locale: lesson.locale, width: Math.round(size.width * 0.6) }) : null; }
+      catch (e) { setToast(e instanceof Error ? e.message : String(e)); return; }
+      if (made && 'width' in made) made = { ...made, x: Math.round(mid.x - made.width / 2), y: Math.round(mid.y - made.height / 2) } as LessonObject;
+    } else made = objectFromItem(item, size, mid);
+    if (!made) { setToast(at_.notPlaceable); return; }
+    const k = item.type.startsWith('video/') ? 'video' : item.type.startsWith('audio/') ? 'audio' : item.type.startsWith('image/') ? 'image' : item.type === 'model/gltf-binary' ? 'model3d' : 'lab';
+    const d = insertDefaults[k];
+    const o = d && (made.type === 'image' || made.type === 'embed')
+      ? { ...made, ...(d.displayMode ? { displayMode: d.displayMode } : {}), ...(d.presentation && Object.keys(d.presentation).length ? { presentation: d.presentation } : {}) } as LessonObject
+      : made;
+    au.apply(edit.add(pg.id, o)); setSel({ pageId: pg.id, id: o.id }); setAdding(null);
+  }, [pages, page, lesson.locale, au, at_, insertDefaults]);
+  // files into a library (the author chose which), then onto the page: kept once, findable and reusable afterwards
+  const uploadTo = useCallback(async (files: File[], lib: Library) => {
+    if (!lib.put) return;
+    setToast(at_.uploading);
+    for (const f of files) {
+      const kind = mediaKindOf(f); if (!kind || kind === 'lab') { setToast(at_.notPlaceable); continue; }
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const type = kind === 'model3d' ? 'model/gltf-binary' : f.type || 'application/octet-stream';
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+      try {
+        const natural = kind === 'image' || kind === 'video' ? await naturalSize(kind, url) : null;
+        // a video's poster from its frames, into the same library
+        let poster: string | undefined;
+        if (kind === 'video') { const p = await videoPoster(url); if (p) poster = (await lib.put({ bytes: new Uint8Array(await p.arrayBuffer()), type: 'image/webp', title: `${f.name} (poster)` })).key; }
+        const item = await lib.put({ bytes, type, filename: f.name, title: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), ...(natural ? { meta: natural } : {}), ...(poster ? { poster } : {}) });
+        await placeItem(item, lib);
+      } catch (e) { setToast(e instanceof Error ? e.message : String(e)); return; }
+      finally { URL.revokeObjectURL(url); }
+    }
+    setToast(null);
+  }, [at_, placeItem]);
   const saveBook = useCallback(async () => {
     let saved: Lesson;
     try {
@@ -508,6 +599,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
           tool={authorTool} adding={adding} tools={toolSettings} onTools={setToolSettings} defaults={insertDefaults} onDefaults={setInsertDefaults}
           apply={au.apply} onSelect={(id) => { const pg = pages[page]; if (pg) setSel({ pageId: pg.id, id }); }}
           onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }}
+          libraries={libs} onLibrariesChange={props.onLibrariesChange} onPickItem={(it, lib) => void placeItem(it, lib)} onUploadTo={(fs, lib) => void uploadTo(fs, lib)}
           onChooseFile={chooseFile} onDropFiles={(fs) => { const pg = pages[page]; if (pg) void addFiles(fs, pg); }}
           onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={strings(authorLocale).close} locale={authorLocale} t={at_} />
       )}
@@ -530,6 +622,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
       {toast && <div className="chalk-toast" role="status">{toast}</div>}
+      {lookup.missing.size > 0 && <MissingChip lesson={lesson} missing={lookup.missing} t={t} locale={locale} onGo={(i) => goTo(i)} />}
       {dockCfg && (
         <Dock
           config={config} dock={dockCfg} locale={author ? authorLocale : locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}

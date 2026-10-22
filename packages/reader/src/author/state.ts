@@ -9,7 +9,9 @@ const HISTORY = 200;
  * The author's working copy of a book: the edited lesson with undo (one entry per gesture), the media added in
  * this session, and a Book over both that the reader draws exactly as a student would see it.
  */
-export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
+/** `bytes`: where to find media the book does not carry when saving a self-contained book (the libraries). */
+export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o: { bytes?: Book['assetBytes'] } = {}) {
+  const bytesFrom = useRef(o.bytes); bytesFrom.current = o.bytes;
   const [h, setH] = useState(() => ({ stack: [base.lesson], i: 0, gesture: null as string | null }));
   // the lesson as last saved: what "unsaved changes" compares against
   const [saved, setSaved] = useState(base.lesson);
@@ -82,7 +84,7 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void) {
     for (const id of referencedAssetIds(lesson)) {
       const a = added.current.get(id);
       if (a) { bundle.set(id, { type: a.type, bytes: a.bytes }); continue; }
-      const b = await base.assetBytes(id).catch(() => null);
+      const b = await (bytesFrom.current ?? base.assetBytes)(id).catch(() => null);
       if (b) bundle.set(id, { type: b.type, bytes: new Uint8Array(b.bytes) });
     }
     const bytes = await packLesson({ ...lesson, updatedAt: new Date().toISOString() }, bundle);

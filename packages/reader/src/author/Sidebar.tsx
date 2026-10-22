@@ -8,6 +8,9 @@ import { TOOL_ICON } from '../annotate/ToolsMenu.js';
 import type { AuthorTool } from './AuthorRail.js';
 import { Colors, Field, PresentationFields, Section, Seg, TEXT_SIZES, WIDTHS, numbers } from './controls.js';
 import { Inspector, kindName } from './Inspector.js';
+import { Gallery } from './Gallery.js';
+import { LibrariesPanel } from './Libraries.js';
+import type { Library, LibraryItem } from '@chalk-format/store';
 import type { MediaKind } from './insert.js';
 import type { AuthorStrings } from './i18n.js';
 
@@ -53,6 +56,9 @@ export function AuthorSidebar(p: {
   apply: (fn: (l: Lesson) => Lesson, gesture?: string) => void;
   onSelect: (id: string) => void; onDelete: () => void;
   onChooseFile: (kind: MediaKind) => void; onDropFiles: (files: File[]) => void;
+  /** Connected libraries: the gallery searches them; with `onLibrariesChange` the panel can connect and reorder them. */
+  libraries: Library[]; onLibrariesChange?: ((l: Library[]) => void) | undefined;
+  onPickItem: (item: LibraryItem, library: Library) => void; onUploadTo: (files: File[], library: Library) => void;
   /** A close button (phones, where the sidebar is a sheet over the page). */
   onClose?: (() => void) | undefined; closeLabel: string;
   locale: Locale; t: AuthorStrings;
@@ -73,14 +79,20 @@ export function AuthorSidebar(p: {
     body = (
       <div className="chalk-insp">
         <Section>
-          <div className={`chalk-drop ${dropping ? 'is-over' : ''}`}
-            onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropping(true); } }}
-            onDragLeave={() => setDropping(false)}
-            onDrop={(e) => { e.preventDefault(); setDropping(false); const fs = [...e.dataTransfer.files]; if (fs.length) p.onDropFiles(fs); }}>
-            <FileArrowUpIcon size={28} />
-            <button type="button" className="chalk-side-btn is-primary" onClick={() => p.onChooseFile(kind)}>{t.chooseFile}</button>
-            <small>{t.dropHere}</small>
-          </div>
+          {p.libraries.length > 0
+            // the libraries: search, pick, or upload a new file into one of them
+            ? <Gallery kind={kind} libraries={p.libraries} onPick={p.onPickItem} onUpload={p.onUploadTo} t={t} />
+            // no libraries connected: the file goes into the book itself
+            : (
+            <div className={`chalk-drop ${dropping ? 'is-over' : ''}`}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropping(true); } }}
+              onDragLeave={() => setDropping(false)}
+              onDrop={(e) => { e.preventDefault(); setDropping(false); const fs = [...e.dataTransfer.files]; if (fs.length) p.onDropFiles(fs); }}>
+              <FileArrowUpIcon size={28} />
+              <button type="button" className="chalk-side-btn is-primary" onClick={() => p.onChooseFile(kind)}>{t.chooseFile}</button>
+              <small>{t.dropHere}</small>
+            </div>
+            )}
         </Section>
         <PresentationFields o={standIn(kind, d)} t={t}
           setDisplay={(v) => { const n = { ...d }; if (v === 'icon') n.displayMode = 'icon'; else delete n.displayMode; setD(n); }}
@@ -144,6 +156,11 @@ export function AuthorSidebar(p: {
                   onChange={(c, g) => p.apply((l) => ({ ...l, pages: l.pages.map((x) => (x.id === page.id ? { ...x, background: { type: 'color', color: c } } : x)) }), g)} />
               : <p className="chalk-side-note">{t.background}: {t.bgPicture}</p>}
             <p className="chalk-side-note">{(() => { const z = getPageSize(page); return `${Math.round(z.width)} × ${Math.round(z.height)}`; })()}</p>
+          </Section>
+        )}
+        {page && (
+          <Section title={t.libraries}>
+            <LibrariesPanel libraries={p.libraries} onChange={p.onLibrariesChange} t={t} />
           </Section>
         )}
         {page && (

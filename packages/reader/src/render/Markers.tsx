@@ -23,13 +23,19 @@ export function Box({ x, y, width, height, className, children, label, title, on
  * A media card: the poster scaled to cover the box (or a neutral tile), the object's icon and its caption.
  * What a reader draws for an embed before it plays, and for a plugin it cannot run (spec 1.1 §2.2).
  */
-export function EmbedCard({ book, o, caption, onActivate, label }: { book: Book; o: EmbedObject; caption?: string | undefined; onActivate?: Activate | undefined; label?: string | undefined }) {
+export function EmbedCard({ book, o, caption, onActivate, label, notFound }: { book: Book; o: EmbedObject; caption?: string | undefined; onActivate?: Activate | undefined; label?: string | undefined;
+  /** The words for media no library has; given, the card checks for it. */
+  notFound?: string | undefined }) {
   const poster = useAssetUrl(book, o.poster);
+  // the media itself (a lab: its file): null means no book or library has it
+  const main = useAssetUrl(book, notFound ? (o.lab?.entry ?? o.assetId) : undefined);
+  const missing = notFound !== undefined && main === null && Boolean(o.lab?.entry ?? o.assetId);
   const pr = usePresenter(), p = pr.present(o);
   const disc = Math.min(96, o.width * 0.22, o.height * 0.3);
   return (
-    <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-card" label={p.label ?? label} id={o.id} kind={kindOf(o)} style={pr.accent(o)} {...(onActivate ? { onActivate } : {})}>
+    <Box x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-card ${missing ? 'is-missing' : ''}`} label={missing ? `${p.label ?? label ?? ''} · ${notFound}` : (p.label ?? label)} id={o.id} kind={kindOf(o)} style={pr.accent(o)} {...(onActivate && !missing ? { onActivate } : {})}>
       {poster && <img src={poster} alt="" draggable={false} />}
+      {missing && <span className="chalk-card-missing">{notFound}</span>}
       <span className="chalk-card-glyph" style={{ width: disc, height: disc }}>{pr.glyph(o, Math.min(44, o.width * 0.1, o.height * 0.14))}</span>
       {(p.label ?? caption) && <span className="chalk-card-caption">{p.label ?? caption}</span>}
     </Box>
