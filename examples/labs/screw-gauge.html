@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screw gauge · স্ক্রু গজ</title>
+<!--
+  An example Chalk lab with shared libraries (spec/1.5): three.js and OrbitControls are named in the lab's
+  `libraries` and supplied by the reader; this file carries none of them.
+  The import map below is only for opening this file on its own (spec 1.5 §3): inside a reader, the reader's map
+  comes first and wins, and the sandbox has no network.
+  params: { pitch (mm), divisions, zeroError (thimble zero off by 3 divisions), diameters (mm, the wires to measure) }
+  state:  { done: [index of each wire measured] }        progress: one step per wire
+-->
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js",
+                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/" } }
+</script>
+<style>
+  :root { --bg: #eef1f4; --ink: #1d2a33; --muted: #5e6b75; --accent: #1f6f4e; --bad: #b42318; --card: #fff; --line: #c9d1d9; }
+  :root.dark { --bg: #12181d; --ink: #e8eef2; --muted: #93a1ab; --accent: #5fd39b; --bad: #ff8a7a; --card: #1b232a; --line: #33404a; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.4 "Noto Sans", "Noto Sans Bengali", system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  #view { position: relative; min-height: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #fail { position: absolute; inset: 0; display: none; place-items: center; padding: 20px; text-align: center; color: var(--muted); }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; background: var(--card); border-top: 1px solid var(--line); }
+  button, input { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  input { width: 7em; font-variant-numeric: tabular-nums; }
+  .out { margin-left: auto; color: var(--muted); }
+  .out.ok { color: var(--accent); } .out.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<div id="view"><div id="fail"></div></div>
+<div class="bar">
+  <button id="back1" aria-label="−1 turn">⟲ 1</button><button id="back" aria-label="−1 division">−</button>
+  <button id="fwd" aria-label="+1 division">+</button><button id="fwd1" aria-label="+1 turn">1 ⟳</button>
+  <button id="wire"></button>
+  <label><span id="lbl"></span> <input id="ans" inputmode="decimal" autocomplete="off"></label> <span>mm</span>
+  <button id="check" class="primary"></button>
+  <span id="out" class="out" role="status"></span>
+</div>
+<script>
+  // without the libraries (a reader that does not supply them, spec 1.5 §2): say so instead of failing silently
+  addEventListener('error', (e) => { if (String(e.message).includes('three') || e.filename === '') { const f = document.getElementById('fail'); f.style.display = 'grid'; f.textContent = 'This lab needs three.js, which this reader does not supply.'; } }, true);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Host API (spec/1.1/host-api.md), by hand, as in pendulum.html ----------
+const host = window.parent;
+let session = null, port = null, nextId = 1;
+const send = (m) => { if (port) port.postMessage(Object.assign({ chalk: 1 }, m)); };
+const waiting = new Map();
+const request = (m) => new Promise((ok, fail) => { const id = nextId++; waiting.set(id, { ok, fail }); send(Object.assign({ id }, m)); });
+addEventListener('message', (e) => {
+  const m = e.data;
+  if (e.source !== host || !m || m.chalk !== 1 || m.type !== 'init' || session) return;
+  clearInterval(helloTimer);
+  if (m.api !== 1 || !e.ports[0]) return;
+  port = e.ports[0];
+  port.onmessage = (ev) => onHost(ev.data);
+  start(m);
+});
+function onHost(m) {
+  if (!m || m.chalk !== 1) return;
+  if (m.type === 'reply' && waiting.has(m.id)) { const w = waiting.get(m.id); waiting.delete(m.id); m.ok ? w.ok(m.result) : w.fail(m.error); }
+  else if (m.type === 'visibility') setVisible(m.visible);
+  else if (m.type === 'theme') setTheme(m.theme);
+  else if (m.type === 'locale') { locale = m.locale; render(); }
+  else if (m.type === 'reset') { done = []; wireIx = 0; gap = 8; render(); report(); }
+}
+const hello = () => host.postMessage({ chalk: 1, type: 'hello', api: [1], lab: { id: 'org.chalk-format.examples.screw-gauge', version: '1.0.0' } }, '*');
+const helloTimer = setInterval(hello, 500); hello();
+// on its own (opened directly, no reader): defaults after a moment
+setTimeout(() => { if (!session && window.parent === window) start({ api: 1, params: {}, locale: navigator.language, theme: 'light', granted: [], state: null, visible: true }); }, 300);
+
+// ---------- words ----------
+const T = {
+  en: { wireIn: 'Remove the wire', wireOut: 'Put the wire in', lbl: 'Diameter', check: 'Check', right: 'Right!', wrong: 'Not quite: read the main scale, then the circular scale.', all: 'All wires measured.', wire: 'Wire' },
+  bn: { wireIn: 'তার সরাও', wireOut: 'তার বসাও', lbl: 'ব্যাস', check: 'যাচাই করো', right: 'ঠিক হয়েছে!', wrong: 'হয়নি: আগে প্রধান স্কেল, তারপর বৃত্তাকার স্কেল পড়ো।', all: 'সব তার মাপা হয়েছে।', wire: 'তার' },
+};
+let locale = 'en';
+const t = (k) => T[locale.startsWith('bn') ? 'bn' : 'en'][k];
+const num = (x) => (locale.startsWith('bn') ? String(x).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[d]) : String(x));
+
+// ---------- the instrument (millimetres) ----------
+let P, gap = 8, wireIn = true, wireIx = 0, done = [], visible = true, dirty = true, result = null;
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 1000);
+camera.position.set(24, 6, 92);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(24, -7, 0); controls.enableDamping = false; controls.update(); controls.minDistance = 25; controls.maxDistance = 160;
+controls.addEventListener('change', () => { dirty = true; });
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(20, 40, 50); scene.add(sun);
+
+const steel = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, metalness: 0.6, roughness: 0.35 });
+const paint = new THREE.MeshStandardMaterial({ color: 0x2f5d8a, metalness: 0.1, roughness: 0.6 });
+const copper = new THREE.MeshStandardMaterial({ color: 0xc8743a, metalness: 0.5, roughness: 0.4 });
+const alongX = (g) => g.rotateZ(-Math.PI / 2);   // cylinders are made along y; the gauge's axis is x
+const box = (w, h, d, x, y, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, 0); scene.add(b); return b; };
+
+// the frame (a U), the anvil at x ≤ 0, the sleeve fixed on the right
+box(5, 30, 6, -9, -11, paint); box(25, 5, 6, 1.5, -24, paint); box(5, 22, 6, 11.5, -15, paint);
+const anvil = new THREE.Mesh(alongX(new THREE.CylinderGeometry(3, 3, 7, 40)), steel); anvil.position.x = -3.5; scene.add(anvil);
+const SLEEVE0 = 14, SLEEVE_LEN = 30;
+const sleeve = new THREE.Mesh(alongX(new THREE.CylinderGeometry(4.5, 4.5, SLEEVE_LEN, 48)), steel); sleeve.position.x = SLEEVE0 + SLEEVE_LEN / 2; scene.add(sleeve);
+const spindle = new THREE.Mesh(alongX(new THREE.CylinderGeometry(3, 3, 24, 40)), steel); scene.add(spindle);
+
+// scales are drawn on canvases: the main scale on a strip along the sleeve's top, the circular scale around the thimble
+function canvasTexture(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const tx = new THREE.CanvasTexture(c); tx.anisotropy = 8; tx.colorSpace = THREE.SRGBColorSpace; return tx; }
+let mainStrip = null, thimble = null;
+function buildScales() {
+  if (mainStrip) { scene.remove(mainStrip); mainStrip.geometry.dispose(); mainStrip.material.map.dispose(); }
+  if (thimble) { scene.remove(thimble); thimble.geometry.dispose(); thimble.material.map.dispose(); }
+  // main scale: mm ticks above the datum line, half-mm ticks below (pitch 0.5) or every pitch below, numbers every 5 mm
+  const PX = 40, L = SLEEVE_LEN;
+  const tex = canvasTexture(L * PX, 120, (g, w, h) => {
+    g.fillStyle = '#d9dde1'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#1b1f23'; g.fillStyle = '#1b1f23'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(0, 60); g.lineTo(w, 60); g.stroke();
+    g.font = 'bold 30px system-ui, sans-serif'; g.textAlign = 'center';
+    for (let mm = 0; mm <= L - 2; mm += 1) { const x = mm * PX + 4; g.beginPath(); g.moveTo(x, 60); g.lineTo(x, mm % 5 === 0 ? 22 : 34); g.stroke(); if (mm % 5 === 0) g.fillText(String(mm), x + 2, 18); }
+    for (let k = 1; k * P.pitch <= L - 2; k += 1) { const v = k * P.pitch; if (Math.abs(v - Math.round(v)) < 1e-9) continue; const x = v * PX + 4; g.beginPath(); g.moveTo(x, 60); g.lineTo(x, 86); g.stroke(); }
+  });
+  // a flat on the sleeve's front, facing the student, 0.04 mm proud of it (no coplanar faces); the datum line runs
+  // along the middle; u runs along x, tick 0 drawn 4 px in, so the strip starts 0.1 mm before the sleeve's zero
+  mainStrip = new THREE.Mesh(new THREE.PlaneGeometry(L, 3), new THREE.MeshBasicMaterial({ map: tex }));
+  mainStrip.position.set(SLEEVE0 + L / 2 - 4 / PX, 0, 4.54); scene.add(mainStrip);
+  // circular scale: `divisions` marks around the thimble's bevelled end, every 5th numbered
+  const D = P.divisions, W = 2048;
+  const ctex = canvasTexture(W, 256, (g, w, h) => {
+    g.fillStyle = '#cfd4d8'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#1b1f23'; g.fillStyle = '#1b1f23'; g.lineWidth = 4; g.font = 'bold 44px system-ui, sans-serif'; g.textAlign = 'center';
+    // On the thimble's front, canvas x runs down the screen and canvas y runs toward the sleeve (screen left), so
+    // ticks start at the bottom of the canvas (the edge by the sleeve) and numbers are drawn turned to read upright.
+    for (let i = 0; i < D; i++) {
+      const x = (i / D) * w;
+      g.beginPath(); g.moveTo(x, h); g.lineTo(x, h - (i % 5 === 0 ? 110 : 64)); g.stroke();
+      if (i % 5 === 0) { g.save(); g.setTransform(0, -1, 1, 0, x, h - 126); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(String(i), 0, 0); g.restore(); }
+    }
+  });
+  ctex.wrapS = THREE.RepeatWrapping;
+  // open cylinder for the scale band, and caps; the band's u wraps around the axis
+  const band = new THREE.CylinderGeometry(5.6, 5.6, 6, 96, 1, true); alongX(band);
+  thimble = new THREE.Group();
+  const bandMesh = new THREE.Mesh(band, new THREE.MeshStandardMaterial({ map: ctex, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide }));
+  bandMesh.position.x = 3;
+  // long enough to cover the sleeve at any reading, as on a real gauge
+  const knurl = new THREE.Mesh(alongX(new THREE.CylinderGeometry(5.9, 5.9, SLEEVE_LEN, 48)), new THREE.MeshStandardMaterial({ color: 0x8e959b, metalness: 0.5, roughness: 0.7 })); knurl.position.x = 6 + SLEEVE_LEN / 2;
+  const cap = new THREE.Mesh(alongX(new THREE.CylinderGeometry(4.6, 5.6, 0.6, 96)), steel); cap.position.x = -0.3;
+  thimble.add(bandMesh, knurl, cap);
+  scene.add(thimble);
+}
+const wire = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 26, 32), copper); wire.rotation.x = Math.PI / 2; scene.add(wire);
+// the datum (reading) line is the main scale's line; a small pointer marks it on the thimble's edge
+let zeroOffset = 0;   // in divisions: the thimble's zero error
+
+function place() {
+  const d = P.diameters[wireIx % P.diameters.length];
+  // a ratchet: the spindle stops at the wire (or at the anvil)
+  gap = Math.max(wireIn ? d : 0, Math.min(25, gap));
+  spindle.position.x = gap + 12;
+  // the thimble's edge stands at the main-scale reading (plus its zero error); turned by gap / pitch turns
+  const reading = gap + zeroOffset * (P.pitch / P.divisions);
+  thimble.position.x = SLEEVE0 + reading;
+  // the division at the datum line faces the student (+z). Unturned, the band's u = 0 is at +z and u grows
+  // downward round the front; turning the thimble by −θ brings division θ·D/2π to the front.
+  const turns = reading / P.pitch;
+  thimble.rotation.x = -(turns % 1) * Math.PI * 2;
+  wire.visible = wireIn; wire.scale.set(d / 2, 1, d / 2); wire.position.x = d / 2;
+  dirty = true;
+}
+
+function resize() { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); dirty = true; }
+let running = false;
+function setVisible(v) { visible = v; if (visible && !running) { running = true; requestAnimationFrame(loop); } }
+function loop() { if (!visible) { running = false; return; } if (dirty) { renderer.render(scene, camera); dirty = false; } requestAnimationFrame(loop); }
+function setTheme(th) { document.documentElement.classList.toggle('dark', th === 'dark'); scene.background = new THREE.Color(th === 'dark' ? 0x12181d : 0xeef1f4); dirty = true; }
+
+function start(init) {
+  session = init;
+  P = Object.assign({ pitch: 0.5, divisions: 50, zeroError: false, diameters: [4.37, 2.58, 6.14] }, init.params);
+  zeroOffset = P.zeroError ? 3 : 0;
+  locale = init.locale || 'en'; setTheme(init.theme);
+  if (init.state && Array.isArray(init.state.done)) done = init.state.done.filter((i) => i < P.diameters.length);
+  wireIx = Math.min(done.length, P.diameters.length - 1);
+  buildScales(); resize(); addEventListener('resize', resize); place(); render();
+  const lc = P.pitch / P.divisions;
+  const turn = (by) => () => { gap = +(gap + by).toFixed(6); place(); };
+  document.getElementById('back1').onclick = turn(-P.pitch); document.getElementById('back').onclick = turn(-lc);
+  document.getElementById('fwd').onclick = turn(lc); document.getElementById('fwd1').onclick = turn(P.pitch);
+  document.getElementById('wire').onclick = () => { wireIn = !wireIn; if (wireIn) gap = Math.max(gap, P.diameters[wireIx % P.diameters.length] + 1); place(); render(); };
+  document.getElementById('check').onclick = check;
+  document.getElementById('ans').onkeydown = (e) => { if (e.key === 'Enter') check(); };
+  renderer.render(scene, camera); send({ type: 'ready' });
+  report(); setVisible(init.visible !== false);
+}
+function check() {
+  const raw = document.getElementById('ans').value.replace(/[০-৯]/g, (d) => '০১২৩৪৫৬৭৮৯'.indexOf(d)).replace(',', '.');
+  const v = parseFloat(raw), d = P.diameters[wireIx % P.diameters.length], lc = P.pitch / P.divisions;
+  // the diameter: what the scales show, less the zero error; within one division
+  const ok = wireIn && gap <= d + 1e-9 && Math.abs(v - d) <= lc + 1e-9;
+  result = ok ? 'ok' : 'bad';
+  if (ok && !done.includes(wireIx)) { done = done.concat(wireIx); save(); report(); if (wireIx < P.diameters.length - 1) { wireIx += 1; gap = P.diameters[wireIx] + 2; document.getElementById('ans').value = ''; place(); } }
+  render();
+}
+function report() { if (session.granted.includes('progress')) send({ type: 'progress', step: { done: done.length, total: P.diameters.length }, completed: done.length >= P.diameters.length }); }
+function save() { if (session.granted.includes('state')) request({ type: 'state.save', state: { done } }).catch(() => {}); }
+function render() {
+  document.getElementById('wire').textContent = wireIn ? t('wireIn') : t('wireOut');
+  document.getElementById('lbl').textContent = `${t('wire')} ${num(wireIx + 1)}/${num(P.diameters.length)} · ${t('lbl')}`;
+  document.getElementById('check').textContent = t('check');
+  const out = document.getElementById('out');
+  out.className = 'out' + (result ? ' ' + result : '');
+  out.textContent = done.length >= P.diameters.length ? t('all') : result === 'ok' ? t('right') : result === 'bad' ? t('wrong') : '';
+}
+</script>
+</body>
+</html>

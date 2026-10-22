@@ -18,8 +18,10 @@
   },
   "devDependencies": {
     "@chalk-format/model": "workspace:*",
+    "@chalk-format/store": "workspace:*",
     "@eslint/js": "^9.16.0",
     "@types/node": "^22.9.0",
+    "esbuild": "0.25",
     "eslint": "^9.16.0",
     "eslint-plugin-react-hooks": "^5",
     "globals": "^15.14.0",
@@ -28,8 +30,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.18.0",
-    "zod": "^4.4.3",
-    "@chalk-format/store": "workspace:*"
+    "zod": "^4.4.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

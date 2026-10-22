@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.3';
+const CURRENT = '1.5';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
@@ -177,6 +177,23 @@ for (const [name, doc] of Object.entries(storeFiles)) writeFileSync(new URL(`sto
       presentation: { show: 'hologram', open: 'sideways', icon: 'telescope', sparkle: true } },
   ] })] }), media), { kind: 'lesson', since: '1.3', covers: 'presentation on images, models, video, audio and a lab; unknown show, open and icon values and an unknown field (accepted, defaults)' });
 }
+
+// ── 1.5: lab libraries ───────────────────────────────────────────────────
+// A lab that imports three.js (a stand-in module here: the real build is 700 KB) supplied by the reader.
+const THREE_STUB = new TextEncoder().encode('export const REVISION = "stub"; export class Scene {}\n');
+const LAB3D = new TextEncoder().encode('<!doctype html><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js"}}</script><script type="module">import * as THREE from "three"; document.title = THREE.REVISION;</script>');
+{
+  const k3 = await assetKey(THREE_STUB), kl = await assetKey(LAB3D), kp = await assetKey(PNG);
+  write('valid', 'lab-libraries.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
+    { ...labObject, poster: kp, lab: { ...labObject.lab, id: 'org.example.three-lab', entry: kl, assets: [], libraries: [{ specifier: 'three', version: '0.183.2', asset: k3 }] } },
+  ] })] }), new Map([[k3, { type: 'text/javascript', bytes: THREE_STUB }], [kl, { type: 'text/html', bytes: LAB3D }], [kp, { type: 'image/png', bytes: PNG }]])),
+  { kind: 'lesson', since: '1.5', covers: 'a lab with a library the reader supplies, and its own import map for running on its own' });
+}
+const labWith = (libraries: unknown) => JSON.stringify(page('p1', { objects: [{ ...labObject, lab: { ...labObject.lab, libraries } } as never] }));
+write('invalid', 'lab-library-not-content-addressed.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 11 }), 'pages/page-1.json': labWith([{ specifier: 'three', version: '0.183.2', asset: 'three.js' }]) }),
+  { kind: 'lesson', since: '1.5', covers: 'a library whose asset is not content-addressed' });
+write('invalid', 'lab-library-duplicate.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 11 }), 'pages/page-1.json': labWith([{ specifier: 'three', version: '1', asset: 'c1:' + 'a'.repeat(25) + 'a' }, { specifier: 'three', version: '2', asset: 'c1:' + 'b'.repeat(25) + 'a' }]) }),
+  { kind: 'lesson', since: '1.5', covers: 'the same library specifier twice' });
 
 // ── invalid ──────────────────────────────────────────────────────────────
 const embedWith = (presentation: Record<string, unknown>) => JSON.stringify(page('p1', { objects: [

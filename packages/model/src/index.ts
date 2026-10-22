@@ -61,3 +61,4 @@ export {
 } from './overlay.js';
 export * from './presentation.js';
 export * from './stream.js';
+export * from './lab-manifest.js';

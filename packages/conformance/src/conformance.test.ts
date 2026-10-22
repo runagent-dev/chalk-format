@@ -118,3 +118,22 @@ describe('a streamed book (spec 1.4 §8)', () => {
     expect(v(JSON.parse(readFileSync(new URL(index.text.file, dir), 'utf8'))), JSON.stringify(v.errors)).toBe(true);
   });
 });
+
+// ---- 1.5: lab manifests and the shared library builds ----
+describe('lab manifests and libraries (spec 1.5)', () => {
+  const ex = (f: string) => new URL(`../../../examples/labs/${f}`, import.meta.url);
+  const keyOf = async (b: Uint8Array) => (await import('@chalk-format/model')).assetKey(b);
+  it('the example manifest is valid, and its keys are its files\' keys', async () => {
+    const m = JSON.parse(readFileSync(ex('screw-gauge.lab.json'), 'utf8'));
+    const v = ajv.compile(schema('lab-manifest.schema.json'));
+    expect(v(m), JSON.stringify(v.errors)).toBe(true);
+    expect(m.entry).toBe(await keyOf(new Uint8Array(readFileSync(ex('screw-gauge.html')))));
+    expect(m.poster).toBe(await keyOf(new Uint8Array(readFileSync(ex('screw-gauge-poster.png')))));
+    const catalog = JSON.parse(readFileSync(new URL('../../../libraries/catalog.json', import.meta.url), 'utf8')).libraries as { specifier: string; key: string; version: string }[];
+    for (const l of m.libraries) expect(catalog.find((c) => c.specifier === l.specifier && c.version === l.version)?.key, l.specifier).toBe(l.asset);
+  });
+  it('the example lab file uses the same library versions in its own import map', () => {
+    const html = readFileSync(ex('screw-gauge.html'), 'utf8'), m = JSON.parse(readFileSync(ex('screw-gauge.lab.json'), 'utf8'));
+    for (const l of m.libraries) expect(html).toContain(`three@${l.version}`);
+  });
+});

@@ -22,7 +22,7 @@ import { presentationSchema } from './presentation.js';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 10;
+export const CHALK_FORMAT_VERSION = 11;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -130,6 +130,17 @@ export const LAB_PARAMS_MAX_BYTES = 16 * 1024;
  * in a sandbox, talking to the reader only through the Host API. Loose: fields
  * a later version adds survive a round trip through this one (spec 1.1 §2.2).
  */
+/** A bare module specifier, as a lab imports it: `three`, `three/addons/controls/OrbitControls.js` (spec 1.5 §2). */
+export const LIBRARY_SPECIFIER_PATTERN = /^(?![./])(?![a-z][a-z0-9+.-]*:)[A-Za-z0-9@][\w@./+-]{0,199}$/;
+
+/** A library a lab imports, supplied by the reader (spec 1.5 §2). */
+export const labLibrarySchema = z.looseObject({
+  specifier: z.string().regex(LIBRARY_SPECIFIER_PATTERN),
+  version: z.string().min(1).max(64),
+  /** One bundled ES module file, content-addressed. */
+  asset: sha256AssetIdSchema,
+});
+
 export const labSchema = z.looseObject({
   /** Stable identity of the lab, reverse-DNS style; the same lab in many books has one id. */
   id: z.string().min(1).max(200),
@@ -151,6 +162,14 @@ export const labSchema = z.looseObject({
     .optional(),
   /** Host API capabilities the lab asks for (`state`, `progress`, `assets`); unknown names are ignored. */
   capabilities: z.array(z.string()).optional(),
+  /** Libraries the reader supplies (three.js, …), each imported by its specifier (schema v11, spec 1.5). */
+  libraries: z.array(labLibrarySchema).optional(),
+}).superRefine((l, ctx) => {
+  const seen = new Set<string>();
+  for (const [i, lib] of (l.libraries ?? []).entries()) {
+    if (seen.has(lib.specifier)) ctx.addIssue({ code: 'custom', path: ['libraries', i, 'specifier'], message: `library ${lib.specifier} is listed twice` });
+    seen.add(lib.specifier);
+  }
 });
 
 /**

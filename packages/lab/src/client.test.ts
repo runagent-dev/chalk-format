@@ -124,3 +124,28 @@ describe('the lab document', () => {
     expect(await verifyLabEntry(bytes, 'sha256:' + '0'.repeat(64))).toBe(false);
   });
 });
+
+describe('lab libraries (spec 1.5 §2)', () => {
+  it('verifies a c1 entry as well as a sha256 one', async () => {
+    const { assetKey } = await import('@chalk-format/model');
+    const bytes = new TextEncoder().encode('<!doctype html><p>lab</p>');
+    expect(await verifyLabEntry(bytes, await assetKey(bytes))).toBe(true);
+    expect(await verifyLabEntry(bytes, 'c1:' + 'a'.repeat(25) + 'a')).toBe(false);
+  });
+
+  it('puts the libraries after the CSP and the guard, before the lab, as base64 an HTML parser cannot misread', () => {
+    const code = 'export const x = "</script><!--<script>"; export default 1;';
+    const out = prepareLabDocument('<!doctype html><script type="module">import x from "three";</script>', 'mount-nonce-1',
+      [{ specifier: 'three', bytes: new TextEncoder().encode(code) }]);
+    const csp = out.indexOf('Content-Security-Policy'), guard = out.indexOf("type:'gone'"), lib = out.indexOf('chalk-lib-0'), map = out.indexOf('importmap'), lab = out.indexOf('import x from');
+    expect(csp).toBeGreaterThan(0);
+    expect(csp < guard && guard < lib && lib < map && map < lab).toBe(true);
+    expect(out).toContain(btoa(code));
+    // the library's own `</script>` never appears raw
+    expect(out.split('</script>').length - 1).toBe(4);
+  });
+
+  it('adds nothing for a lab without libraries', () => {
+    expect(prepareLabDocument('<!doctype html><p>x</p>', 'mount-nonce-1')).not.toContain('chalk-lib-');
+  });
+});

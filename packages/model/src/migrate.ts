@@ -50,6 +50,8 @@ export const MIGRATIONS: Record<number, Migration> = {
   8: (doc) => doc,
   // v9 → v10: images and embeds gained an optional `presentation` (spec 1.3)
   9: (doc) => doc,
+  // v10 → v11: a lab may list `libraries` (spec 1.5)
+  10: (doc) => doc,
 };
 
 /**

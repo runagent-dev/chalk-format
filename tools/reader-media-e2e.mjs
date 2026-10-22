@@ -47,10 +47,26 @@ for (const [name, opts] of [['desktop', { viewport: { width: 1280, height: 800 }
   // the first tap on pause pauses (it once started again at once)
   await press('.chalk-audio-play', { timeout: 5000 }); await p.waitForTimeout(600);
   r.audioPaused = await p.evaluate(() => document.querySelector('.chalk-audio audio')?.paused === true);
+  // a 3D lab with shared libraries (spec 1.5): it runs on the reader's three.js, never the CDN its own map names,
+  // and a student can close the gauge on the wire and have the reading accepted
+  const cdn = []; p.on('request', (q) => { if (q.url().includes('jsdelivr')) cdn.push(q.url()); });
+  await goPage(5);
+  await p.evaluate(() => document.querySelector('[data-chalk-id="screw-gauge-lab"]')?.scrollIntoView({ block: 'center' }));
+  await p.waitForTimeout(400);
+  await press('[data-chalk-id="screw-gauge-lab"]', { timeout: 5000 });
+  await p.waitForFunction(() => document.querySelector('.chalk-lab iframe') && !document.querySelector('.chalk-lab-wait'), null, { timeout: 20000 }).catch(() => {});
+  const lab3d = p.frames().find((f) => f !== p.mainFrame() && f.url() === 'about:srcdoc');
+  if (lab3d) {
+    for (let i = 0; i < 10; i++) await lab3d.click('#back1');
+    await lab3d.fill('#ans', '4.37'); await lab3d.click('#check');
+    r.lab3d = await lab3d.evaluate(() => ({ canvas: !!document.querySelector('canvas'), result: document.getElementById('out')?.className, said: document.getElementById('out')?.textContent }));
+  } else r.lab3d = 'no frame';
+  r.cdn = cdn.length;
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   // the author's icon marker: label as its name, and its accent colour
   r.marker = await p.evaluate(() => { const m = document.querySelector('.chalk-marker[aria-label="সুরশলাকা · ৪৪০ Hz"]'); return m ? getComputedStyle(m).backgroundColor : 'missing'; });
   const ok = r.model3d === 'loaded' && r.model3dRotates && r.video?.playing && r.video.t > 1 && r.video.loop && !r.video.muted && r.lab === 'running' && r.labWhere === 'full screen' && r.labClosed
-    && r.audio?.playing && r.audio.t > 0.5 && r.audioPaused && r.marker === 'rgb(194, 98, 26)' && !errs.length;
+    && r.audio?.playing && r.audio.t > 0.5 && r.audioPaused && r.marker === 'rgb(194, 98, 26)' && r.lab3d?.canvas && r.lab3d.result === 'out ok' && r.cdn === 0 && !errs.length;
   failed ||= !ok;
   console.log(name.padEnd(8), ok ? 'OK  ' : 'FAIL', JSON.stringify(r), errs.length ? 'errors: ' + errs.join(' | ') : '');
   await p.close();

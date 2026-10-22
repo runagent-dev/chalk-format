@@ -20,3 +20,5 @@ jobs:
       - run: pnpm test
       - name: JSON Schema is up to date with the model
         run: pnpm gen:schema && git diff --exit-code schema/
+      - name: Shared lab library builds reproduce their keys (libraries/catalog.json)
+        run: npx tsx tools/lab-libraries.ts --check

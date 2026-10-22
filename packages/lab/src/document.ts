@@ -1,4 +1,4 @@
-import { hashBytes } from '@chalk-format/model';
+import { verifyAssetBytes } from '@chalk-format/model';
 import { createLabHost, type LabHost, type LabHostOptions } from './host.js';
 
 /** The frame's sandbox (spec 1.1 §3.3): scripts, and an opaque origin (no `allow-same-origin`). */
@@ -18,9 +18,36 @@ export const LAB_CSP = [
   "base-uri 'none'",
 ].join('; ');
 
-/** Does a lab entry's content match its id? A host MUST NOT run it otherwise (spec 1.1 §3.3). */
+/** Does a lab entry's content match its id (`sha256:` or `c1:`)? A host MUST NOT run it otherwise (spec 1.1 §3.3). */
 export async function verifyLabEntry(bytes: Uint8Array, entry: string): Promise<boolean> {
-  return (await hashBytes(bytes)) === entry;
+  return verifyAssetBytes(entry, bytes);
+}
+
+/** A library given to a lab (spec 1.5 §2): its specifier and its bytes (one ES module). */
+export type LabLibraryCode = { specifier: string; bytes: Uint8Array };
+
+/** Base64 without Node's Buffer (labs are mounted in browsers). */
+function toBase64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/**
+ * The libraries as the lab's document receives them (spec 1.5 §2): each library in an inert
+ * `<script type="text/plain">` as base64 (nothing in it can end the element or confuse the HTML parser), then a
+ * script that turns each into a `blob:` URL (made in the lab's own frame, which its CSP allows) and adds an import
+ * map. It comes before the lab's markup, so the lab's own import map (for running on its own) cannot remap these
+ * specifiers, and modules that import one another share one copy.
+ */
+export function libraryScripts(libraries: readonly LabLibraryCode[]): string {
+  if (!libraries.length) return '';
+  const carriers = libraries.map((l, i) => `<script type="text/plain" id="chalk-lib-${i}">${toBase64(l.bytes)}</script>`).join('');
+  const boot = `(function(){var n=${JSON.stringify(libraries.map((l) => l.specifier))},m={};` +
+    `n.forEach(function(s,i){var c=document.getElementById("chalk-lib-"+i),b=atob(c.textContent),u=new Uint8Array(b.length);for(var j=0;j<b.length;j++)u[j]=b.charCodeAt(j);` +
+    `m[s]=URL.createObjectURL(new Blob([u],{type:"text/javascript"}));c.remove();});` +
+    `var e=document.createElement("script");e.type="importmap";e.textContent=JSON.stringify({imports:m});document.currentScript.after(e);})()`;
+  return carriers + `<script>${boot}</script>`;
 }
 
 /**
@@ -46,10 +73,10 @@ export const labNonce = () => crypto.randomUUID();
  * markup (right after the doctype). The HTML parser puts them into `<head>` whatever follows, so a lab
  * cannot get anything in ahead of them.
  */
-export function prepareLabDocument(entry: Uint8Array | string, nonce: string): string {
+export function prepareLabDocument(entry: Uint8Array | string, nonce: string, libraries: readonly LabLibraryCode[] = []): string {
   let html = typeof entry === 'string' ? entry : new TextDecoder('utf-8').decode(entry);
   if (html.charCodeAt(0) === 0xfeff) html = html.slice(1);
-  const head = `<meta http-equiv="Content-Security-Policy" content="${LAB_CSP}">${labGuard(nonce)}`;
+  const head = `<meta http-equiv="Content-Security-Policy" content="${LAB_CSP}">${labGuard(nonce)}${libraryScripts(libraries)}`;
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
   return doctype ? doctype[0] + head + html.slice(doctype[0].length) : '<!doctype html>' + head + html;
 }
@@ -57,6 +84,8 @@ export function prepareLabDocument(entry: Uint8Array | string, nonce: string): s
 export type MountLabOptions = Omit<LabHostOptions, 'frame' | 'nonce'> & {
   /** The bytes of `lab.entry`. Checked against the id before anything runs. */
   entry: Uint8Array;
+  /** The bytes of each of `lab.libraries`, by specifier (spec 1.5). Each is checked against its key. */
+  libraries?: ReadonlyMap<string, Uint8Array>;
 };
 
 /**
@@ -68,6 +97,14 @@ export type MountLabOptions = Omit<LabHostOptions, 'frame' | 'nonce'> & {
  */
 export async function mountLab(container: HTMLElement, o: MountLabOptions): Promise<{ frame: HTMLIFrameElement; host: LabHost }> {
   if (!(await verifyLabEntry(o.entry, o.lab.entry))) throw new Error(`lab ${o.lab.id}: entry bytes do not match ${o.lab.entry}`);
+  // every library the lab names, present and the bytes its key says (spec 1.5 §2)
+  const libraries: LabLibraryCode[] = [];
+  for (const lib of o.lab.libraries ?? []) {
+    const bytes = o.libraries?.get(lib.specifier);
+    if (!bytes) throw new Error(`lab ${o.lab.id}: library ${lib.specifier} is not available`);
+    if (!(await verifyAssetBytes(lib.asset, bytes))) throw new Error(`lab ${o.lab.id}: library ${lib.specifier} bytes do not match ${lib.asset}`);
+    libraries.push({ specifier: lib.specifier, bytes });
+  }
   const frame = document.createElement('iframe');
   frame.setAttribute('sandbox', LAB_SANDBOX);
   frame.setAttribute('referrerpolicy', 'no-referrer');
@@ -81,7 +118,7 @@ export async function mountLab(container: HTMLElement, o: MountLabOptions): Prom
   // Second line of defence for the guard script: the frame loading a second document.
   let loads = 0;
   frame.addEventListener('load', () => { if (++loads > 1 && !blanked) { host.dispose(); blank(); o.onError?.(`lab ${o.lab.id} navigated its frame`); } });
-  frame.srcdoc = prepareLabDocument(o.entry, nonce);
+  frame.srcdoc = prepareLabDocument(o.entry, nonce, libraries);
   container.appendChild(frame);
   return { frame, host };
 }

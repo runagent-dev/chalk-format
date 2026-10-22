@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v10/registry.schema.json",
+  "$id": "https://chalk-format.dev/schema/v11/registry.schema.json",
   "title": "Chalk registry API v1: requests and responses (spec/1.2/registry-api.md)",
-  "x-chalk-format-version": 10,
+  "x-chalk-format-version": 11,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "assetRecord": {
