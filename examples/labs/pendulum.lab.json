@@ -1,0 +1,41 @@
+{
+  "format": "chalk.lab",
+  "manifestVersion": 1,
+  "id": "org.chalk-format.examples.pendulum",
+  "version": "1.0.0",
+  "title": {
+    "bn": "সরল দোলক",
+    "en": "Simple pendulum"
+  },
+  "description": {
+    "bn": "দোলনের সময় মেপে পর্যায়কালের কয়েকটি পাঠ নাও, তারপর g-এর মান বের করো।",
+    "en": "Time the swings, take several readings of the period, and find g."
+  },
+  "subject": "physics",
+  "classes": [
+    "9",
+    "10"
+  ],
+  "tags": [
+    "pendulum",
+    "period",
+    "oscillation",
+    "g"
+  ],
+  "entry": "c1:6ka3wp2wdbp6dzuau5iwyecdza",
+  "poster": "c1:43bxg237sefb5dvdjhsyefuy3q",
+  "capabilities": [
+    "state",
+    "progress"
+  ],
+  "size": {
+    "width": 960,
+    "height": 600,
+    "minWidth": 480,
+    "minHeight": 320
+  },
+  "license": "Apache-2.0",
+  "authors": [
+    "Chalk format examples"
+  ]
+}
