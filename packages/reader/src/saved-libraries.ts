@@ -9,9 +9,15 @@ import { browserDir, deviceLibrary, folderLibrary, registryLibrary, type Library
  *
  *   const [libraries, setLibraries] = useSavedLibraries();
  *   <ChalkReader libraries={libraries} onLibrariesChange={setLibraries} … />
+ *
+ * `preset`: library servers the host connects for its people (a school's own library). Each is connected once, in
+ * front of This device, so uploads go there by default; after that the person's order wins, and one they
+ * disconnect stays disconnected.
  */
 
-type Saved = ({ kind: 'registry'; url: string; name?: string; token?: string } | { kind: 'folder'; slot: string })[];
+type Preset = { url: string; name?: string; token?: string };
+type Saved = ({ kind: 'registry'; url: string; name?: string; token?: string } | { kind: 'folder'; slot: string } | { kind: 'device' })[];
+const sameUrl = (a: string, b: string) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 
 const HANDLES_DB = 'chalk-library-handles';
 function handles(): Promise<IDBDatabase> {
@@ -36,20 +42,39 @@ function fromConnection(c: LibraryConnection): Library {
   return deviceLibrary();
 }
 
-export function useSavedLibraries(o: { key?: string; device?: boolean } = {}): [Library[], (l: Library[]) => void, boolean] {
+export function useSavedLibraries(o: { key?: string; device?: boolean; preset?: readonly Preset[] } = {}): [Library[], (l: Library[]) => void, boolean] {
   const key = o.key ?? 'chalk:libraries';
+  const presetKey = JSON.stringify(o.preset ?? []);
   const [libs, setLibs] = useState<Library[]>(() => (o.device === false ? [] : [deviceLibrary()]));
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let live = true;
     void (async () => {
-      let saved: Saved = [];
+      let saved: Saved = [], offered: string[] = [];
       try { saved = JSON.parse(localStorage.getItem(key) ?? '[]') as Saved; } catch { saved = []; }
-      const out: Library[] = o.device === false ? [] : [deviceLibrary()];
+      try { offered = JSON.parse(localStorage.getItem(`${key}:offered`) ?? '[]') as string[]; } catch { offered = []; }
+      const preset = JSON.parse(presetKey) as Preset[];
+      // a preset not offered before goes in front; one already there takes the host's token if it has none
+      const fresh = preset.filter((p) => !offered.some((u) => sameUrl(u, p.url)) && !saved.some((s) => s.kind === 'registry' && sameUrl(s.url, p.url)));
+      saved = [...fresh.map((p) => ({ kind: 'registry' as const, ...p })), ...saved].map((s) => {
+        const p = s.kind === 'registry' ? preset.find((x) => sameUrl(x.url, s.url)) : undefined;
+        return s.kind === 'registry' && p?.token && !s.token ? { ...s, token: p.token } : s;
+      });
+      // This device stays where the person put it (first when they never moved it)
+      if (o.device !== false && !saved.some((s) => s.kind === 'device')) saved.splice(fresh.length, 0, { kind: 'device' });
+      // the new list and "offered" are written together, so a second run (StrictMode, a remount) finds it connected
+      if (fresh.length) {
+        try {
+          localStorage.setItem(key, JSON.stringify(saved));
+          localStorage.setItem(`${key}:offered`, JSON.stringify([...offered, ...fresh.map((p) => p.url)]));
+        } catch { /* private mode: the list lasts for this visit */ }
+      }
+      const out: Library[] = [];
       for (const s of saved) {
         try {
-          if (s.kind === 'registry') out.push(fromConnection(s));
+          if (s.kind === 'device') { if (o.device !== false) out.push(deviceLibrary()); }
+          else if (s.kind === 'registry') out.push(fromConnection(s));
           else {
             const h = await handleOp<FileSystemDirectoryHandle>('readonly', (st) => st.get(s.slot) as IDBRequest<FileSystemDirectoryHandle>);
             if (h) out.push(fromConnection({ kind: 'folder', handle: h }));
@@ -59,7 +84,7 @@ export function useSavedLibraries(o: { key?: string; device?: boolean } = {}): [
       if (live) { setLibs(out); setReady(true); }
     })();
     return () => { live = false; };
-  }, [key, o.device]);
+  }, [key, o.device, presetKey]);
 
   const save = useCallback((next: Library[]) => {
     setLibs(next);
@@ -68,7 +93,8 @@ export function useSavedLibraries(o: { key?: string; device?: boolean } = {}): [
       await handleOp('readwrite', (st) => { st.clear(); });
       for (const [i, l] of next.entries()) {
         const c = l.connection;
-        if (!c || c.kind === 'device') continue;
+        if (!c) continue;
+        if (c.kind === 'device') { saved.push({ kind: 'device' }); continue; }
         if (c.kind === 'registry') saved.push({ kind: 'registry', url: c.url, ...(c.name ? { name: c.name } : {}), ...(c.token ? { token: c.token } : {}) });
         else { const slot = `f${i}`; await handleOp('readwrite', (st) => st.put(c.handle, slot)); saved.push({ kind: 'folder', slot }); }
       }

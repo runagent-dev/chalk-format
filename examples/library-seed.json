@@ -1,0 +1,10 @@
+[
+  { "file": "../apps/reader/showcase/media/pendulum.webm", "poster": "../apps/reader/showcase/media/pendulum-poster.png",
+    "title": "সরল দোলক · Simple pendulum, 1 m", "tags": ["pendulum", "oscillation", "period"], "subject": "physics", "license": "Apache-2.0" },
+  { "file": "../apps/reader/showcase/media/tuning-fork.mp3",
+    "title": "সুরশলাকা ৪৪০ Hz · Tuning fork, 440 Hz", "tags": ["sound", "frequency", "tuning fork"], "subject": "physics", "license": "Apache-2.0" },
+  { "file": "../apps/reader/showcase/media/screw-gauge.glb", "poster": "../apps/reader/showcase/media/screw-gauge-poster.png",
+    "title": "স্ক্রু গজ · Screw gauge (3D model)", "tags": ["measurement", "screw gauge", "micrometer"], "subject": "physics", "license": "Apache-2.0" },
+  { "lab": "labs/screw-gauge.lab.json", "files": { "c1:l5lsonev5rtspdijwg66epn4cm": "labs/screw-gauge.html", "c1:fylmqzbkwsvx2owkq5kqo6th7q": "labs/screw-gauge-poster.png" } },
+  { "lab": "labs/pendulum.lab.json", "files": { "c1:6ka3wp2wdbp6dzuau5iwyecdza": "labs/pendulum.html", "c1:43bxg237sefb5dvdjhsyefuy3q": "labs/pendulum-poster.png" } }
+]

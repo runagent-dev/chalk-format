@@ -18,6 +18,11 @@ const SAMPLES = [
   { id: 'long-chalk', label: 'The 60-page book as one .chalk', url: '/samples/long.chalk' },
 ];
 
+const env = import.meta.env as Record<string, string | undefined>;
+const PRESET = env.VITE_CHALK_LIBRARY_URL
+  ? [{ url: env.VITE_CHALK_LIBRARY_URL, ...(env.VITE_CHALK_LIBRARY_NAME ? { name: env.VITE_CHALK_LIBRARY_NAME } : {}), ...(env.VITE_CHALK_LIBRARY_TOKEN ? { token: env.VITE_CHALK_LIBRARY_TOKEN } : {}) }]
+  : [];
+
 /** The showcase: pick a sample or open your own .chalk file. */
 export function App() {
   const [source, setSource] = useState<{ key: string; src: BookSource }>({ key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
@@ -25,8 +30,9 @@ export function App() {
   const [config, setConfig] = useState<ReaderConfig>(BASE);
   const [configuring, setConfiguring] = useState(false);
   const [mode, setMode] = useState<'read' | 'author'>('read');
-  // the libraries connected in this browser (This device, folders, library servers), kept for next time
-  const [libraries, setLibraries] = useSavedLibraries();
+  // the libraries connected in this browser (This device, folders, library servers), kept for next time;
+  // a library server named in .env.local is connected for you (see .env.example)
+  const [libraries, setLibraries] = useSavedLibraries({ preset: PRESET });
   return (
     <div className="app">
       <header className="app-bar">
