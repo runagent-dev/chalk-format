@@ -5,7 +5,7 @@ notes, video, sound, 3D models, labs, streamed books, media libraries and an aut
 English), phone first.
 
 ```bash
-npm i @chalk-fmt/reader @chalk-fmt/book react react-dom
+npm i @chalk-fmt/reader @chalk-fmt/core react react-dom
 ```
 
 ```tsx
@@ -22,7 +22,7 @@ Every feature is configurable through one `config` prop, and author mode is one 
 (`config={{ authoring: { enabled: true } }}`). Media a book does not carry comes from the libraries you connect:
 
 ```tsx
-import { registryLibrary } from '@chalk-fmt/book';
+import { registryLibrary } from '@chalk-fmt/core';
 <ChalkReader source={url} libraries={[registryLibrary({ url: 'https://library.example.org' })]} />
 ```
 

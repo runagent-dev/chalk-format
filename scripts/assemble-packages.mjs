@@ -1,15 +1,15 @@
 // Builds the four packages published to npm from the workspace's internal packages:
 //
-//   @chalk-fmt/book            model, container, store, lab     (the format: books, files, keys, stores, libraries, labs)
+//   @chalk-fmt/core            model, container, store, lab     (the format: books, files, keys, stores, libraries, labs)
 //   @chalk-fmt/reader          reader (+ pdf-engine)            (the React reader and editor)
 //   @chalk-fmt/pdf             convert-pdf, cli (+ pdf-engine)  (PDF → .chalk, and the chalk-pdf command)
 //   @chalk-fmt/library-server  library-server                   (the registry API server, and the chalk-library command)
 //
-// (The folders under dist-packages/ and packaging/ are named chalk-book, chalk-reader, chalk-pdf and chalk-library-server.)
+// (The folders under dist-packages/ and packaging/ are named chalk-core, chalk-reader, chalk-pdf and chalk-library-server.)
 //
 // Each internal package is compiled by tsc into its own dist/ (scripts/build-package.mjs). This copies those into
 // dist-packages/<name>/dist/<part>/, rewrites imports between internal packages (to a relative path inside the same
-// published package, or to @chalk-fmt/book), writes each package.json from what the parts really depend on, and checks
+// published package, or to @chalk-fmt/core), writes each package.json from what the parts really depend on, and checks
 // that every import in the output is a relative file, a Node builtin or a declared dependency.
 //
 //   node scripts/assemble-packages.mjs            build the internal packages, then assemble into dist-packages/
@@ -28,12 +28,12 @@ const SCOPE = '@chalk-format/';
 const BOOK_PARTS = ['model', 'container', 'store', 'lab'];
 /** The id of each published package (its folder in dist-packages/ and packaging/) → its name on npm. */
 const NPM_NAMES = {
-  'chalk-book': '@chalk-fmt/book',
+  'chalk-core': '@chalk-fmt/core',
   'chalk-reader': '@chalk-fmt/reader',
   'chalk-pdf': '@chalk-fmt/pdf',
   'chalk-library-server': '@chalk-fmt/library-server',
 };
-const BOOK = NPM_NAMES['chalk-book'];
+const BOOK = NPM_NAMES['chalk-core'];
 
 const COMMON = {
   license: 'Apache-2.0',
@@ -47,7 +47,7 @@ const COMMON = {
 /** What each published package holds. `index`: the parts re-exported from its root; `exports`: other entry points. */
 const PACKAGES = [
   {
-    name: 'chalk-book',
+    name: 'chalk-core',
     description: 'The .chalk interactive book format: the data model, reading and writing .chalk files, asset keys and stores, media libraries, and labs.',
     keywords: ['chalk', 'chalk-format', 'interactive-book', 'textbook', 'education', 'bengali', 'zod'],
     parts: BOOK_PARTS,
@@ -84,7 +84,7 @@ const PACKAGES = [
   },
 ];
 
-const owner = (part) => (BOOK_PARTS.includes(part) ? 'chalk-book' : null);
+const owner = (part) => (BOOK_PARTS.includes(part) ? 'chalk-core' : null);
 const pkgJson = (part) => JSON.parse(readFileSync(path.join(root, 'packages', part, 'package.json'), 'utf8'));
 /** An internal package's entry point (".", "./client", …) → its compiled file, relative to its dist/ ("client.js"). */
 function entryFile(part, sub) {
@@ -114,7 +114,7 @@ for (const pkg of PACKAGES) {
     if (!existsSync(from)) throw new Error(`packages/${part}/dist is missing: build it first`);
     cpSync(from, path.join(dist, part), { recursive: true, filter: (f) => !(pkg.skip ?? []).includes(`${part}/${path.relative(from, f).split(path.sep).join('/')}`) });
   }
-  // imports between internal packages → a file in this package, or chalk-book
+  // imports between internal packages → a file in this package, or @chalk-fmt/core
   for (const file of walk(dist).filter((f) => /\.(js|mjs|d\.ts)$/.test(f))) {
     const text = readFileSync(file, 'utf8');
     const next = text.replace(/(['"])@chalk-format\/([a-z-]+)(\/[a-z-]+)?\1/g, (_m, q, part, subpath) => {
@@ -124,7 +124,7 @@ for (const pkg of PACKAGES) {
         if (!rel.startsWith('.')) rel = `./${rel}`;
         return q + rel + q;
       }
-      if (owner(part) === 'chalk-book') {
+      if (owner(part) === 'chalk-core') {
         usesBook.add(part);
         if (sub === '.') return `${q}${BOOK}${q}`;
         if (part === 'lab' && sub === './client') return `${q}${BOOK}/lab/client${q}`;
@@ -138,7 +138,7 @@ for (const pkg of PACKAGES) {
   writeFileSync(path.join(dist, 'index.js'), reexport('.js'));
   writeFileSync(path.join(dist, 'index.d.ts'), reexport('.js'));
 
-  // dependencies: what the parts declare (internal ones become @chalk-fmt/book), at the parts' own ranges
+  // dependencies: what the parts declare (internal ones become @chalk-fmt/core), at the parts' own ranges
   const deps = {}, peers = {};
   for (const part of pkg.parts) {
     const pj = pkgJson(part);

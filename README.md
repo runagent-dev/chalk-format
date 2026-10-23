@@ -43,13 +43,13 @@ Four packages are published to npm, all under the `@chalk-fmt` scope and release
 
 | Package | What it is |
 |---|---|
-| [`@chalk-fmt/book`](https://www.npmjs.com/package/@chalk-fmt/book) | The format in JavaScript: the data model, reading and writing `.chalk` files, asset keys and stores, media libraries, and `@chalk-fmt/book/lab/client` for writing labs |
+| [`@chalk-fmt/core`](https://www.npmjs.com/package/@chalk-fmt/core) | The format in JavaScript: the data model, reading and writing `.chalk` files, asset keys and stores, media libraries, and `@chalk-fmt/core/lab/client` for writing labs |
 | [`@chalk-fmt/reader`](https://www.npmjs.com/package/@chalk-fmt/reader) | The React reader and editor, `<ChalkReader>` (also imports `@chalk-fmt/reader/styles.css` and `/fonts.css`) |
 | [`@chalk-fmt/pdf`](https://www.npmjs.com/package/@chalk-fmt/pdf) | PDF → `.chalk` in Node, and the `chalk-pdf` command |
 | [`@chalk-fmt/library-server`](https://www.npmjs.com/package/@chalk-fmt/library-server) | A media library server (the registry API), and the `chalk-library` command |
 
 ```bash
-npm i @chalk-fmt/reader @chalk-fmt/book react react-dom      # read and edit books in a web app
+npm i @chalk-fmt/reader @chalk-fmt/core react react-dom      # read and edit books in a web app
 npx @chalk-fmt/pdf convert book.pdf -o book.chalk --locale bn   # convert a PDF
 ```
 

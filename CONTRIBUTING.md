@@ -126,7 +126,7 @@ them and published to npm under the `@chalk-fmt` scope:
 
 | Published | Built from |
 |---|---|
-| `@chalk-fmt/book` | `model`, `container`, `store`, `lab` |
+| `@chalk-fmt/core` | `model`, `container`, `store`, `lab` |
 | `@chalk-fmt/reader` | `reader` (+ `pdf-engine` copied in) |
 | `@chalk-fmt/pdf` | `convert-pdf`, `cli` (+ `pdf-engine`) |
 | `@chalk-fmt/library-server` | `library-server` |
@@ -136,7 +136,7 @@ node scripts/assemble-packages.mjs            # builds every internal package wi
 ```
 
 The assembler rewrites imports between internal packages (to a relative file inside the same published package, or to
-`@chalk-fmt/book`), writes each `package.json` from what the code really depends on, and fails if any import in the output is
+`@chalk-fmt/core`), writes each `package.json` from what the code really depends on, and fails if any import in the output is
 not a relative file, a Node builtin or a declared dependency. The version of all four is in `release.json`.
 
 Before a release: `pnpm check`, then assemble and install the tarballs (`npm pack` in each `dist-packages/<name>/`) into a clean

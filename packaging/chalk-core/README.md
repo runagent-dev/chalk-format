@@ -1,4 +1,4 @@
-# @chalk-fmt/book
+# @chalk-fmt/core
 
 The **`.chalk` interactive book format** for JavaScript and TypeScript: the data model, reading and writing `.chalk`
 files, asset keys and stores, media libraries, and running labs.
@@ -7,11 +7,11 @@ A `.chalk` book is pages (a rendered PDF page, an image or a colour) with object
 video, sound, 3D models and labs, with a text layer for search. Media is named by keys made from its bytes.
 
 ```bash
-npm i @chalk-fmt/book
+npm i @chalk-fmt/core
 ```
 
 ```ts
-import { unpackLesson, packLesson, assetKey, registryLibrary } from '@chalk-fmt/book';
+import { unpackLesson, packLesson, assetKey, registryLibrary } from '@chalk-fmt/core';
 
 const { lesson, assets } = await unpackLesson(bytes);          // open a .chalk
 console.log(lesson.title, lesson.pages.length);
@@ -22,10 +22,10 @@ const library = registryLibrary({ url: 'https://library.example.org' });
 const found = await library.search({ q: 'pendulum', types: ['video/*'] });
 ```
 
-Labs talk to the reader through `@chalk-fmt/book/lab/client`:
+Labs talk to the reader through `@chalk-fmt/core/lab/client`:
 
 ```ts
-import { connectLab } from '@chalk-fmt/book/lab/client';
+import { connectLab } from '@chalk-fmt/core/lab/client';
 const lab = await connectLab({ id: 'org.example.pendulum', version: '1.0.0' });
 ```
 
