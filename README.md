@@ -39,22 +39,22 @@ as their own small file.
 
 ## Install
 
-Four packages are published to npm, all under the `@chalk-format` scope and released together (one version, `release.json`):
+Four packages are published to npm, all under the `@chalk-fmt` scope and released together (one version, `release.json`):
 
 | Package | What it is |
 |---|---|
-| [`@chalk-format/book`](https://www.npmjs.com/package/@chalk-format/book) | The format in JavaScript: the data model, reading and writing `.chalk` files, asset keys and stores, media libraries, and `@chalk-format/book/lab/client` for writing labs |
-| [`@chalk-format/reader`](https://www.npmjs.com/package/@chalk-format/reader) | The React reader and editor, `<ChalkReader>` (also imports `@chalk-format/reader/styles.css` and `/fonts.css`) |
-| [`@chalk-format/pdf`](https://www.npmjs.com/package/@chalk-format/pdf) | PDF → `.chalk` in Node, and the `chalk-pdf` command |
-| [`@chalk-format/library-server`](https://www.npmjs.com/package/@chalk-format/library-server) | A media library server (the registry API), and the `chalk-library` command |
+| [`@chalk-fmt/book`](https://www.npmjs.com/package/@chalk-fmt/book) | The format in JavaScript: the data model, reading and writing `.chalk` files, asset keys and stores, media libraries, and `@chalk-fmt/book/lab/client` for writing labs |
+| [`@chalk-fmt/reader`](https://www.npmjs.com/package/@chalk-fmt/reader) | The React reader and editor, `<ChalkReader>` (also imports `@chalk-fmt/reader/styles.css` and `/fonts.css`) |
+| [`@chalk-fmt/pdf`](https://www.npmjs.com/package/@chalk-fmt/pdf) | PDF → `.chalk` in Node, and the `chalk-pdf` command |
+| [`@chalk-fmt/library-server`](https://www.npmjs.com/package/@chalk-fmt/library-server) | A media library server (the registry API), and the `chalk-library` command |
 
 ```bash
-npm i @chalk-format/reader @chalk-format/book react react-dom      # read and edit books in a web app
-npx @chalk-format/pdf convert book.pdf -o book.chalk --locale bn   # convert a PDF
+npm i @chalk-fmt/reader @chalk-fmt/book react react-dom      # read and edit books in a web app
+npx @chalk-fmt/pdf convert book.pdf -o book.chalk --locale bn   # convert a PDF
 ```
 
-The packages listed under [Packages](#packages) are the repository's internal split of the same code; the published
-packages are assembled from them (`node scripts/assemble-packages.mjs`, see [Releasing](CONTRIBUTING.md#releasing)).
+The packages listed under [Packages](#packages) use the repository's internal names (`@chalk-format/*`, all private); the
+published `@chalk-fmt/*` packages are assembled from them (`node scripts/assemble-packages.mjs`, see [Releasing](CONTRIBUTING.md#releasing)).
 
 ## Quick start
 

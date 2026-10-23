@@ -1,17 +1,17 @@
-# @chalk-format/reader
+# @chalk-fmt/reader
 
 The reader and editor for **`.chalk` books**, as one configurable React component: pages, search, the student's
 notes, video, sound, 3D models, labs, streamed books, media libraries and an author mode. Bilingual (Bengali and
 English), phone first.
 
 ```bash
-npm i @chalk-format/reader @chalk-format/book react react-dom
+npm i @chalk-fmt/reader @chalk-fmt/book react react-dom
 ```
 
 ```tsx
-import { ChalkReader } from '@chalk-format/reader';
-import '@chalk-format/reader/fonts.css';     // Noto Sans + Noto Sans Bengali (skip if your app already loads them)
-import '@chalk-format/reader/styles.css';
+import { ChalkReader } from '@chalk-fmt/reader';
+import '@chalk-fmt/reader/fonts.css';     // Noto Sans + Noto Sans Bengali (skip if your app already loads them)
+import '@chalk-fmt/reader/styles.css';
 
 export function Book() {
   return <ChalkReader source="/books/physics-9.chalk" />;   // a .chalk URL, bytes, a File, or a streamed book's folder
@@ -22,7 +22,7 @@ Every feature is configurable through one `config` prop, and author mode is one 
 (`config={{ authoring: { enabled: true } }}`). Media a book does not carry comes from the libraries you connect:
 
 ```tsx
-import { registryLibrary } from '@chalk-format/book';
+import { registryLibrary } from '@chalk-fmt/book';
 <ChalkReader source={url} libraries={[registryLibrary({ url: 'https://library.example.org' })]} />
 ```
 

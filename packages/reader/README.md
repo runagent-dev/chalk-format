@@ -27,9 +27,9 @@ read. Try it in [`apps/reader`](../../apps/reader) (`pnpm --filter @chalk-format
 ## Use
 
 ```tsx
-import { ChalkReader } from '@chalk-format/reader';
-import '@chalk-format/reader/fonts.css';    // Noto Sans + Noto Sans Bengali (skip if you load them already)
-import '@chalk-format/reader/styles.css';
+import { ChalkReader } from '@chalk-fmt/reader';
+import '@chalk-fmt/reader/fonts.css';    // Noto Sans + Noto Sans Bengali (skip if you load them already)
+import '@chalk-fmt/reader/styles.css';
 
 <div style={{ height: '100vh' }}>
   <ChalkReader source="/books/physics.chalk" config={{ locale: 'bn', dock: { position: 'bottom' } }} />
@@ -98,8 +98,8 @@ and what none has is shown as **not found** (a marked card, and "3 items not fou
 Changing the list asks again, so connecting the right library makes the missing media appear.
 
 ```tsx
-import { ChalkReader, useSavedLibraries } from '@chalk-format/reader';
-import { registryLibrary } from '@chalk-format/book';
+import { ChalkReader, useSavedLibraries } from '@chalk-fmt/reader';
+import { registryLibrary } from '@chalk-fmt/book';
 
 // people connect their own (kept in this browser): This device, folders, library servers
 const [libraries, setLibraries] = useSavedLibraries();

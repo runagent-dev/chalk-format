@@ -56,11 +56,11 @@ the port. `init` carries:
 - the capabilities granted;
 - the state saved last time.
 
-**With the client** (`@chalk-format/book/lab/client`; bundle it into your file with esbuild or similar, since the lab
+**With the client** (`@chalk-fmt/book/lab/client`; bundle it into your file with esbuild or similar, since the lab
 cannot import files):
 
 ```js
-import { connectLab } from '@chalk-format/book/lab/client';
+import { connectLab } from '@chalk-fmt/book/lab/client';
 
 const lab = await connectLab({ id: 'org.example.pendulum', version: '1.0.0' });
 const P = { length: 1, swings: 10, ...lab.params };    // defaults, then the designer's settings
@@ -178,7 +178,7 @@ place it at the right size, and get its libraries with it. Trimmed from
 - `libraries[].asset` comes from `libraries/catalog.json`.
 - `params` is a small JSON Schema of the settings a designer may change: `number`, `integer`, `boolean` or
   `string`, with `default`, `minimum`/`maximum`/`multipleOf`, `enum`, and `x-chalk-unit`. The values arrive in
-  the lab as `params`. `checkLabParams(manifest, params)` in `@chalk-format/book` validates settings, and
+  the lab as `params`. `checkLabParams(manifest, params)` in `@chalk-fmt/book` validates settings, and
   `labObjectFromManifest(manifest, …)` builds the object a tool places on a page.
 - `size` is the box to place it in, and the smallest it is usable at.
 

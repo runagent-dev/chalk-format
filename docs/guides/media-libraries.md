@@ -21,7 +21,7 @@ Why it works this way:
 | **Folder** | A folder on the computer, a USB drive or a school server's disk | Yes, if the folder is served over HTTP | `folderLibrary(dir, { publicUrl? })` |
 | **Library server** | A server that speaks the [registry API](../../spec/1.2/registry-api.md), over Postgres and S3-compatible storage | Yes, from its public delivery address | `registryLibrary({ url, token? })` |
 
-All three implement one interface, `Library` in `@chalk-format/book` (`search`, `item`, `get`, `url`, `has`, and
+All three implement one interface, `Library` in `@chalk-fmt/book` (`search`, `item`, `get`, `url`, `has`, and
 optionally `put`, `delivery`, `status`, `connect`). The reader and the editor only ever see that interface.
 
 ### A folder's layout
@@ -74,8 +74,8 @@ Turn on author mode (`config.authoring.enabled`) and switch to **Author**.
 ## In code
 
 ```tsx
-import { ChalkReader, useSavedLibraries } from '@chalk-format/reader';
-import { deviceLibrary, folderLibrary, registryLibrary } from '@chalk-format/book';
+import { ChalkReader, useSavedLibraries } from '@chalk-fmt/reader';
+import { deviceLibrary, folderLibrary, registryLibrary } from '@chalk-fmt/book';
 
 // 1. The app decides which libraries there are
 <ChalkReader

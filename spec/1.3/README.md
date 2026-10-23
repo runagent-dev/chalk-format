@@ -82,7 +82,7 @@ package (no name; a reader's own).
 
 ## 5. For hosts (informative)
 
-The reference reader (`@chalk-format/reader`) lets a host app decide how presentation looks, without changing
+The reference reader (`@chalk-fmt/reader`) lets a host app decide how presentation looks, without changing
 what the author chose: its own icon for every name, colours per kind, defaults for objects whose author set
 nothing, whether to honour authors' accents and `show: live`, and its own renderer for a kind. See the
 reader's README.

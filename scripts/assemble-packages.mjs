@@ -1,15 +1,15 @@
 // Builds the four packages published to npm from the workspace's internal packages:
 //
-//   @chalk-format/book            model, container, store, lab     (the format: books, files, keys, stores, libraries, labs)
-//   @chalk-format/reader          reader (+ pdf-engine)            (the React reader and editor)
-//   @chalk-format/pdf             convert-pdf, cli (+ pdf-engine)  (PDF → .chalk, and the chalk-pdf command)
-//   @chalk-format/library-server  library-server                   (the registry API server, and the chalk-library command)
+//   @chalk-fmt/book            model, container, store, lab     (the format: books, files, keys, stores, libraries, labs)
+//   @chalk-fmt/reader          reader (+ pdf-engine)            (the React reader and editor)
+//   @chalk-fmt/pdf             convert-pdf, cli (+ pdf-engine)  (PDF → .chalk, and the chalk-pdf command)
+//   @chalk-fmt/library-server  library-server                   (the registry API server, and the chalk-library command)
 //
 // (The folders under dist-packages/ and packaging/ are named chalk-book, chalk-reader, chalk-pdf and chalk-library-server.)
 //
 // Each internal package is compiled by tsc into its own dist/ (scripts/build-package.mjs). This copies those into
 // dist-packages/<name>/dist/<part>/, rewrites imports between internal packages (to a relative path inside the same
-// published package, or to @chalk-format/book), writes each package.json from what the parts really depend on, and checks
+// published package, or to @chalk-fmt/book), writes each package.json from what the parts really depend on, and checks
 // that every import in the output is a relative file, a Node builtin or a declared dependency.
 //
 //   node scripts/assemble-packages.mjs            build the internal packages, then assemble into dist-packages/
@@ -28,10 +28,10 @@ const SCOPE = '@chalk-format/';
 const BOOK_PARTS = ['model', 'container', 'store', 'lab'];
 /** The id of each published package (its folder in dist-packages/ and packaging/) → its name on npm. */
 const NPM_NAMES = {
-  'chalk-book': '@chalk-format/book',
-  'chalk-reader': '@chalk-format/reader',
-  'chalk-pdf': '@chalk-format/pdf',
-  'chalk-library-server': '@chalk-format/library-server',
+  'chalk-book': '@chalk-fmt/book',
+  'chalk-reader': '@chalk-fmt/reader',
+  'chalk-pdf': '@chalk-fmt/pdf',
+  'chalk-library-server': '@chalk-fmt/library-server',
 };
 const BOOK = NPM_NAMES['chalk-book'];
 
@@ -138,7 +138,7 @@ for (const pkg of PACKAGES) {
   writeFileSync(path.join(dist, 'index.js'), reexport('.js'));
   writeFileSync(path.join(dist, 'index.d.ts'), reexport('.js'));
 
-  // dependencies: what the parts declare (internal ones become @chalk-format/book), at the parts' own ranges
+  // dependencies: what the parts declare (internal ones become @chalk-fmt/book), at the parts' own ranges
   const deps = {}, peers = {};
   for (const part of pkg.parts) {
     const pj = pkgJson(part);
