@@ -1,6 +1,6 @@
 # Run a library server
 
-`packages/library-server` (`@chalk-fmt/library-server`) is a complete Chalk library server: the
+`packages/library-server` (`@chalk-format/library-server`) is a complete Chalk library server: the
 [registry API](../../spec/1.2/registry-api.md) of spec 1.2 that authoring tools use to upload, de-duplicate and
 search media. It runs over:
 

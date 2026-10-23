@@ -1,6 +1,6 @@
 # Reader internals
 
-How `@chalk-fmt/reader` is built, for people changing it. For using it, see its
+How `@chalk-format/reader` is built, for people changing it. For using it, see its
 [README](../packages/reader/README.md).
 
 ## Decisions
