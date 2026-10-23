@@ -22,3 +22,5 @@ jobs:
         run: pnpm gen:schema && git diff --exit-code schema/
       - name: Shared lab library builds reproduce their keys (libraries/catalog.json)
         run: npx tsx tools/lab-libraries.ts --check
+      - name: The four npm packages assemble and every import in them resolves
+        run: node scripts/assemble-packages.mjs

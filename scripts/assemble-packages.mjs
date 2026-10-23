@@ -155,7 +155,7 @@ for (const pkg of PACKAGES) {
   const manifest = {
     name: NPM_NAMES[pkg.name], version, description: pkg.description, keywords: pkg.keywords, ...COMMON,
     main: './dist/index.js', types: './dist/index.d.ts', exports,
-    ...(pkg.bin ? { bin: Object.fromEntries(Object.entries(pkg.bin).map(([k, f]) => [k, `./dist/${f}.js`])) } : {}),
+    ...(pkg.bin ? { bin: Object.fromEntries(Object.entries(pkg.bin).map(([k, f]) => [k, `dist/${f}.js`])) } : {}),
     files: ['dist', 'README.md', 'LICENSE', 'NOTICE'],
     sideEffects: pkg.sideEffects ?? false,
     dependencies: Object.fromEntries(Object.entries(deps).sort()),

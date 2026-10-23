@@ -141,8 +141,30 @@ not a relative file, a Node builtin or a declared dependency. The version of all
 
 Before a release: `pnpm check`, then assemble and install the tarballs (`npm pack` in each `dist-packages/<name>/`) into a clean
 project and try them: import from Node, `chalk-pdf convert` a PDF, `chalk-library serve` plus `chalk-library check`, and build a
-small Vite + React app with `@chalk-format/reader`. Publish in order: `book`, then `reader`, `pdf`, `library-server`
-(`npm publish` inside each folder; `publishConfig.access` is already `public`). Provenance (`--provenance`) works only from CI.
+small Vite + React app with `@chalk-format/reader`.
+
+**Publishing is done by CI, from the `prod` branch.** To release:
+
+1. On `main`, change the version in `release.json` (all four packages share it) and merge.
+2. Fast-forward `prod` to `main`: `git push origin main:prod`.
+3. `.github/workflows/release.yml` runs the checks, assembles the packages, publishes the ones whose `name@version` is not on npm
+   yet (`scripts/publish-packages.mjs`: `core`, `reader`, `pdf`, `library-server`, in that order) and tags `v<version>`.
+
+Pushing `prod` without a version bump publishes nothing. Nothing is published from a branch other than `prod`, and the library
+server's Coolify app deploys from `prod` too, so it only redeploys on a release. `node scripts/publish-packages.mjs --dry-run`
+shows what a release would publish.
+
+The workflow publishes with npm **trusted publishing** (OIDC), so no npm token is stored in GitHub. It is set up once per
+package by an owner of the `@chalk-format` org (npm 12 or newer; each command asks for your 2FA approval):
+
+```bash
+for p in core reader pdf library-server; do
+  npx npm@latest trust github @chalk-format/$p --repo runagent-dev/chalk-format --file release.yml --allow-publish --yes
+done
+npm trust list @chalk-format/core        # shows the relationship
+```
+
+Provenance statements are added automatically once the repository is public.
 
 ## Security
 
