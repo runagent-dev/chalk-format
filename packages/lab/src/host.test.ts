@@ -29,8 +29,13 @@ function setup(o: { [K in keyof LabHostOptions]?: LabHostOptions[K] | undefined 
   } as LabHostOptions);
   open.push({ host, close: l.close });
   const hello = (id = 'org.example.pendulum') => l.toWindow({ type: 'hello', api: [1], lab: { id, version: '1.4.2' } });
-  const started = async () => { hello(); await tick(20); };
-  const replyTo = async (id: number) => { await tick(20); return l.received.find((m) => m.type === 'reply' && m.id === id); };
+  // wait for what is expected (up to a second), not a fixed time: under load a fixed 20 ms was sometimes too short
+  const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i++) await tick(10); };
+  const started = async () => { hello(); await until(() => l.received.some((m) => m.type === 'init')); };
+  const replyTo = async (id: number) => {
+    await until(() => l.received.some((m) => m.type === 'reply' && m.id === id));
+    return l.received.find((m) => m.type === 'reply' && m.id === id);
+  };
   return { w, l, host, store, hello, started, replyTo };
 }
 
