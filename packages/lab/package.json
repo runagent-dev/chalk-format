@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/lab",
+  "private": true,
   "version": "0.0.0",
-  "description": "Chalk labs (spec 1.1): the Host API for readers that run labs and for the labs themselves.",
+  "description": "Running labs in a Chalk reader (mountLab) and writing them (connectLab): the sandbox and the Host API.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -14,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*"

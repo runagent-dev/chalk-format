@@ -1,0 +1,52 @@
+name: release
+
+# Publishes the four @chalk-format packages to npm when `prod` is pushed. Bump the version in release.json on main, then fast-forward
+# `prod` to main (see CONTRIBUTING.md, "Releasing"). A version that is already on npm is skipped, so pushing `prod` without a bump
+# publishes nothing.
+#
+# Publishing uses npm trusted publishing (OIDC): no npm token is stored in GitHub. One-time setup, per package:
+#   npm trust github @chalk-format/<name> --repo runagent-dev/chalk-format --file release.yml
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to push the v<version> tag
+  id-token: write   # trusted publishing to npm
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'runagent-dev/chalk-format'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+      # trusted publishing needs npm 11.5.1 or newer; Node 22 ships an older npm
+      - run: npm install -g npm@^11.5.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: JSON Schema is up to date with the model
+        run: pnpm gen:schema && git diff --exit-code schema/
+      - name: Assemble the four packages (builds everything, checks every import)
+        run: node scripts/assemble-packages.mjs
+      - name: Publish what is not on npm yet
+        run: node scripts/publish-packages.mjs
+      - name: Tag the release
+        run: |
+          version=$(node -p "require('./release.json').version")
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "v$version already exists"
+          else
+            git tag "v$version" && git push origin "v$version"
+          fi

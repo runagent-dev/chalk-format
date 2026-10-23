@@ -1,7 +1,7 @@
 {
   "name": "@chalk-format/conformance",
-  "version": "0.0.0",
   "private": true,
+  "version": "0.0.0",
   "description": "Conformance corpus runner: every reader must accept conformance/valid and reject conformance/invalid.",
   "license": "Apache-2.0",
   "type": "module",

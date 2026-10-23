@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/library-server",
+  "private": true,
   "version": "0.0.0",
-  "description": "A Chalk library server: the registry API (spec/1.2/registry-api.md) over Postgres and S3-compatible storage (R2, MinIO, AWS) or a disk.",
+  "description": "A Chalk library server: the registry API over Postgres and S3-compatible storage (R2, MinIO, AWS S3), with a conformance check.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -17,7 +18,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "dev": "tsx src/cli.ts serve",
-    "build": "node build.mjs"
+    "build": "node ../../scripts/build-package.mjs && node build.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*",

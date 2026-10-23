@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/reader",
+  "private": true,
   "version": "0.0.0",
-  "description": "The reference reader for .chalk books: a configurable React component.",
+  "description": "The reference reader and editor for .chalk books: a configurable React component.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -18,11 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
-  },
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
+    "build": "node ../../scripts/build-package.mjs src/styles.css src/fonts.css"
   },
   "dependencies": {
     "@chalk-format/container": "workspace:*",
@@ -36,6 +33,10 @@
     "perfect-freehand": "^1.2.3",
     "three": "^0.183.0",
     "@chalk-format/store": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

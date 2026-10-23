@@ -42,10 +42,12 @@ PDF's text as the text layer. It runs in Node, with no browser.
 
 `npx tsx packages/cli/src/cli.ts --help` prints the same list.
 
+Without the repository, the same command is published: `npx @chalk-format/pdf convert book.pdf -o book.chalk` (installed, the command is `chalk-pdf`).
+
 The package also has a script for the same thing (`pnpm --filter @chalk-format/cli start convert …`). pnpm runs it
 inside `packages/cli`, so give it absolute paths.
 
-From code, the same conversion is `convertPdfToChalk(pdfBytes, title, options)` in `@chalk-format/convert-pdf`.
+From code, the same conversion is `convertPdfToChalk(pdfBytes, title, options)` in `@chalk-format/pdf`.
 
 ## 3. Open it in the reader
 

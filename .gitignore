@@ -17,3 +17,7 @@ apps/reader/dist/
 
 # showcase build scratch
 apps/reader/showcase/.tmp*
+
+# built output; the npm packages assembled from it (scripts/assemble-packages.mjs)
+packages/*/dist/
+dist-packages/

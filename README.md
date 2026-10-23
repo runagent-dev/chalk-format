@@ -37,6 +37,26 @@ as their own small file.
 | [Write a lab](docs/guides/write-a-lab.md) | A simulation in one HTML file: the sandbox, the Host API, three.js shared between labs, the lab manifest |
 | [The reader](packages/reader/README.md) | Embedding `<ChalkReader>` in an app: props, the full configuration, theming, author mode |
 
+## Install
+
+Four packages are published to npm, all under the `@chalk-format` scope and released together (one version, `release.json`):
+
+| Package | What it is |
+|---|---|
+| [`@chalk-format/core`](https://www.npmjs.com/package/@chalk-format/core) | The format in JavaScript: the data model, reading and writing `.chalk` files, asset keys and stores, media libraries, and `@chalk-format/core/lab/client` for writing labs |
+| [`@chalk-format/reader`](https://www.npmjs.com/package/@chalk-format/reader) | The React reader and editor, `<ChalkReader>` (also imports `@chalk-format/reader/styles.css` and `/fonts.css`) |
+| [`@chalk-format/pdf`](https://www.npmjs.com/package/@chalk-format/pdf) | PDF → `.chalk` in Node, and the `chalk-pdf` command |
+| [`@chalk-format/library-server`](https://www.npmjs.com/package/@chalk-format/library-server) | A media library server (the registry API), and the `chalk-library` command |
+
+```bash
+npm i @chalk-format/reader @chalk-format/core react react-dom      # read and edit books in a web app
+npx @chalk-format/pdf convert book.pdf -o book.chalk --locale bn   # convert a PDF
+```
+
+The packages listed under [Packages](#packages) are the repository's internal split of the same code (all private; `reader` and
+`library-server` happen to share their names with the published ones). The four published packages are assembled from them
+(`node scripts/assemble-packages.mjs`, see [Releasing](CONTRIBUTING.md#releasing)).
+
 ## Quick start
 
 Node 22.13+ and pnpm 9+.

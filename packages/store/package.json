@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/store",
+  "private": true,
   "version": "0.0.0",
-  "description": "Chalk asset stores (spec 1.2): key to URL, the reader's resolver, and the registry API.",
+  "description": "Asset stores, the resolver, media libraries (device, folder, registry) and the registry API client for Chalk books.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -13,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*",
