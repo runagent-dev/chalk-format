@@ -4,8 +4,7 @@
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="./pdfjs-legacy.d.ts" />
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join, sep } from 'node:path';
 import { createCanvas } from '@napi-rs/canvas';
 import {
   getDocument,
@@ -46,14 +45,14 @@ class NodeCanvasFactory {
 }
 
 /**
- * PDF.js ships standard fonts here; pointing at them avoids font
- * warnings. Must be a file:// URL with a trailing slash — a bare
- * filesystem path is misparsed and breaks glyph rendering.
+ * PDF.js ships standard fonts here, for PDFs that use the 14 standard fonts without embedding them. In Node,
+ * pdf.js 5 reads them with fs.readFile(dir + name), so this is a plain directory path ending in a separator: a
+ * file:// URL string is taken as a relative path, the font is not found and the glyphs are drawn wrong.
  */
 function standardFontDataUrl(): string {
   const require = createRequire(import.meta.url);
   const pkg = require.resolve('pdfjs-dist/package.json');
-  return pathToFileURL(join(dirname(pkg), 'standard_fonts/')).href;
+  return join(dirname(pkg), 'standard_fonts') + sep;
 }
 
 export interface NodeRenderOptions {

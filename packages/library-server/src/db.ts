@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 /**
  * The library's database: Postgres (the reference schema, spec/1.2/registry.sql). Postgres in production
@@ -29,6 +29,7 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
     const { PGlite } = await import('@electric-sql/pglite');
     const { pg_trgm } = await import('@electric-sql/pglite/contrib/pg_trgm');
     const dir = url.slice('pglite:'.length);
+    if (dir) mkdirSync(dir, { recursive: true });
     const pg = new PGlite({ ...(dir ? { dataDir: dir } : {}), extensions: { pg_trgm } });
     db = {
       async query<T>(sql: string, params: unknown[] = []) { return (await pg.query<T>(sql, params)).rows; },

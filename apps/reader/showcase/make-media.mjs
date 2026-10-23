@@ -2,7 +2,8 @@
 //
 //   node apps/reader/showcase/make-media.mjs [path/to/chalk-3d]
 //
-// Needs ffmpeg, Playwright's Chromium, and (for the 3D model) a checkout of chalk-3d next to this repo.
+// Needs ffmpeg and Playwright's Chromium. The 3D model also needs a checkout of chalk-3d (RunAgent's procedural three.js
+// models, not public yet) next to this repo; without it the committed GLB and poster are kept.
 //   pendulum.webm + pendulum-poster.png  a 1 m pendulum swinging at its real period, T = 2π√(L/g) ≈ 2.01 s
 //   tuning-fork.mp3                      a 440 Hz tone that dies away like a struck fork
 //   screw-gauge.glb + screw-gauge-poster.png  chalk-3d's screw gauge (pitch 0.5 mm, 50 divisions) as binary glTF

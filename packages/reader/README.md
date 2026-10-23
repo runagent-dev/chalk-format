@@ -105,6 +105,10 @@ import { registryLibrary } from '@chalk-format/store';
 const [libraries, setLibraries] = useSavedLibraries();
 <ChalkReader libraries={libraries} onLibrariesChange={setLibraries} … />
 
+// … and the school's own library is connected for them on their first visit (in front, so uploads go there);
+// after that their order wins, and if they disconnect it, it stays disconnected
+const [libraries, setLibraries] = useSavedLibraries({ preset: [{ url: 'https://library.example.org', name: 'School library' }] });
+
 // or the app connects them itself
 <ChalkReader libraries={[registryLibrary({ url: 'https://library.example.org', token: () => session.token })]} … />
 ```
@@ -114,6 +118,7 @@ puts a file into the library chosen (a video's poster with it) and places it. Th
 libraries: reorder them, connect a folder (scanned for media already in it) or a library server (address, and a
 token if it asks). Books keep only keys, never library addresses or credentials, so a book reads the same on any
 device that connects libraries holding its media; saving self-contained carries the media from the libraries.
+More in the [media libraries guide](../../docs/guides/media-libraries.md).
 
 ## Streamed books (spec 1.4)
 

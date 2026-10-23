@@ -1,38 +1,41 @@
-# chalk-format
+# Chalk
 
-The **`.chalk` interactive book format**: specification, schema, reference reader/writer, converters and
-conformance tests. One format shared by every RunAgent learning product: the ChalkBook smartboard, the web
-and mobile apps, and PathshalaX.
+**`.chalk` is an open format for interactive books**: textbook pages with ink, text, images, video, sound, 3D
+models and **labs** (small simulations that run offline, in a sandbox) placed on them. This repository holds the
+specification and everything needed to use it: JSON Schemas, a reference reader and writer, a React reader with an
+editor, media libraries, a library server you can run yourself, converters and conformance tests.
 
-A `.chalk` file is a ZIP holding an ordered set of pages. Each page has a background (a rendered PDF page,
-an image, a colour) and positioned objects on top (ink, text, shapes, images, video/audio/3D embeds, and
-interactive **labs**: simulations that run offline in a sandbox), with a searchable text layer. Assets are content-addressed (`sha256:…`) and either travel inside the file
-("fat", works offline) or are fetched by hash ("thin", small download).
+It was made for SSC and HSC students in Bangladesh, so it is bilingual (Bengali and English) throughout and works
+on cheap phones and slow connections. Nothing in it is specific to one country, school or app.
 
-## What's here
+```
+  a PDF ──convert──► book.chalk ──open──► <ChalkReader>  (read: search, notes, media, labs)
+                         ▲                     │
+                         │                     ▼ author mode
+                         └──── save ◄──── add media and labs from libraries
+                                               (this device · a folder · a library server)
+```
 
-| Path | What it is |
+## What a book is
+
+A `.chalk` file is a ZIP of pages. Each page has a background (a rendered PDF page, an image, a colour) and objects
+placed on it, with a text layer for search. Media is named by **keys** made from its bytes (`c1:` + 26 characters),
+so the same video is the same key in every book. A book can carry its media inside ("self-contained": works
+offline), or carry only the keys and find the media in **stores** and **libraries** (small books, shared media).
+Large books can be published **streamed**: an index plus one file per page, so a 300-page textbook opens at once.
+
+A student's notes are kept apart from the book, as an **overlay**: the book stays untouched and the notes travel
+as their own small file.
+
+## Guides
+
+| Guide | For |
 |---|---|
-| [`spec/1.0`](spec/1.0/README.md) | The written specification (Chalk 1.0 Core = `formatVersion` 7) |
-| [`spec/1.1`](spec/1.1/README.md) | Chalk 1.1: labs (`formatVersion` 8) and the [Host API](spec/1.1/host-api.md) labs use to talk to the reader |
-| [`spec/1.2`](spec/1.2/README.md) | Chalk 1.2: asset stores (`formatVersion` 9): short `c1:` keys, stores that turn keys into bytes, the reader's resolution rules, and the [registry API](spec/1.2/registry-api.md) authoring tools use (with a [reference database](spec/1.2/registry.sql)) |
-| [`spec/1.3`](spec/1.3/README.md) | Chalk 1.3: presentation (`formatVersion` 10): how the author wants each image or embed presented (live or a card, what a tap opens, label, icon, accent, autoplay), from fixed lists, never CSS |
-| [`spec/1.4`](spec/1.4/README.md) | Chalk 1.4: streamed books: the same book as static files (an index, one file per page, a search file), so a reader opens a 300-page textbook at once and fetches only the pages around the one being read |
-| [`spec/1.5`](spec/1.5/README.md) | Chalk 1.5: lab libraries and lab manifests (`formatVersion` 11): labs import shared libraries (three.js, …) the reader supplies, so twenty 3D labs carry three.js once; a manifest per lab lets a store list it and an authoring tool place and set it up |
-| [`schema/`](schema) | JSON Schemas generated from the model, for non-TypeScript readers: lesson, page, overlay, store descriptor, index shard, registry API |
-| [`conformance/`](conformance) | Sample packages every reader must accept (`valid/`) or reject (`invalid/`), key test vectors (`keys.json`), store examples (`stores/`) |
-| `packages/model` | The data model (Zod, single source of truth), migrations, overlays, asset ids, media sniffing |
-| `packages/container` | ZIP pack / unpack / validate, fat and thin bundles, safety limits |
-| `packages/pdf-engine` | PDF page → lesson page mapping (PDF.js), shared by browser and Node |
-| `packages/convert-pdf` | PDF → `.chalk` in Node |
-| `packages/store` | Asset stores: key → URL, the reader's resolver (cache, stores in order, verification), the registry API schemas and client |
-| [`packages/reader`](packages/reader) | **The reference reader**: `<ChalkReader>`, a configurable React component (pages, search, media, 3D, labs, the student's notes as an overlay) |
-| [`apps/reader`](apps/reader) | The reader's showcase site: a bilingual sample book and a configuration playground (`pnpm --filter @chalk-format/reader-app dev`) |
-| `packages/lab` | Running labs: `mountLab` / `createLabHost` for readers, `connectLab` for labs, the sandbox and CSP |
-| [`examples/labs`](examples/labs) | Example labs (one self-contained HTML file each) |
-| `packages/cli` | Command line: `convert` |
-| `packages/conformance` | Runs the conformance corpus against the reference implementation |
-| `spec/design-history` | The original ChalkBook design documents for the format |
+| [Make a book](docs/guides/make-a-book.md) | Converting a PDF, adding media in the editor, saving, publishing a streamed book |
+| [Media libraries](docs/guides/media-libraries.md) | Where authors find and put media: this device, folders, library servers; connecting them in the editor and in code |
+| [Run a library server](docs/guides/run-a-library-server.md) | Your own library over Postgres and any S3-compatible storage (Cloudflare R2, MinIO, AWS S3), with Docker |
+| [Write a lab](docs/guides/write-a-lab.md) | A simulation in one HTML file: the sandbox, the Host API, three.js shared between labs, the lab manifest |
+| [The reader](packages/reader/README.md) | Embedding `<ChalkReader>` in an app: props, the full configuration, theming, author mode |
 
 ## Quick start
 
@@ -40,122 +43,58 @@ Node 22.13+ and pnpm 9+.
 
 ```bash
 pnpm install
-pnpm check                       # lint + typecheck + all tests (incl. conformance)
+pnpm check                                          # lint, typecheck and every test (incl. conformance)
 
-# Convert a PDF into a .chalk book
-pnpm --filter @chalk-format/cli start convert ./book.pdf -o book.chalk \
-    --title "Higher Math" --locale bn --license "All rights reserved"
+pnpm --filter @chalk-format/reader-app dev          # the showcase: http://localhost:5190
+
+npx tsx packages/cli/src/cli.ts convert ./book.pdf -o book.chalk --title "Physics" --locale bn
 ```
 
-### See the reference reader
+The showcase opens a bilingual sample chapter (pages from a PDF, video, sound, a 3D screw gauge, two labs, a
+snip). **Open a book** loads any `.chalk`; **Configure** changes the reader live and shows the code for it;
+**Author** switches to the editor.
 
-```bash
-pnpm install
-pnpm --filter @chalk-format/reader-app dev      # http://localhost:5190
-```
+## The specification
 
-The showcase opens a bilingual sample book (pages from a PDF, video, audio, a 3D screw gauge, the pendulum
-lab, a snip). The first start builds the sample (about half a minute); edits to `packages/reader` reload the
-page. In the app: the book picker (top right) switches samples, **Open a book** loads any `.chalk` file, and
-**Configure** changes the reader live and shows the matching code. Use the browser's device toolbar for the
-phone layout.
+| Version | `formatVersion` | Adds |
+|---|---|---|
+| [1.0 Core](spec/1.0/README.md) | 7 | Pages, objects, the text layer, assets, self-contained and thin books, overlays |
+| [1.1 Labs](spec/1.1/README.md) | 8 | Labs, the sandbox, and the [Host API](spec/1.1/host-api.md) labs use to talk to the reader |
+| [1.2 Asset stores](spec/1.2/README.md) | 9 | `c1:` keys, stores that turn keys into bytes, how a reader finds media, and the [registry API](spec/1.2/registry-api.md) libraries speak |
+| [1.3 Presentation](spec/1.3/README.md) | 10 | How the author wants each piece of media shown: live or a card, what a tap opens, label, icon, accent, playback |
+| [1.4 Streamed books](spec/1.4/README.md) | 10 (no model change) | A book as static files: an index, one file per page, a search file |
+| [1.5 Lab libraries](spec/1.5/README.md) | 11 | Labs share libraries such as three.js, supplied by the reader; lab manifests describe a lab for libraries and editors |
 
-```bash
-pnpm --filter @chalk-format/reader-app showcase   # rebuild the sample books after changing apps/reader/showcase/
-pnpm --filter @chalk-format/reader-app build      # production build into apps/reader/dist/
-node tools/reader-shots.mjs out/shots              # desktop + phone screenshots of the running app
-node tools/reader-media-e2e.mjs                    # real clicks and taps: 3D, video, lab and audio must actually play
-```
+Each version only adds to the ones before: every valid book stays valid, and older readers still open newer books.
+[`schema/`](schema) has the JSON Schemas for readers written in other languages, and
+[`conformance/`](conformance) the books every reader must accept or reject.
 
-## Working on the format
+## Packages
 
-- `packages/model/src/schema.ts` is the source of truth. After changing it:
-  1. bump `CHALK_FORMAT_VERSION` and add a migration in `migrate.ts` with a fixture test;
-  2. `pnpm gen:schema` to regenerate `schema/` (CI fails if it is stale);
-  3. add conformance cases (`pnpm --filter @chalk-format/conformance generate`) and update the spec.
-- Changes within 1.x must be **additive**: new optional fields or new types. Never rename, repurpose or
-  remove a field. Every file that was valid stays valid.
-- Commits follow `type(scope): summary`, e.g. `feat(model):`, `fix(convert-pdf):`.
+| Package | What it does |
+|---|---|
+| [`@chalk-format/model`](packages/model) | The data model (Zod), migrations, overlays, asset keys, lab manifests |
+| [`@chalk-format/container`](packages/container) | Pack, unpack and validate `.chalk` files; streamed books |
+| [`@chalk-format/store`](packages/store) | Asset stores, the resolver, libraries, the registry API client |
+| [`@chalk-format/reader`](packages/reader) | `<ChalkReader>`: the React reader and editor |
+| [`@chalk-format/lab`](packages/lab) | Running labs in a reader (`mountLab`) and writing them (`connectLab`) |
+| [`@chalk-format/library-server`](packages/library-server) | A library server: the registry API over Postgres and S3-compatible storage |
+| [`@chalk-format/pdf-engine`](packages/pdf-engine), [`convert-pdf`](packages/convert-pdf), [`cli`](packages/cli) | PDF pages to book pages, PDF to `.chalk`, the `convert` command |
+| [`@chalk-format/conformance`](packages/conformance) | Runs the conformance books against the reference implementation |
+| [`apps/reader`](apps/reader) | The showcase site |
 
-## Labs
+Tools in [`tools/`](tools): `chalk-stream.ts` (publish a streamed book), `library-add.ts` (fill a library from a
+list), `lab-libraries.ts` (reproducible shared builds for labs), and the browser test scripts.
 
-A lab is one self-contained HTML file placed on a page. The reader runs it in a sandbox where it cannot
-fetch anything, and gives it its `params`, saved state and the book's assets through the
-[Host API](spec/1.1/host-api.md). A lab is confined to what it is given, not a container for secrets
-([spec 1.1 §3.3](spec/1.1/README.md#33-sandbox-normative-for-hosts)).
-Books with labs still open in 1.0 readers, which show the lab's poster instead.
+## Contributing
 
-```ts
-// in a reader
-import { mountLab } from '@chalk-format/lab';
-const { host } = await mountLab(box, { lab: object.lab, entry: entryBytes, locale: 'bn', visible: onScreen,
-  loadState, saveState, getAsset, onReady: hidePoster, onProgress });
-host.setVisible(false);   // when the page scrolls away: the lab stops rendering (before or after it starts)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, how to check a change and the rules the format lives by, and
+the [roadmap](docs/roadmap.md) for what is open. [Reader internals](docs/reader-internals.md) explains how the
+reader is built.
 
-// in a lab (or speak the protocol by hand, as examples/labs/pendulum.html does)
-import { connectLab } from '@chalk-format/lab/client';
-const lab = await connectLab({ id: 'org.example.pendulum', version: '1.0.0' });
-```
+## Origin and license
 
-## Labs for a store
+The format began in RunAgent's ChalkBook smartboard app and was extracted from it with the history of its format
+packages. [`spec/design-history`](spec/design-history) keeps the original design documents.
 
-A lab is one HTML file (spec 1.1). One that uses three.js names it in `lab.libraries` instead of bundling it
-(spec 1.5): the reader supplies the shared, verified build, so a book carries it once and a student downloads it
-once. Written like any ES module project (`import * as THREE from 'three'`), and with its own import map it still
-runs when opened on its own. A **lab manifest** describes it for a store: titles in Bengali and English, subject,
-poster, libraries, and its settings as a small JSON Schema an authoring tool turns into a form.
-
-- Example: [`examples/labs/screw-gauge.html`](examples/labs/screw-gauge.html) with
-  [`screw-gauge.lab.json`](examples/labs/screw-gauge.lab.json).
-- Shared builds: [`libraries/catalog.json`](libraries/catalog.json), built by `npx tsx tools/lab-libraries.ts`
-  (reproducible: CI checks the keys).
-
-## Streamed books
-
-A `.chalk` is one file: a reader must download all of it. For textbooks, publish it as a **streamed book**
-(spec 1.4) and serve the directory from a CDN:
-
-```bash
-npx tsx tools/chalk-stream.ts publish physics-9.chalk out/physics-9/   # book.json, pages/, assets/, text
-```
-
-The reader then fetches `book.json` (page count, sizes, thumbnails, which assets each page needs), shows the whole
-book at once, and loads the current page first and then ±5 around it. A jump loads the new place first; search
-uses one small text file; author mode loads the rest before editing. Every file except `book.json` is named by
-its content, so a CDN can keep it for ever.
-
-```tsx
-<ChalkReader source="https://cdn.example.org/books/physics-9/" config={{ streaming: { window: 5 } }} />
-```
-
-## Asset stores
-
-A book refers to its media by short keys (`c1:` + 26 characters, derived once from the bytes). The media can
-travel inside the book or live in **stores**: buckets where the path is the key, servers with a small sharded
-index, or an API. A reader finds an asset with a cache lookup and at most one request, and checks the bytes
-against the key, so untrusted stores (a classroom server, a USB drive) are safe. Authoring tools upload,
-de-duplicate and search through the **registry API**. See [spec 1.2](spec/1.2/README.md).
-
-```ts
-import { assetKey } from '@chalk-format/model';
-import { createResolver, createRegistryClient } from '@chalk-format/store';
-
-const key = await assetKey(bytes);                                    // authoring: once per file
-const resolver = createResolver({ hostStores, bookStores: assetSources, cache });
-const media = await resolver.resolve(object.assetId, 'video/mp4');      // reader: cache, then stores in order
-```
-
-## Roadmap
-
-See [spec 1.2 §9](spec/1.2/README.md#9-conformance) for what 1.2 adds and [spec 1.1 §6](spec/1.1/README.md#6-still-on-the-roadmap)
-for what is still open: general fallbacks for other new object types (`requires`), host-provided data queries,
-learner-state packages, and navigation (TOC, page labels, links).
-
-## Origin
-
-Extracted from [runagent-dev/chalkboard](https://github.com/runagent-dev/chalkboard) with full history of
-the format packages. See [NOTICE](NOTICE).
-
-## License
-
-[Apache-2.0](LICENSE).
+[Apache-2.0](LICENSE). See [NOTICE](NOTICE).
