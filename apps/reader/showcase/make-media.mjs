@@ -1,12 +1,11 @@
 // Makes the showcase book's media, once. The outputs in showcase/media/ are committed; rerun only to change them.
 //
-//   node apps/reader/showcase/make-media.mjs [path/to/chalk-3d]
+//   node apps/reader/showcase/make-media.mjs
 //
-// Needs ffmpeg and Playwright's Chromium. The 3D model also needs a checkout of chalk-3d (RunAgent's procedural three.js
-// models, not public yet) next to this repo; without it the committed GLB and poster are kept.
+// Needs ffmpeg and Playwright's Chromium. The 3D model is built from apps/models (the procedural three.js models).
 //   pendulum.webm + pendulum-poster.png  a 1 m pendulum swinging at its real period, T = 2π√(L/g) ≈ 2.01 s
 //   tuning-fork.mp3                      a 440 Hz tone that dies away like a struck fork
-//   screw-gauge.glb + screw-gauge-poster.png  chalk-3d's screw gauge (pitch 0.5 mm, 50 divisions) as binary glTF
+//   screw-gauge.glb + screw-gauge-poster.png  apps/models' screw gauge (pitch 0.5 mm, 50 divisions) as binary glTF
 //   lab-poster.png                       the pendulum lab's opening view
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,7 +16,7 @@ import { chromium } from 'playwright-core';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
 const out = path.join(here, 'media');
-const chalk3d = path.resolve(process.argv[2] ?? path.join(repo, '../chalk-3d'));
+const models = path.join(repo, 'apps/models');
 mkdirSync(out, { recursive: true });
 const font = (pkg, file) => 'file://' + path.join(repo, 'packages/reader/node_modules/@fontsource', pkg, 'files', file);
 const FONTS = `@font-face{font-family:"Noto Sans Bengali";src:url(${font('noto-sans-bengali', 'noto-sans-bengali-bengali-400-normal.woff2')})}@font-face{font-family:"Noto Sans";src:url(${font('noto-sans', 'noto-sans-latin-400-normal.woff2')})}`;
@@ -74,14 +73,14 @@ execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi
   '-ac', '1', '-c:a', 'libmp3lame', '-b:a', '64k', path.join(out, 'tuning-fork.mp3')]);
 console.log('tuning-fork.mp3');
 
-// ---------- the screw gauge as GLB, from chalk-3d's procedural model ----------
-if (existsSync(path.join(chalk3d, 'src/models/screw-gauge/model.ts'))) {
+// ---------- the screw gauge as GLB, from the procedural model in apps/models ----------
+if (existsSync(path.join(models, 'src/models/screw-gauge/model.ts'))) {
   const tmp = path.join(here, '.tmp-export'); mkdirSync(tmp, { recursive: true });
   const entry = path.join(tmp, 'entry.ts');
   writeFileSync(entry, `
     import * as THREE from 'three';
     import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-    import { buildScrewGauge } from ${JSON.stringify(path.join(chalk3d, 'src/models/screw-gauge/model.ts'))};
+    import { buildScrewGauge } from ${JSON.stringify(path.join(models, 'src/models/screw-gauge/model.ts'))};
     (window as any).make = async () => {
       const g = buildScrewGauge({ pitch: 0.5, divisions: 50, zeroDivisions: 0 });
       g.setGap(5.37);
@@ -103,7 +102,7 @@ if (existsSync(path.join(chalk3d, 'src/models/screw-gauge/model.ts'))) {
     };`);
   const esbuild = path.join(repo, 'node_modules/.pnpm/node_modules/esbuild/bin/esbuild');
   execFileSync(existsSync(esbuild) ? esbuild : 'npx', [...(existsSync(esbuild) ? [] : ['esbuild']), entry, '--bundle', '--format=iife', `--outfile=${path.join(tmp, 'bundle.js')}`],
-    { env: { ...process.env, NODE_PATH: path.join(chalk3d, 'node_modules') }, stdio: 'inherit' });
+    { env: { ...process.env, NODE_PATH: path.join(models, 'node_modules') }, stdio: 'inherit' });
   const p = await filePage('');
   await p.addScriptTag({ content: readFileSync(path.join(tmp, 'bundle.js'), 'utf8') });
   const { glb, poster } = await p.evaluate(() => window.make());
@@ -112,7 +111,7 @@ if (existsSync(path.join(chalk3d, 'src/models/screw-gauge/model.ts'))) {
   rmSync(tmp, { recursive: true, force: true });
   await p.close();
   console.log('screw-gauge.glb, screw-gauge-poster.png');
-} else console.log(`skipped the 3D model: no chalk-3d at ${chalk3d}`);
+} else console.log(`skipped the 3D model: no model at ${models}`);
 
 // ---------- the lab's poster: its opening view ----------
 {

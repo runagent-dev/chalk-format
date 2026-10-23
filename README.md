@@ -82,6 +82,7 @@ Each version only adds to the ones before: every valid book stays valid, and old
 | [`@chalk-format/pdf-engine`](packages/pdf-engine), [`convert-pdf`](packages/convert-pdf), [`cli`](packages/cli) | PDF pages to book pages, PDF to `.chalk`, the `convert` command |
 | [`@chalk-format/conformance`](packages/conformance) | Runs the conformance books against the reference implementation |
 | [`apps/reader`](apps/reader) | The showcase site |
+| [`apps/models`](apps/models) | Procedural 3D science models (screw gauge, vernier caliper) and their gallery: the source of the sample book's 3D model |
 
 Tools in [`tools/`](tools): `chalk-stream.ts` (publish a streamed book), `library-add.ts` (fill a library from a
 list), `lab-libraries.ts` (reproducible shared builds for labs), and the browser test scripts.

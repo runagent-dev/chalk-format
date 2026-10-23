@@ -1,11 +1,15 @@
-# chalk-3d
+# 3D models
 
-Programmatic 3D science models (three.js + TypeScript) and the gallery that shows them.
+Procedural 3D science models (three.js and TypeScript) and the gallery that shows them. Each model is a working
+instrument: turn the thimble, close the jaws, read the scales, check your reading. They are the source of the 3D
+media in Chalk books: `apps/reader/showcase/make-media.mjs` exports the screw gauge as the sample book's GLB and
+poster.
+
+From the repository root:
 
 ```bash
-npm install
-npm run dev        # gallery on http://localhost:5173
-npm run build      # static build in dist/
+pnpm --filter @chalk-format/models-app dev      # the gallery at http://localhost:5192
+pnpm --filter @chalk-format/models-app build    # a static build in apps/models/dist/
 ```
 
 ## Models

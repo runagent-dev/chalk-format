@@ -1,15 +1,16 @@
 {
-  "name": "chalk-3d",
+  "name": "@chalk-format/models-app",
   "private": true,
   "version": "0.0.0",
-  "description": "Programmatic 3D science models and the gallery that shows them.",
+  "description": "Procedural 3D science models (three.js) and the gallery that shows them: the source of the sample book's screw gauge.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5192",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "preview": "vite preview --port 5193",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.2.0",

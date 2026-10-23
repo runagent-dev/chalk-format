@@ -32,6 +32,7 @@ the page.
 | `packages/library-server` | A library server (the registry API) over Postgres and S3-compatible storage |
 | `packages/pdf-engine`, `packages/convert-pdf`, `packages/cli` | PDF pages → lesson pages (pdf.js), PDF → `.chalk`, the `convert` command |
 | `apps/reader` | The showcase site: sample books, Open a book, the Configure playground, author mode |
+| `apps/models` | Procedural 3D models and their gallery (`pnpm --filter @chalk-format/models-app dev`, port 5192) |
 | `examples/` | Example labs with their manifests; `library-seed.json`, a list for `tools/library-add.ts` |
 | `libraries/` | Shared library builds for labs (`catalog.json`; built by `tools/lab-libraries.ts`) |
 | `tools/` | Command-line tools and the browser test scripts |
@@ -85,7 +86,8 @@ The showcase's books are built from committed sources by `apps/reader/showcase/m
 - Chromium prints the chapter to PDF, `@chalk-format/convert-pdf` converts it, and the script adds the media, the
   labs, a snip page, ink notes and an icon-mode audio marker. The text layer comes from the laid-out HTML, because
   Chromium's PDFs carry no Unicode for shaped Bengali (see the [roadmap](docs/roadmap.md)).
-- `media/` is made once by `make-media.mjs` (ffmpeg, Playwright's Chromium); the outputs are committed.
+- `media/` is made once by `make-media.mjs` (ffmpeg, Playwright's Chromium); the outputs are committed. The 3D
+  screw gauge comes from `apps/models`, and rebuilding it gives the same bytes.
 
 ## Pitfalls
 
