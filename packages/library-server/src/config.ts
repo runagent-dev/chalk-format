@@ -19,6 +19,8 @@ import type { Caller, LibraryOptions } from './app.js';
  *   ORIGINS          https://app.example.org,…       (browsers allowed to call; default any)
  *   MAX_BYTES        536870912
  *   PORT             8080
+ *   NAME             what tools show for this library (default "Chalk library")
+ *   UPLOAD_SECRET    signs disk upload tickets (STORAGE=disk; default: random, so tickets end with a restart)
  */
 export async function libraryFromEnv(env: Record<string, string | undefined> = process.env): Promise<LibraryOptions & { port: number }> {
   const need = (k: string) => { const v = env[k]; if (!v) throw new Error(`${k} is not set`); return v; };

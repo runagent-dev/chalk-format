@@ -10,7 +10,7 @@
 // A lab's manifest names its entry and poster by key; "files" says which file has those bytes. Shared libraries
 // (three.js …) come from libraries/catalog.json.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { assetKey, inLanguage, LAB_MANIFEST_TYPE, labManifestSchema, type AssetMeta } from '../packages/model/src/index.ts';
 import { createRegistryClient } from '../packages/store/src/index.ts';
@@ -82,7 +82,9 @@ for (const entry of list) {
     for (const lib of m.libraries ?? []) {
       const c = catalog.libraries.find((x) => x.key === lib.asset);
       if (!c) throw new Error(`${entry.lab}: ${lib.specifier} ${lib.asset} is not in libraries/catalog.json (run tools/lab-libraries.ts)`);
-      await add(path.join(repo, 'libraries', c.file), { title: `${c.specifier} ${c.version}`, tags: ['lab library'], type: 'text/javascript' });
+      const built = path.join(repo, 'libraries', c.file);
+      if (!existsSync(built)) throw new Error(`${built} is missing: build the shared libraries first (npx tsx tools/lab-libraries.ts)`);
+      await add(built, { title: `${c.specifier} ${c.version}`, tags: ['lab library'], type: 'text/javascript' });
     }
     await add(entry.lab, { type: LAB_MANIFEST_TYPE, title, ...(m.tags ? { tags: m.tags } : {}), ...(m.subject ? { subject: m.subject } : {}), ...(m.license ? { license: m.license } : {}), ...(m.poster ? { poster: m.poster } : {}) });
   } else {
