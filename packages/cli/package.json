@@ -1,16 +1,17 @@
 {
   "name": "@chalk-format/cli",
-  "version": "0.1.0",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "bin": {
-    "chalkbook-pdf": "src/cli.ts"
+    "chalk-pdf": "src/cli.ts"
   },
   "scripts": {
     "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/convert-pdf": "workspace:*"

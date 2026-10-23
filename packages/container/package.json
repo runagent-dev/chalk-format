@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/container",
+  "private": true,
   "version": "0.0.0",
-  "description": ".chalk ZIP package format: pack, unpack, validate.",
+  "description": "Pack, unpack and validate .chalk files: fat and thin books, overlays and streamed books.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -13,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*",

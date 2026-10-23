@@ -99,7 +99,7 @@ Changing the list asks again, so connecting the right library makes the missing 
 
 ```tsx
 import { ChalkReader, useSavedLibraries } from '@chalk-format/reader';
-import { registryLibrary } from '@chalk-format/store';
+import { registryLibrary } from '@chalk-format/book';
 
 // people connect their own (kept in this browser): This device, folders, library servers
 const [libraries, setLibraries] = useSavedLibraries();

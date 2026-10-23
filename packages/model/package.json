@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/model",
+  "private": true,
   "version": "0.0.0",
-  "description": "Chalkbook lesson/page/object domain model. Framework-independent.",
+  "description": "The Chalk book data model: Zod schemas, migrations, overlays, asset keys and lab manifests.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -13,13 +14,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
-  },
-  "devDependencies": {
-    "vitest": "^2.1.8"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "nanoid": "^6.0.1",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
   }
 }

@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/convert-pdf",
-  "version": "0.1.0",
-  "description": "Server-side document \u2192 .chalk conversion. Node-only (rasterizes with @napi-rs/canvas); shared by the API's conversion service and the CLI.",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Convert a PDF into a .chalk book in Node.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -14,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "build": "echo 'no build for source-exported package'"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*",

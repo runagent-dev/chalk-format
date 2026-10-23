@@ -24,10 +24,10 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
   return { positional, flags };
 }
 
-const USAGE = `chalkbook-pdf — convert a PDF into a .chalk lesson
+const USAGE = `chalk-pdf — convert a PDF into a .chalk lesson
 
 Usage:
-  chalkbook-pdf convert <file.pdf> [-o <out.chalk>] [--title <title>] \\
+  chalk-pdf convert <file.pdf> [-o <out.chalk>] [--title <title>] \\
       [--locale <bcp47>] [--author <name>] [--license <text>] \\
       [--width <px>] [--format webp|png] [--quality 0-1]
 

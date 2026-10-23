@@ -1,7 +1,8 @@
 {
   "name": "@chalk-format/pdf-engine",
-  "version": "0.1.0",
-  "description": "PDF.js wrappers, page rendering, and PDF-page-to-lesson-page mapping. Browser-only (uses canvas).",
+  "private": true,
+  "version": "0.0.0",
+  "description": "PDF pages to Chalk lesson pages with pdf.js: page rendering, text layer and staging.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -16,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run --passWithNoTests",
-    "build": "echo 'no build for source-exported package'"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@chalk-format/model": "workspace:*",
