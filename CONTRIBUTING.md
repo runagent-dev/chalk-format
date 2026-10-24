@@ -146,7 +146,8 @@ small Vite + React app with `@chalk-format/reader`.
 **Publishing is done by CI, from the `prod` branch.** To release:
 
 1. On `main`, change the version in `release.json` (all four packages share it) and merge.
-2. Fast-forward `prod` to `main`: `git push origin main:prod`.
+2. Open a pull request from `main` into `prod` (`gh pr create --base prod --head main --title "Release 0.1.1"`) and merge it with a merge commit once
+   the `check` job is green. `prod` is protected: it only takes pull requests, for admins too, and cannot be force-pushed or deleted.
 3. `.github/workflows/release.yml` runs the checks, assembles the packages, publishes the ones whose `name@version` is not on npm
    yet (`scripts/publish-packages.mjs`: `core`, `reader`, `pdf`, `library-server`, in that order) and tags `v<version>`.
 
@@ -164,7 +165,7 @@ done
 npm trust list @chalk-format/core        # shows the relationship
 ```
 
-Provenance statements are added automatically once the repository is public.
+Because the repository is public, npm adds a provenance statement to every package published this way.
 
 ## Security
 
