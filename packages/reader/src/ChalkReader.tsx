@@ -547,12 +547,15 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // the eraser of author mode takes drawings, text and shapes; media is removed by selecting it
   const erasable = useCallback((o: LessonObject) => o.type !== 'image' && o.type !== 'embed' && o.type !== 'snip', []);
   // a right-click on a page opens the menu of what can be added there (any tool; the browser's own menu stays for fields)
+  const insertMenuOn = config.authoring.contextMenu;
   const openInsertMenu = useCallback((e: React.MouseEvent, pg: LessonPage, scale: number) => {
+    if (!insertMenuOn) return;   // the host turned it off: the browser's own menu stays
     const surface = (e.target as HTMLElement).closest('.chalk-surface')?.getBoundingClientRect(), box = root.current?.getBoundingClientRect();
     if (!surface || !box) return;
     e.preventDefault();
     setInsertMenu({ pageId: pg.id, x: Math.round((e.clientX - surface.left) / scale), y: Math.round((e.clientY - surface.top) / scale), left: e.clientX - box.left, top: e.clientY - box.top });
-  }, []);
+  }, [insertMenuOn]);
+  useEffect(() => { if (!insertMenuOn) setInsertMenu(null); }, [insertMenuOn]);
   const authorOverlay = useCallback((pg: LessonPage, _i: number, scale: number) => (
     <div style={{ display: 'contents' }} onContextMenu={(e) => openInsertMenu(e, pg, scale)}>
       {authorTool === 'select'
@@ -615,7 +618,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
-      {author && insertMenu && (
+      {author && insertMenuOn && insertMenu && (
         <InsertMenu at={{ x: insertMenu.left, y: insertMenu.top }} t={at_} onClose={closeInsertMenu}
           onPick={(kind) => { pickMedia(kind, { pageId: insertMenu.pageId, x: insertMenu.x, y: insertMenu.y }); setInsertMenu(null); }} />
       )}

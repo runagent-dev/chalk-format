@@ -95,6 +95,9 @@ export type ReaderConfig = {
     locale: Locale;
     /** The dock in author mode. The read-mode dock gets a 'mode' button at its start if it has none. */
     dock: (DockItemId | CustomDockItem)[];
+    /** Right-click a page in author mode for a menu of the media to add there. Off: the browser's own menu stays, and
+     *  media is added with the + in the rail or by dropping files. */
+    contextMenu: boolean;
   };
   /** Streamed books (spec 1.4): how many pages to keep loaded each way around the current one. */
   streaming: { window: number };
@@ -132,6 +135,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   authoring: {
     enabled: false, startIn: 'read', locale: 'en',
     dock: ['mode', '|', 'thumbnails', '|', 'prev', 'page', 'next', '|', 'zoomOut', 'fit', 'zoomIn', '|', 'undo', 'redo', '|', 'save', 'theme', 'language'],
+    contextMenu: true,
   },
   streaming: { window: 5 },
   presentation: DEFAULT_PRESENTATION,

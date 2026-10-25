@@ -155,7 +155,8 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   arrows to nudge, Delete to remove; the object under the mouse is outlined.
 - **Right-click a page** (any tool) to add media where you click: a menu of Image, Video, Sound, 3D model and Lab opens at the
   pointer; choosing one opens its picker in the sidebar, a small cross on the page marks the spot, and what you pick or upload
-  is placed centred there. The **+** in the rail does the same but places in the middle of the current page. (Touch has no right
+  is placed centred there. The **+** in the rail does the same but places in the middle of the current page. A host can turn the menu
+  off with `authoring.contextMenu: false` (the browser's own menu then stays). (Touch has no right
   button: where the browser fires `contextmenu` on a long press, as Android does, the same menu opens.)
 - **Add media** from the rail or by dropping files on a page: images, video (a poster is taken from its frames),
   audio, `.glb` models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
@@ -169,6 +170,7 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
 | `authoring.enabled` | `false` | Allow author mode. Off for a student app. `readOnly` turns it off. |
 | `authoring.startIn` | `'read'` | The mode the reader opens in. |
 | `authoring.locale` | `'en'` | Language of the author's tools (sidebar, rail, author dock). `locale` stays the students' language; book content is never translated. |
+| `authoring.contextMenu` | `true` | Right-click a page in author mode for a menu of the media to add there. `false`: the browser's own menu stays. |
 | `authoring.dock` | mode, pages, page turning, zoom, undo, redo, save, theme, language | The dock in author mode (the tools are in the rail). |
 
 ## Restyling media
