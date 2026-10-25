@@ -153,6 +153,10 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   Escape in a field leaves the field; a second Escape clears the selection.
 - **Select:** click any object; drag to move it, the corner handle to resize it (media keeps its proportions),
   arrows to nudge, Delete to remove; the object under the mouse is outlined.
+- **Right-click a page** (any tool) to add media where you click: a menu of Image, Video, Sound, 3D model and Lab opens at the
+  pointer; choosing one opens its picker in the sidebar, a small cross on the page marks the spot, and what you pick or upload
+  is placed centred there. The **+** in the rail does the same but places in the middle of the current page. (Touch has no right
+  button: where the browser fires `contextmenu` on a long press, as Android does, the same menu opens.)
 - **Add media** from the rail or by dropping files on a page: images, video (a poster is taken from its frames),
   audio, `.glb` models and `.html` labs. Added media gets c1 keys (spec 1.2). Undo and redo cover every change.
 - Made for a computer (mouse and keyboard); it still works by touch.
