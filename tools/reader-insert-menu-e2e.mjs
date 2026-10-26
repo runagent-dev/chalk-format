@@ -131,6 +131,36 @@ const mid = await placedAt();
 const pb = await surface.boundingBox();
 r.plusNearMiddle = !!mid && Math.abs(mid.x - (pb.x + pb.width / 2)) <= 6 && Math.abs(mid.y - (pb.y + pb.height / 2)) <= 6;
 
+// 8b. Space presses an item (it is not the reader's "next page"), and turning the page forgets the spot: the file goes to the middle of
+// the page in view, not to the page the author left
+await p.keyboard.press('Escape');
+await p.mouse.click(at.x, at.y, { button: 'right' });
+await menu.waitFor({ timeout: 3000 });
+await p.keyboard.press(' ');
+r.spacePicks = await p.locator('text=/Add media: Image/').waitFor({ timeout: 3000 }).then(() => true, () => false);
+r.spaceMarker = (await p.locator('.chalk-author-target').count()) === 1;
+const pageBefore = await p.locator('.chalk-dock-page').first().innerText();
+await p.locator('.chalk-dock button[aria-label="পরের পৃষ্ঠা"], .chalk-dock button[aria-label="Next page"]').first().click(); await p.waitForTimeout(800);   // the dock's next page
+r.turned = (await p.locator('.chalk-dock-page').first().innerText()) !== pageBefore;
+r.turnForgets = (await p.locator('.chalk-author-target').count()) === 0;
+
+// 8c. right-click in a text being typed keeps the browser's menu (cut, copy, paste) and does not end the typing
+await p.keyboard.press('Escape');
+await p.locator('.chalk-dock button[aria-label="আগের পৃষ্ঠা"], .chalk-dock button[aria-label="Previous page"]').first().click(); await p.waitForTimeout(800);
+await p.keyboard.press('t');
+await p.mouse.click(at.x, at.y + 80);
+const field = p.locator('.chalk-surface textarea').first();
+r.typing = await field.waitFor({ timeout: 3000 }).then(() => true, () => false);
+if (r.typing) {
+  await field.type('hello');
+  const fb = await field.boundingBox();
+  await p.mouse.click(fb.x + 10, fb.y + 8, { button: 'right' }); await p.waitForTimeout(400);
+  r.textKeepsNative = (await menu.count()) === 0;
+  r.textStillOpen = (await field.count()) === 1 && (await field.inputValue()) === 'hello';
+  await p.keyboard.press('Escape');
+}
+await p.keyboard.press('v');
+
 // 9. a host can turn the menu off (Configure: "Right-click menu to add media"): the browser's own menu stays; on again, the menu is back
 await p.keyboard.press('Escape');
 const configureMenu = async (on) => {
@@ -158,6 +188,7 @@ const ok =
   && r.arrowMoves === 'Video' && r.escapeCloses && r.clickAwayCloses && r.scrollCloses && r.cornerInside && r.worksWithPen
   && r.menuGone && r.drawer && r.markerShown === 1 && r.markerAtPoint && r.placedNearClick && r.markerGone
   && r.noMarkerForPlus && r.plusNearMiddle
+  && r.spacePicks && r.spaceMarker && r.turned && r.turnForgets && r.typing && r.textKeepsNative && r.textStillOpen
   && r.offNoMenu && r.offKeepsNative && r.onAgain && r.onPrevents && !errs.length;
 console.log(ok ? 'OK  ' : 'FAIL', JSON.stringify(r), errs.length ? 'errors: ' + errs.join(' | ') : '');
 await b.close();

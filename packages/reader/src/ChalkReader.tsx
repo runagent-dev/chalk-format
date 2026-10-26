@@ -186,7 +186,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // the media type being added (its options are in the sidebar), what drawing tools draw, how added media starts
   const [adding, setAdding] = useState<MediaKind | null>(null);
   // where the media being added goes when it was chosen from the right-click menu (that page, that point); else the middle of the current page
-  const [addAt, setAddAt] = useState<{ pageId: string; x: number; y: number } | null>(null);
+  // `from` is the current page when the spot was chosen: turning to another page forgets the spot (what is added then goes to the middle
+  // of the page in view, not to a page the author has left)
+  const [addAt, setAddAt] = useState<{ pageId: string; x: number; y: number; from: number } | null>(null);
   useEffect(() => { if (!adding) setAddAt(null); }, [adding]);
   // the right-click menu: the page point it was opened at, and where to draw it (px from the reader's top left)
   const [insertMenu, setInsertMenu] = useState<{ pageId: string; x: number; y: number; left: number; top: number } | null>(null);
@@ -460,6 +462,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
   // the page and point media being added goes to: where the author right-clicked, else the middle of the current page (`at` unset)
+  useEffect(() => { setAddAt((a) => (a && a.from !== page ? null : a)); }, [page]);
   const target = useCallback((): { pg: LessonPage | undefined; at?: { x: number; y: number } } => {
     const pg = addAt ? pages.find((x) => x.id === addAt.pageId) : undefined;
     return pg && addAt ? { pg, at: { x: addAt.x, y: addAt.y } } : { pg: pages[page] };
@@ -550,6 +553,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const insertMenuOn = config.authoring.contextMenu;
   const openInsertMenu = useCallback((e: React.MouseEvent, pg: LessonPage, scale: number) => {
     if (!insertMenuOn) return;   // the host turned it off: the browser's own menu stays
+    // a text being typed (a note, a text object) keeps the browser's menu: cut, copy, paste, spelling
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
     const surface = (e.target as HTMLElement).closest('.chalk-surface')?.getBoundingClientRect(), box = root.current?.getBoundingClientRect();
     if (!surface || !box) return;
     e.preventDefault();
@@ -567,7 +572,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     </div>
   ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt]);
   // + in the rail, or the right-click menu (with the page point it was opened at): that kind of media, with its options in the sidebar
-  const pickMedia = useCallback((kind: MediaKind, at?: { pageId: string; x: number; y: number }) => { setAuthorToolState('select'); setSel(null); setAdding(kind); setAddAt(at ?? null); }, []);
+  const pickMedia = useCallback((kind: MediaKind, at?: { pageId: string; x: number; y: number }) => { setAuthorToolState('select'); setSel(null); setAdding(kind); setAddAt(at ? { ...at, from: page } : null); }, [page]);
   // every opening sets what the picker offers (a cancelled one never reports back, so nothing is left narrowed)
   const openPicker = useCallback((accept: string) => { const input = mediaFile.current; if (!input) return; input.accept = accept; input.click(); }, []);
   const chooseFile = useCallback((kind: MediaKind) => openPicker({ image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind]), [openPicker]);

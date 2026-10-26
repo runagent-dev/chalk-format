@@ -51,8 +51,9 @@ export function InsertMenu({ at, onPick, onClose, t }: { at: { x: number; y: num
   const onKeyDown = (e: React.KeyboardEvent) => {
     const k = e.key;
     if (k === 'ArrowDown') move(1); else if (k === 'ArrowUp') move(-1); else if (k === 'Home') move('first'); else if (k === 'End') move('last');
-    else if (k === 'Escape') { onClose(); (before.current as HTMLElement | null)?.focus?.({ preventScroll: true }); }
-    else if (k === 'Tab') onClose();
+    else if (k === 'Escape' || k === 'Tab') { onClose(); (before.current as HTMLElement | null)?.focus?.({ preventScroll: true }); }
+    // Space and Enter press the item: the button's own default, kept from the reader's keys (Space turns the page in single layout)
+    else if (k === ' ' || k === 'Enter') { e.stopPropagation(); return; }
     else return;
     e.preventDefault(); e.stopPropagation();
   };
