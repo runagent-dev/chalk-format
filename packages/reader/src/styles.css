@@ -573,3 +573,12 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-libs-actions .chalk-icon-btn { width: 28px; height: 28px; }
 .chalk-libs-form { display: grid; gap: 6px; }
 .chalk-libs-form input { min-height: 34px; padding: 4px 10px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-sm); }
+
+/* the right-click menu of author mode (what can be added where the author clicked) and the mark where it will go */
+.chalk-insert-menu { position: absolute; z-index: 35; display: flex; flex-direction: column; min-width: 190px; padding: 6px; background: var(--chalk-surface); border: 1px solid var(--chalk-line); border-radius: 12px; box-shadow: var(--chalk-float-shadow); }
+.chalk-insert-menu-title { padding: 4px 12px 6px; font-size: var(--chalk-text-sm, 0.75rem); font-weight: 600; letter-spacing: 0.02em; color: var(--chalk-ink-muted); }
+.chalk-insert-menu .chalk-rail-item:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: -2px; }
+.chalk-author-target { position: absolute; width: 0; height: 0; pointer-events: none; filter: drop-shadow(0 0 1px #fff); }
+.chalk-author-target::before, .chalk-author-target::after { content: ''; position: absolute; background: var(--chalk-accent); }
+.chalk-author-target::before { left: calc(-10px / var(--s)); width: calc(20px / var(--s)); top: calc(-1px / var(--s)); height: calc(2px / var(--s)); }
+.chalk-author-target::after { top: calc(-10px / var(--s)); height: calc(20px / var(--s)); left: calc(-1px / var(--s)); width: calc(2px / var(--s)); }

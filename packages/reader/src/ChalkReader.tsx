@@ -20,6 +20,7 @@ import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface } from './author/AuthorSurface.js';
+import { InsertMenu } from './author/InsertMenu.js';
 import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
 import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, videoPoster, type MediaKind } from './author/insert.js';
 import type { LibraryItem } from '@chalk-format/store';
@@ -184,6 +185,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [authorTool, setAuthorToolState] = useState<AuthorTool>('select');
   // the media type being added (its options are in the sidebar), what drawing tools draw, how added media starts
   const [adding, setAdding] = useState<MediaKind | null>(null);
+  // where the media being added goes when it was chosen from the right-click menu (that page, that point); else the middle of the current page
+  // `from` is the current page when the spot was chosen: turning to another page forgets the spot (what is added then goes to the middle
+  // of the page in view, not to a page the author has left)
+  const [addAt, setAddAt] = useState<{ pageId: string; x: number; y: number; from: number } | null>(null);
+  useEffect(() => { if (!adding) setAddAt(null); }, [adding]);
+  // the right-click menu: the page point it was opened at, and where to draw it (px from the reader's top left)
+  const [insertMenu, setInsertMenu] = useState<{ pageId: string; x: number; y: number; left: number; top: number } | null>(null);
+  const closeInsertMenu = useCallback(() => setInsertMenu(null), []);
   const [toolSettings, setToolSettings] = useState<ToolSettings>(DEFAULT_TOOLS);
   const [insertDefaults, setInsertDefaults] = useState<InsertDefaults>({});
   const setAuthorTool = useCallback((x: AuthorTool) => { setAuthorToolState(x); setAdding(null); if (x !== 'select') setSel(null); }, []);
@@ -431,7 +440,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const firstMode = useRef(true);
   useEffect(() => {
     if (firstMode.current) { firstMode.current = false; return; }
-    setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null);
+    setSel(null); setActive(null); setModal(null); setPanel(null); setAuthorToolState('select'); setAdding(null); setInsertMenu(null);
   }, [author]);
   // media files onto a page: where they were dropped, or the middle of the page for the + button
   const addFiles = useCallback(async (files: File[], pg: LessonPage, where?: { x: number; y: number }) => {
@@ -452,11 +461,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (refused) setToast(at_.notPlaceable);
   }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
+  // the page and point media being added goes to: where the author right-clicked, else the middle of the current page (`at` unset)
+  // and an open menu goes with it: a choice made after the page turned would otherwise bring the left page's spot back
+  useEffect(() => { setAddAt((a) => (a && a.from !== page ? null : a)); setInsertMenu(null); }, [page]);
+  const target = useCallback((): { pg: LessonPage | undefined; at?: { x: number; y: number } } => {
+    const pg = addAt ? pages.find((x) => x.id === addAt.pageId) : undefined;
+    return pg && addAt ? { pg, at: { x: addAt.x, y: addAt.y } } : { pg: pages[page] };
+  }, [addAt, pages, page]);
   // a library item onto the current page: placed from the facts the library keeps (a lab from its manifest), with
   // how the author said media of this kind should start
   const placeItem = useCallback(async (item: LibraryItem, lib: Library) => {
-    const pg = pages[page]; if (!pg) return;
-    const size = getPageSize(pg), mid = { x: size.width / 2, y: size.height / 2 };
+    const { pg, at } = target(); if (!pg) return;
+    const size = getPageSize(pg), mid = at ?? { x: size.width / 2, y: size.height / 2 };
     let made: LessonObject | null;
     if (item.type === LAB_MANIFEST_TYPE) {
       const raw = await lib.get(item.key);
@@ -471,7 +487,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       ? { ...made, ...(d.displayMode ? { displayMode: d.displayMode } : {}), ...(d.presentation && Object.keys(d.presentation).length ? { presentation: d.presentation } : {}) } as LessonObject
       : made;
     au.apply(edit.add(pg.id, o)); setSel({ pageId: pg.id, id: o.id }); setAdding(null);
-  }, [pages, page, lesson.locale, au, at_, insertDefaults]);
+  }, [target, lesson.locale, au, at_, insertDefaults]);
   // files into a library (the author chose which), then onto the page: kept once, findable and reusable afterwards
   const uploadTo = useCallback(async (files: File[], lib: Library) => {
     if (!lib.put) return;
@@ -534,15 +550,30 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [author, setAuthorTool]);
   // the eraser of author mode takes drawings, text and shapes; media is removed by selecting it
   const erasable = useCallback((o: LessonObject) => o.type !== 'image' && o.type !== 'embed' && o.type !== 'snip', []);
+  // a right-click on a page opens the menu of what can be added there (any tool; the browser's own menu stays for fields)
+  const insertMenuOn = config.authoring.contextMenu;
+  const openInsertMenu = useCallback((e: React.MouseEvent, pg: LessonPage, scale: number) => {
+    if (!insertMenuOn) return;   // the host turned it off: the browser's own menu stays
+    // a text being typed (a note, a text object) keeps the browser's menu: cut, copy, paste, spelling
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+    const surface = (e.target as HTMLElement).closest('.chalk-surface')?.getBoundingClientRect(), box = root.current?.getBoundingClientRect();
+    if (!surface || !box) return;
+    e.preventDefault();
+    setInsertMenu({ pageId: pg.id, x: Math.round((e.clientX - surface.left) / scale), y: Math.round((e.clientY - surface.top) / scale), left: e.clientX - box.left, top: e.clientY - box.top });
+  }, [insertMenuOn]);
+  useEffect(() => { if (!insertMenuOn) setInsertMenu(null); }, [insertMenuOn]);
   const authorOverlay = useCallback((pg: LessonPage, _i: number, scale: number) => (
-    authorTool === 'select'
-      ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
-          onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
-          onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
-      : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={strings(authorLocale).textPrompt} />
-  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale]);
-  // + in the rail: that kind of media, with its options in the sidebar
-  const pickMedia = useCallback((kind: MediaKind) => { setAuthorToolState('select'); setSel(null); setAdding(kind); }, []);
+    <div style={{ display: 'contents' }} onContextMenu={(e) => openInsertMenu(e, pg, scale)}>
+      {authorTool === 'select'
+        ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
+            onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
+            onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
+        : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={strings(authorLocale).textPrompt} />}
+      {addAt?.pageId === pg.id && <span className="chalk-author-target" aria-hidden style={{ left: addAt.x, top: addAt.y, '--s': scale } as CSSProperties} />}
+    </div>
+  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt]);
+  // + in the rail, or the right-click menu (with the page point it was opened at): that kind of media, with its options in the sidebar
+  const pickMedia = useCallback((kind: MediaKind, at?: { pageId: string; x: number; y: number }) => { setAuthorToolState('select'); setSel(null); setAdding(kind); setAddAt(at ? { ...at, from: page } : null); }, [page]);
   // every opening sets what the picker offers (a cancelled one never reports back, so nothing is left narrowed)
   const openPicker = useCallback((accept: string) => { const input = mediaFile.current; if (!input) return; input.accept = accept; input.click(); }, []);
   const chooseFile = useCallback((kind: MediaKind) => openPicker({ image: 'image/*', video: 'video/*', audio: 'audio/*', model3d: '.glb,model/gltf-binary', lab: '.html,text/html' }[kind]), [openPicker]);
@@ -593,6 +624,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             : <MediaInModal book={book} o={modal.o} locale={locale} theme={dark} storage={storage} onClose={closeModal} />}
         </Modal>
       )}
+      {author && insertMenuOn && insertMenu && (
+        <InsertMenu at={{ x: insertMenu.left, y: insertMenu.top }} t={at_} onClose={closeInsertMenu}
+          onPick={(kind) => {
+            pickMedia(kind, { pageId: insertMenu.pageId, x: insertMenu.x, y: insertMenu.y }); setInsertMenu(null);
+            // the menu's item goes away with it: focus moves on to the picker it opened, not to the page's body
+            requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('.chalk-sidebar :is(input, button, select):not([disabled])')?.focus({ preventScroll: true }));
+          }} />
+      )}
       {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={authorLocale} t={at_} />}
       {sidebar && (
         <AuthorSidebar lesson={au.lesson} page={sel ? au.lesson.pages.find((x) => x.id === sel.pageId) : pages[page]} selected={selectedObject}
@@ -600,12 +639,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
           apply={au.apply} onSelect={(id) => { const pg = pages[page]; if (pg) setSel({ pageId: pg.id, id }); }}
           onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }}
           libraries={libs} onLibrariesChange={props.onLibrariesChange} onPickItem={(it, lib) => void placeItem(it, lib)} onUploadTo={(fs, lib) => void uploadTo(fs, lib)}
-          onChooseFile={chooseFile} onDropFiles={(fs) => { const pg = pages[page]; if (pg) void addFiles(fs, pg); }}
+          onChooseFile={chooseFile} onDropFiles={(fs) => { const { pg, at } = target(); if (pg) void addFiles(fs, pg, at); }}
           onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={strings(authorLocale).close} locale={authorLocale} t={at_} />
       )}
       {authoringOn && (
         <input ref={mediaFile} type="file" accept={ACCEPT} multiple hidden
-          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const pg = pages[page]; if (fs.length && pg) void addFiles(fs, pg); e.target.value = ''; }} />
+          onChange={(e) => { const fs = [...(e.target.files ?? [])]; const { pg, at } = target(); if (fs.length && pg) void addFiles(fs, pg, at); e.target.value = ''; }} />
       )}
       {panel === 'thumbnails' && config.features.thumbnails && (
         <Panel title={t.thumbnails} closeLabel={t.close} onClose={() => setPanel(null)}>
@@ -633,7 +672,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
             undo: author ? au.undo : ann.undo, redo: author ? au.redo : ann.redo,
-            mode: () => setMode(author ? 'read' : 'author'), add: () => openPicker(ACCEPT), save: () => void saveBook(),
+            // the dock's own add goes to the page in view, never to a spot chosen earlier from the right-click menu
+            mode: () => setMode(author ? 'read' : 'author'), add: () => { setAddAt(null); openPicker(ACCEPT); }, save: () => void saveBook(),
             exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,
