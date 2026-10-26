@@ -462,7 +462,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [au, at_, insertDefaults]);
   const mediaFile = useRef<HTMLInputElement>(null);
   // the page and point media being added goes to: where the author right-clicked, else the middle of the current page (`at` unset)
-  useEffect(() => { setAddAt((a) => (a && a.from !== page ? null : a)); }, [page]);
+  // and an open menu goes with it: a choice made after the page turned would otherwise bring the left page's spot back
+  useEffect(() => { setAddAt((a) => (a && a.from !== page ? null : a)); setInsertMenu(null); }, [page]);
   const target = useCallback((): { pg: LessonPage | undefined; at?: { x: number; y: number } } => {
     const pg = addAt ? pages.find((x) => x.id === addAt.pageId) : undefined;
     return pg && addAt ? { pg, at: { x: addAt.x, y: addAt.y } } : { pg: pages[page] };
@@ -625,7 +626,11 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       {author && insertMenuOn && insertMenu && (
         <InsertMenu at={{ x: insertMenu.left, y: insertMenu.top }} t={at_} onClose={closeInsertMenu}
-          onPick={(kind) => { pickMedia(kind, { pageId: insertMenu.pageId, x: insertMenu.x, y: insertMenu.y }); setInsertMenu(null); }} />
+          onPick={(kind) => {
+            pickMedia(kind, { pageId: insertMenu.pageId, x: insertMenu.x, y: insertMenu.y }); setInsertMenu(null);
+            // the menu's item goes away with it: focus moves on to the picker it opened, not to the page's body
+            requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('.chalk-sidebar :is(input, button, select):not([disabled])')?.focus({ preventScroll: true }));
+          }} />
       )}
       {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={authorLocale} t={at_} />}
       {sidebar && (
@@ -667,7 +672,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
             undo: author ? au.undo : ann.undo, redo: author ? au.redo : ann.redo,
-            mode: () => setMode(author ? 'read' : 'author'), add: () => openPicker(ACCEPT), save: () => void saveBook(),
+            mode: () => setMode(author ? 'read' : 'author'), add: () => { setAddAt(null); openPicker(ACCEPT); },   // the dock's own add: to the page in view, never to a spot chosen earlier save: () => void saveBook(),
             exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,

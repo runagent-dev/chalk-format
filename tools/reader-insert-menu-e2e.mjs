@@ -111,6 +111,7 @@ await p.locator('.chalk-insert-menu [role=menuitem]', { hasText: 'Image' }).clic
 await p.waitForSelector('text=/Add media: Image/', { timeout: 5000 });
 r.menuGone = (await menu.count()) === 0;
 r.drawer = await p.locator('text=/Add media: Image/').count() > 0;
+r.focusInSidebar = await p.evaluate(() => !!document.activeElement?.closest('.chalk-sidebar'));   // focus moved on to the picker
 r.markerShown = await p.locator('.chalk-author-target').count();
 const tb = await p.locator('.chalk-author-target').first().boundingBox().catch(() => null);
 r.markerAtPoint = !!tb && Math.abs(tb.x - at.x) < 4 && Math.abs(tb.y - at.y) < 4;
@@ -143,6 +144,16 @@ const pageBefore = await p.locator('.chalk-dock-page').first().innerText();
 await p.locator('.chalk-dock button[aria-label="পরের পৃষ্ঠা"], .chalk-dock button[aria-label="Next page"]').first().click(); await p.waitForTimeout(800);   // the dock's next page
 r.turned = (await p.locator('.chalk-dock-page').first().innerText()) !== pageBefore;
 r.turnForgets = (await p.locator('.chalk-author-target').count()) === 0;
+
+// 8b'. a page turned with the menu open closes the menu (so the left page's spot cannot come back)
+await p.keyboard.press('Escape');
+await p.mouse.click(at.x, at.y, { button: 'right' });
+await menu.waitFor({ timeout: 3000 });
+const pageAtMenu = await p.locator('.chalk-dock-page').first().innerText();
+await p.keyboard.press('PageDown'); await p.waitForTimeout(800);
+r.menuTurned = (await p.locator('.chalk-dock-page').first().innerText()) !== pageAtMenu;
+r.turnClosesMenu = (await menu.count()) === 0;
+await p.locator('.chalk-dock button[aria-label="আগের পৃষ্ঠা"], .chalk-dock button[aria-label="Previous page"]').first().click(); await p.waitForTimeout(800);
 
 // 8c. right-click in a text being typed keeps the browser's menu (cut, copy, paste) and does not end the typing
 await p.keyboard.press('Escape');
@@ -188,6 +199,7 @@ const ok =
   && r.arrowMoves === 'Video' && r.escapeCloses && r.clickAwayCloses && r.scrollCloses && r.cornerInside && r.worksWithPen
   && r.menuGone && r.drawer && r.markerShown === 1 && r.markerAtPoint && r.placedNearClick && r.markerGone
   && r.noMarkerForPlus && r.plusNearMiddle
+  && r.focusInSidebar && r.menuTurned && r.turnClosesMenu
   && r.spacePicks && r.spaceMarker && r.turned && r.turnForgets && r.typing && r.textKeepsNative && r.textStillOpen
   && r.offNoMenu && r.offKeepsNative && r.onAgain && r.onPrevents && !errs.length;
 console.log(ok ? 'OK  ' : 'FAIL', JSON.stringify(r), errs.length ? 'errors: ' + errs.join(' | ') : '');
