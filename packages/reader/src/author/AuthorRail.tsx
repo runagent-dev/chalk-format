@@ -12,7 +12,8 @@ export const SHAPES: AuthorTool[] = ['rect', 'ellipse', 'line', 'arrow'];
 /** Keyboard shortcuts, as in ChalkBoard. */
 export const SHORTCUTS: Record<string, AuthorTool> = { v: 'select', p: 'pen', h: 'highlighter', e: 'eraser', t: 'text', r: 'rect', o: 'ellipse', l: 'line', a: 'arrow' };
 const KEY_OF = Object.fromEntries(Object.entries(SHORTCUTS).map(([k, v]) => [v, k.toUpperCase()])) as Record<AuthorTool, string>;
-const MEDIA: { kind: MediaKind; icon: ReactNode }[] = [
+/** The media an author can add, in the order of the + menu and the right-click menu. */
+export const MEDIA: { kind: MediaKind; icon: ReactNode }[] = [
   { kind: 'image', icon: <ImageIcon size={20} /> }, { kind: 'video', icon: <FilmStripIcon size={20} /> },
   { kind: 'audio', icon: <MusicNotesIcon size={20} /> }, { kind: 'model3d', icon: <CubeIcon size={20} /> }, { kind: 'lab', icon: <FlaskIcon size={20} /> },
 ];
