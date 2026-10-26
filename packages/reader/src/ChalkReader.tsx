@@ -672,7 +672,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{
             undo: author ? au.undo : ann.undo, redo: author ? au.redo : ann.redo,
-            mode: () => setMode(author ? 'read' : 'author'), add: () => { setAddAt(null); openPicker(ACCEPT); },   // the dock's own add: to the page in view, never to a spot chosen earlier save: () => void saveBook(),
+            // the dock's own add goes to the page in view, never to a spot chosen earlier from the right-click menu
+            mode: () => setMode(author ? 'read' : 'author'), add: () => { setAddAt(null); openPicker(ACCEPT); }, save: () => void saveBook(),
             exportNotes: () => void exportNotes(), importNotes: () => notesFile.current?.click(),
             prev, next, goTo, thumbnails: () => togglePanel('thumbnails'), search: () => togglePanel('search'), zoomIn: () => zoomBy(config.zoom.step), zoomOut: () => zoomBy(1 / config.zoom.step),
             fit: () => { setFit((f) => (f === 'page' ? (config.fit === 'page' ? 'auto' : config.fit) : 'page')); viewer.current?.zoomTo(1); }, setLayout,

@@ -36,6 +36,8 @@ await p.waitForSelector('.chalk-surface.chalk-author', { timeout: 15000 });
 await p.waitForTimeout(1500);
 
 const r = {};
+// the author dock is whole: Save is there (a slip in the dock's actions once dropped it)
+r.saveInDock = await p.locator('.chalk-dock button[aria-label="Save the book"], .chalk-dock button[aria-label="বই সংরক্ষণ"], .chalk-dock button[aria-label*="Save"]').count() > 0;
 const surface = p.locator('.chalk-surface.chalk-author').first();
 const pageBox = await surface.boundingBox();
 const at = { x: Math.round(pageBox.x + pageBox.width * 0.5), y: Math.round(pageBox.y + pageBox.height * 0.35) };
@@ -193,7 +195,7 @@ await p.keyboard.press('Escape');
 
 await p.screenshot({ path: 'out/insert-menu-after.png' });
 const ok =
-  r.menuOnRail === 0
+  r.saveInDock && r.menuOnRail === 0
   && r.items.length === 5 && ['Image', 'Video', 'Sound', '3D model', 'Lab'].every((n, i) => r.items[i]?.trim() === n)
   && r.title === 'Add here' && r.insideReader && r.opensAtPointer && r.firstFocused
   && r.arrowMoves === 'Video' && r.escapeCloses && r.clickAwayCloses && r.scrollCloses && r.cornerInside && r.worksWithPen
