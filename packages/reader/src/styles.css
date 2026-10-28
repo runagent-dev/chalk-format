@@ -145,6 +145,13 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-dock-btn:active { transform: scale(0.94); }
 .chalk-dock-btn:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
 .chalk-dock-btn[aria-pressed="true"] { background: var(--chalk-accent-soft); color: var(--chalk-accent); }
+/* a button that needs doing now (Save, while there are unsaved changes): filled, with its name beside the icon */
+.chalk-dock-btn.is-primary { grid-auto-flow: column; gap: 6px; width: auto; min-width: var(--chalk-btn); padding: 0 14px 0 10px; background: var(--chalk-accent); color: var(--chalk-accent-ink); font: inherit; font-size: var(--chalk-text-sm); font-weight: 600; }
+.chalk-dock-btn.is-primary:hover { background: var(--chalk-accent); filter: brightness(1.1); }
+.chalk-dock-btn-text { white-space: nowrap; }
+.chalk-dock-btn.is-primary .chalk-dock-save::after { display: none; }
+.chalk-dock.is-left .chalk-dock-btn.is-primary, .chalk-dock.is-right .chalk-dock-btn.is-primary { width: var(--chalk-btn); padding: 0; }
+.chalk-dock.is-left .chalk-dock-btn-text, .chalk-dock.is-right .chalk-dock-btn-text { display: none; }
 .chalk-dock-btn:disabled { opacity: 0.38; cursor: default; background: transparent; transform: none; }
 
 /* tooltips: after a pause on hover, at once on keyboard focus */

@@ -52,7 +52,7 @@ The reader fills its container; give the container a height.
 | `onLabProgress` | `(progress, { objectId, labId, page }) => void` | A lab reported progress. |
 | `onPageChange` | `(index, page) => void` | The current page changed (0-based). |
 
-A ref gives `goTo(page)`, `next()`, `prev()` and `zoomTo(zoom)`.
+A ref gives `goTo(page)`, `next()`, `prev()`, `zoomTo(zoom)` and, while authoring, `save()` (the same as the Save button; resolves `true` once the book is saved).
 
 ### Configuration
 
@@ -163,7 +163,11 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
 - Made for a computer (mouse and keyboard); it still works by touch.
 - **Read mode** is the student's reader over the edited book, notes included, so you see exactly what students will.
 - **Save** writes a `.chalk` file with every asset it can reach (`onSave(bytes, lesson)` to keep it yourself;
-  otherwise it downloads). `onLessonChange` reports every edit. Closing the tab with unsaved changes asks first.
+  otherwise it downloads). While there are unsaved changes the dock's Save is a filled button with its name beside the
+  icon, and **Ctrl or Cmd+S** saves from anywhere on the page (text being typed in the reader is kept first; a text field
+  outside the reader keeps its keys). `onLessonChange` reports every edit; `onDirtyChange(dirty)` says when the book becomes
+  unsaved or saved, for your own notice or Save button (which can call the ref's `save()`). Closing the tab with unsaved
+  changes asks first.
 
 | Option | Default | |
 |---|---|---|
