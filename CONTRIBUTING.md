@@ -50,6 +50,7 @@ npx tsx tools/reader-author-e2e.mjs [url] [shots]    # author mode: select, prop
 npx tsx tools/reader-library-e2e.mjs [url] [shots]   # libraries: gallery, upload, search, reload, missing media
 node tools/reader-stream-e2e.mjs [url] [shots]       # a streamed 60-page book: what is fetched, and when
 node tools/reader-insert-menu-e2e.mjs [url]          # author mode's right-click menu: what is added lands where you clicked
+node tools/reader-save-e2e.mjs [url]                 # author mode's Save: the filled button, Ctrl+S, onDirtyChange, the ref's save()
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]   # desktop + phone screenshots
 ```
 
