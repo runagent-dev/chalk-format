@@ -3,7 +3,7 @@ import type { Locale } from '../config.js';
 /** Author mode's own words (the reader's are in ../i18n.ts). */
 const STRINGS = {
   en: {
-    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saveShort: 'Save', saved: 'Book saved', saveFailed: 'The book was not saved', loadingAll: 'Loading the whole book to edit it…',
+    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saveShort: 'Save', saved: 'Book saved', saveFailed: 'The book was not saved', loadingProgress: 'Loading the book for editing… {done} of {total}',
     unsaved: 'Unsaved changes', leave: 'This book has unsaved changes. Leave anyway?', notPlaceable: 'This file cannot be added',
     properties: 'Properties', nothing: 'Select something on the page to change how it is shown. Add media with the + button, or drop files on a page.',
     display: 'On the page', full: 'Full size', icon: 'Small icon',
@@ -31,7 +31,7 @@ const STRINGS = {
     image: 'Image', video: 'Video', audio: 'Sound', model3d: '3D model', lab: 'Lab', plugin: 'Widget', snip: 'Snip', other: 'Object',
   },
   bn: {
-    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saveShort: 'সংরক্ষণ', saved: 'বই সংরক্ষিত হয়েছে', saveFailed: 'বইটি সংরক্ষণ করা যায়নি', loadingAll: 'সম্পাদনার জন্য পুরো বই আনা হচ্ছে…',
+    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saveShort: 'সংরক্ষণ', saved: 'বই সংরক্ষিত হয়েছে', saveFailed: 'বইটি সংরক্ষণ করা যায়নি', loadingProgress: 'সম্পাদনার জন্য বই আনা হচ্ছে… {done} / {total}',
     unsaved: 'পরিবর্তন সংরক্ষণ করা হয়নি', leave: 'বইটির পরিবর্তন সংরক্ষণ করা হয়নি। তবুও বের হবেন?', notPlaceable: 'এই ফাইলটি যোগ করা যায় না',
     properties: 'বৈশিষ্ট্য', nothing: 'পাতার কিছু নির্বাচন করুন, তারপর এটি কীভাবে দেখাবে তা বদলান। + বোতাম দিয়ে মিডিয়া যোগ করুন, অথবা ফাইল পাতার ওপর ছেড়ে দিন।',
     display: 'পাতায়', full: 'পূর্ণ আকারে', icon: 'ছোট আইকন',
