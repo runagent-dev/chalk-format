@@ -246,8 +246,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const [active, setActive] = useState<{ id: string; page: number; auto?: boolean } | null>(null);
   const activeRef = useRef(active); activeRef.current = active;
   // the floating window (spec 1.6 `open: window`): one at a time, not a dialog: the page stays usable
-  const [floating, setFloating] = useState<{ o: LessonObject; anchor: WindowBox | null } | null>(null);
+  const [floating, setFloating] = useState<{ o: LessonObject; anchor: WindowBox | null; opener: HTMLElement | null } | null>(null);
   const floatingRef = useRef(floating); floatingRef.current = floating;
+  const windowOpen = floating !== null;
   const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject; full?: boolean } | null>(null);
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
   const hits = useMemo(() => {
@@ -328,7 +329,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (open === 'window') {
       const r = root.current?.getBoundingClientRect(), b = el?.getBoundingClientRect();
       setActive(null); setModal(null);
-      setFloating({ o, anchor: r && b ? { x: b.left - r.left, y: b.top - r.top, w: b.width, h: b.height } : null });
+      setFloating({ o, anchor: r && b ? { x: b.left - r.left, y: b.top - r.top, w: b.width, h: b.height } : null, opener: el ?? null });
       return;
     }
     setFloating(null);
@@ -412,7 +413,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       for (const id of objects.keys()) { const el = root.current?.querySelector(`[data-chalk-id="${CSS.escape(id)}"]`); if (el) io.observe(el); }
     });
     return () => { cancelAnimationFrame(raf); io.disconnect(); };
-  }, [page, pages, config.labs.autoStart, config.features, pr, author]);
+    // `windowOpen` restarts it when the window closes: what became visible meanwhile starts now
+  }, [page, pages, config.labs.autoStart, config.features, pr, author, windowOpen]);
 
   const noActive = useCallback(() => undefined, []);
   // streamed books: the pages around the current one, nearest first (spec 1.4 §5)
@@ -677,7 +679,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
         <FloatingWindow
           key={floating.o.id} title={modalTitle(floating.o, t, pr)} closeLabel={t.close} hint={t.windowHint} container={root.current}
           aspect={aspectFor(floating.o as { width: number; height: number }, config.window.aspect, floating.o.type === 'embed' && floating.o.embed === 'audio')}
-          layout={config.window.layout} anchor={floating.anchor} render={config.window.render} onClose={closeFloating}>
+          layout={config.window.layout} anchor={floating.anchor} opener={floating.opener} render={config.window.render} onClose={closeFloating}>
           <MediaInModal book={book} o={floating.o} locale={locale} theme={dark} storage={storage} onClose={closeFloating} fill />
         </FloatingWindow>
       )}

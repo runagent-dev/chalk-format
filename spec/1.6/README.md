@@ -16,7 +16,8 @@ over the page and leaves it usable.
 | `window` | Opens the media in a **floating window** over the page: it plays or runs there, and the page behind it stays readable and usable (the student can scroll, turn pages and take notes while it is open) |
 
 Everything else in 1.3 §1 is unchanged: `window` applies to images and embeds (video, audio, model3d, labs, plugins), on the
-page (`displayMode: full`) and as an icon (`displayMode: icon`). Unlike `inline`, it is not turned into `popup` for an icon.
+page (`displayMode: full`) and as an icon (`displayMode: icon`). Something with nothing to tap (a full-size audio player on the
+page, which has its own controls) plays where it is, as it does for `popup` and `fullscreen`; as an icon it opens in the window. Unlike `inline`, it is not turned into `popup` for an icon.
 There is no schema change: `open` has always been a string, and `formatVersion` stays 11.
 
 ```json

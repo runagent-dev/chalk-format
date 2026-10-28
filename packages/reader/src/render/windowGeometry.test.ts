@@ -136,6 +136,18 @@ describe('floating window geometry (spec 1.6)', () => {
     }
   });
 
+  it('a reader too small for a usable window still gets one with a positive size (it overflows, it never inverts)', () => {
+    for (const r of [{ w: 800, h: 40 }, { w: 800, h: 112 }, { w: 10, h: 300 }, { w: 10, h: 10 }, { w: 0, h: 0 }]) {
+      for (const a of [A, null, 0.5]) {
+        for (const b of [openBox(r, a), fit({ x: 0, y: 0, w: 500, h: 500 }, r, a), resize(openBox(r, a), 'se', -900, -900, r, a), resize(openBox(r, a), 'nw', 900, 900, r, a)]) {
+          expect(b.w, JSON.stringify([r, a, b])).toBeGreaterThan(0);
+          expect(b.h, JSON.stringify([r, a, b])).toBeGreaterThan(0);
+          expect(Number.isFinite(b.x + b.y + b.w + b.h)).toBe(true);
+        }
+      }
+    }
+  });
+
   it("takes the media's own shape, unless the host says otherwise", () => {
     expect(aspectFor({ width: 800, height: 500 }, 'media')).toBeCloseTo(1.6);
     expect(aspectFor({ width: 800, height: 500 }, 'free')).toBeNull();

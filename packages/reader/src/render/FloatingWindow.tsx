@@ -31,7 +31,7 @@ function areaOf(el: HTMLElement): Area {
   };
 }
 
-export function FloatingWindow({ title, closeLabel, hint, container, aspect, layout, anchor, render, onClose, children }: {
+export function FloatingWindow({ title, closeLabel, hint, container, aspect, layout, anchor, opener, render, onClose, children }: {
   title: string; closeLabel: string;
   /** Said once to assistive technology: how to move and resize with the keyboard. */
   hint: string;
@@ -41,6 +41,8 @@ export function FloatingWindow({ title, closeLabel, hint, container, aspect, lay
   layout: WindowLayout;
   /** The object that opened it, in the reader's coordinates: the window opens beside it, not over it, when it can. */
   anchor?: Box | null | undefined;
+  /** What was tapped to open it: focus goes back there when the window closes (unless the student already moved on to something else). */
+  opener?: HTMLElement | null | undefined;
   render?: RenderWindow | undefined;
   onClose: () => void;
   children: ReactNode;
@@ -72,9 +74,14 @@ export function FloatingWindow({ title, closeLabel, hint, container, aspect, lay
   }, [area]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // focus returns to what opened the window when it closes; the page behind is never made inert
+  const openerRef = useRef(opener); openerRef.current = opener;
   useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    return () => { if (before && document.contains(before)) before.focus?.({ preventScroll: true }); };
+    const before = (openerRef.current ?? document.activeElement) as HTMLElement | null;
+    return () => {
+      // only when focus was lost with the window (it is on the page itself): if the student tapped another card, which replaces this window, focus is already theirs
+      const now = document.activeElement;
+      if (before && document.contains(before) && (!now || now === document.body)) before.focus?.({ preventScroll: true });
+    };
   }, []);
   // ...and moves into the window once it exists: the first render has no room measured yet and draws nothing, so this cannot be a mount-only effect
   const shown = Boolean(container && area && box);
@@ -123,7 +130,7 @@ export function FloatingWindow({ title, closeLabel, hint, container, aspect, lay
 
   if (render) {
     return createPortal(
-      <div className="chalk-window-layer chalk-window-custom" data-layout={kind} onKeyDown={onKeyDown}>
+      <div ref={win} tabIndex={-1} className="chalk-window-layer chalk-window-custom" data-layout={kind} onKeyDown={onKeyDown}>
         {render({ title, onClose, aspect, kind, children })}
       </div>,
       container,
@@ -142,7 +149,7 @@ export function FloatingWindow({ title, closeLabel, hint, container, aspect, lay
           <button type="button" className="chalk-icon-btn" aria-label={closeLabel} onClick={onClose}><XIcon size={18} weight="bold" /></button>
         </header>
         <div className="chalk-window-body">
-          {aspect && kind === 'side'
+          {aspect && kind !== 'floating'
             ? <div className="chalk-window-frame" style={{ '--chalk-window-aspect': String(aspect) } as CSSProperties}>{children}</div>
             : <div className="chalk-window-frame is-fill">{children}</div>}
         </div>

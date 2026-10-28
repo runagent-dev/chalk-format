@@ -359,6 +359,7 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-window-frame:not(.is-fill) { width: min(100cqw, calc(100cqh * var(--chalk-window-aspect))); aspect-ratio: var(--chalk-window-aspect); }
 .chalk-window-body .chalk-live { border-radius: 0; box-shadow: none; }
 .chalk-window-media { display: block; width: 100%; height: 100%; object-fit: contain; background: oklch(15% 0 0); }
+.chalk-window-custom:focus { outline: none; }
 .chalk-window-custom-media { position: relative; width: 100%; height: 100%; }
 .chalk-window-body .chalk-modal-audio { padding: var(--chalk-space-md); }
 .chalk-window-grip { position: absolute; z-index: 2; touch-action: none; }

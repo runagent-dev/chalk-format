@@ -23,10 +23,15 @@ export const STEP_BIG = 64;
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 const round = (b: Box): Box => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
 
+/** The room a window may use inside a reader. A reader too small for any usable window (a dock and a few lines) still gets a positive size: it overflows, it never inverts. */
+const ROOM_MIN: Size = { w: 120, h: HEAD + 40 };
+const room = (root: Size): Size => ({ w: Math.max(root.w - 2 * MARGIN, ROOM_MIN.w), h: Math.max(root.h - 2 * MARGIN, ROOM_MIN.h) });
+
 /** The widest and narrowest body width that fits the reader (and keeps the aspect, when there is one). */
 function bodyWidthRange(root: Size, aspect: number | null): [number, number] {
-  const maxW = root.w - 2 * MARGIN;
-  const maxH = root.h - 2 * MARGIN - HEAD;
+  const r = room(root);
+  const maxW = r.w;
+  const maxH = r.h - HEAD;
   const hi = aspect ? Math.min(maxW, maxH * aspect) : maxW;
   const lo = aspect ? Math.max(MIN_BODY.w, MIN_BODY.h * aspect) : MIN_BODY.w;
   return [Math.min(lo, hi), hi];
@@ -40,8 +45,9 @@ export function fit(b: Box, root: Size, aspect: number | null): Box {
     const h = w / aspect + HEAD;
     return round({ x: clamp(b.x, MARGIN, root.w - w - MARGIN), y: clamp(b.y, MARGIN, root.h - h - MARGIN), w, h });
   }
-  const w = clamp(b.w, Math.min(MIN_BODY.w, root.w - 2 * MARGIN), root.w - 2 * MARGIN);
-  const h = clamp(b.h, Math.min(MIN_BODY.h + HEAD, root.h - 2 * MARGIN), root.h - 2 * MARGIN);
+  const r = room(root);
+  const w = clamp(b.w, Math.min(MIN_BODY.w, r.w), r.w);
+  const h = clamp(b.h, Math.min(MIN_BODY.h + HEAD, r.h), r.h);
   return round({ x: clamp(b.x, MARGIN, root.w - w - MARGIN), y: clamp(b.y, MARGIN, root.h - h - MARGIN), w, h });
 }
 
@@ -101,9 +107,10 @@ export function resize(start: Box, dir: Dir, dx: number, dy: number, root: Size,
     w = clamp(pick, Math.min(lo, hi), hi);
     h = w / aspect + HEAD;
   } else {
-    const minW = Math.min(MIN_BODY.w, root.w - 2 * MARGIN), minH = Math.min(MIN_BODY.h + HEAD, root.h - 2 * MARGIN);
-    w = clamp(start.w + sx * dx, minW, Math.min(root.w - 2 * MARGIN, roomW));
-    h = clamp(start.h + sy * dy, minH, Math.min(root.h - 2 * MARGIN, roomH));
+    const r = room(root);
+    const minW = Math.min(MIN_BODY.w, r.w), minH = Math.min(MIN_BODY.h + HEAD, r.h);
+    w = clamp(start.w + sx * dx, minW, Math.min(r.w, roomW));
+    h = clamp(start.h + sy * dy, minH, Math.min(r.h, roomH));
   }
   const x = west ? start.x + start.w - w : start.x;
   const y = north ? start.y + start.h - h : start.y;
