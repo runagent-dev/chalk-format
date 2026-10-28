@@ -126,7 +126,8 @@ Give `source` a streamed book's directory (ending in `/`) or its `book.json`: th
 shows every page at once (placeholders with thumbnails until they arrive), and loads the current page first, then
 outward to `config.streaming.window` pages each way (default 5). A long jump goes straight there and loads only
 around it; search loads the book's text file and finds words on pages not loaded yet; author mode loads the rest
-of the book first. `openStreamedBook(url)` gives the same book outside the component. Publish with
+of the book first (up to 12 requests at a time, with a counter, "Loading the book for editing… 120 of 360", shown
+until the book is whole). `openStreamedBook(url)` gives the same book outside the component. Publish with
 `tools/chalk-stream.ts publish book.chalk out/`.
 
 | Option | Default | |
