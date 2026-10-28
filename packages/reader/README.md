@@ -51,8 +51,10 @@ The reader fills its container; give the container a height.
 | `labStorage` | `{ load, save, clear }` | Where labs keep state (default: this browser). |
 | `onLabProgress` | `(progress, { objectId, labId, page }) => void` | A lab reported progress. |
 | `onPageChange` | `(index, page) => void` | The current page changed (0-based). |
+| `onSavingChange` | `(saving) => void` | Authoring: a save started (`true`) or ended (`false`), for your own Save button. |
+| `onSaveProgress` | `({ phase, done?, total? }) => void` | Authoring: where a save is: collecting the pictures, packing, handing over to `onSave`. |
 
-A ref gives `goTo(page)`, `next()`, `prev()`, `zoomTo(zoom)` and, while authoring, `save()` (the same as the Save button; resolves `true` once the book is saved).
+A ref gives `goTo(page)`, `next()`, `prev()`, `zoomTo(zoom)` and, while authoring, `save()` (the same as the Save button; resolves `true` once the book is saved, `false` if it was not; called while a save is running it joins that one).
 
 ### Configuration
 
@@ -168,6 +170,16 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   outside the reader keeps its keys). `onLessonChange` reports every edit; `onDirtyChange(dirty)` says when the book becomes
   unsaved or saved, for your own notice or Save button (which can call the ref's `save()`). Closing the tab with unsaved
   changes asks first.
+- **A save shows what it is doing, from the click on.** On a big book the first seconds go on fetching its pictures, so the
+  dock's Save button turns busy at once (`aria-busy`, named "Saving…", its icon pulsing unless the reader asked for no
+  motion) and the status line says "collecting pictures, 120 of 368", then "packing the book", then "uploading" while your
+  `onSave` runs. Only one save runs at a time: a second click, **Ctrl or Cmd+S** ("Already saving") or `save()` during it
+  does not start another (`save()` joins the running one and resolves with its result). A failed save ends the busy state
+  and keeps the unsaved mark, as before. Your own Save button hears it through two props:
+  `onSavingChange(saving: boolean)` (true when a save starts, false when it ends, saved or not) and
+  `onSaveProgress({ phase, done?, total? })` with `phase` `'collecting'` (with how many of the book's assets are in hand),
+  `'packing'` or `'handing-over'` (your `onSave` is running); it is called at most about ten times a second, the first
+  time before anything is fetched. What is saved is the same file as before, byte for byte.
 
 | Option | Default | |
 |---|---|---|
