@@ -247,6 +247,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const activeRef = useRef(active); activeRef.current = active;
   // the floating window (spec 1.6 `open: window`): one at a time, not a dialog: the page stays usable
   const [floating, setFloating] = useState<{ o: LessonObject; anchor: WindowBox | null } | null>(null);
+  const floatingRef = useRef(floating); floatingRef.current = floating;
   const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject; full?: boolean } | null>(null);
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
   const hits = useMemo(() => {
@@ -355,7 +356,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (o.embed === 'audio') return <AudioEmbed book={book} o={o} locale={locale} />;
     // in its box on the page, unless that box is too small on this screen to use: then a larger view
     // a lab needs room for its controls; a model only needs to be big enough to turn
-    const start = elsewhere ?? ((el: HTMLElement) => { if (tooSmall(el, Boolean(lab))) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); });
+    // the student asked for this one, so it takes the place of an open window (one live thing at a time, spec 1.3 §1)
+    const start = elsewhere ?? ((el: HTMLElement) => { setFloating(null); if (tooSmall(el, Boolean(lab))) setModal({ kind: 'media', o }); else setActive({ id: o.id, page: pi }); });
     return <EmbedCard book={book} o={o} caption={lab ? `${lab.lab.title} · ${t.startLab}` : undefined} label={lab ? `${t.startLab}: ${lab.lab.title}` : label} onActivate={start} notFound={t.notFound} />;
   }, [book, config.features, t, locale, pages, openElsewhere, pr]);
 
@@ -400,7 +402,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
         const id = (e.target as HTMLElement).dataset.chalkId, o = id ? objects.get(id) : undefined;
         if (!o || e.intersectionRatio < 0.5 || tooSmall(e.target as HTMLElement, isLabObject(o))) continue;
         const cur = activeRef.current;
-        if (cur?.id === o.id || (cur && !cur.auto)) continue;
+        // never in place of what the student opened: a tapped-open window is theirs, and so is a tapped-open lab
+        if (cur?.id === o.id || (cur && !cur.auto) || floatingRef.current) continue;
         setActive({ id: o.id, page, auto: true });
       }
     }, { threshold: [0, 0.5] });

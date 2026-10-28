@@ -187,7 +187,7 @@ of a dimmed dialog: the page behind it stays readable and usable, so a student c
 
 - **Floating** (the default): a window the student moves by its header (mouse, touch or the arrow keys, Shift for bigger steps) and resizes by its
   edges and corners (Alt and the arrow keys). It opens beside the object that was tapped, stays inside the reader and out of the dock's strip, and the
-  dock stays above it. Escape closes it from inside; focus returns to what opened it.
+  dock stays above it. Escape closes it from its own controls (a lab in a sandboxed frame keeps its own keys, as in a dialog: use the close button); focus returns to what opened it.
 - **Its shape follows the media**: a lab's, image's, video's or model's own width and height, kept while resizing. `window.aspect` changes that:
   `'free'` for any shape, or a number such as `4 / 3`.
 - **One at a time**: opening another replaces it, and a lab or model running on the page makes way for it.

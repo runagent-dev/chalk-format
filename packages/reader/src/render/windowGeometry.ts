@@ -113,8 +113,10 @@ export function resize(start: Box, dir: Dir, dx: number, dy: number, root: Size,
 /** The bottom sheet of a narrow reader: the whole width, as tall as the media's proportions ask, at most 70 % of the reader. */
 export function sheetBox(root: Size, aspect: number | null): Box {
   const want = aspect ? root.w / aspect + HEAD : root.h * 0.55;
-  const h = Math.round(clamp(want, MIN_BODY.h + HEAD, root.h * 0.7));
-  return { x: 0, y: root.h - h, w: root.w, h };
+  // the upper bound wins over the lower one: on a very short reader the sheet is smaller than the usual minimum, never taller than the reader
+  const hi = Math.min(root.h, Math.max(HEAD + 40, root.h * 0.7));
+  const h = Math.round(clamp(want, Math.min(MIN_BODY.h + HEAD, hi), hi));
+  return { x: 0, y: Math.max(0, root.h - h), w: root.w, h };
 }
 
 /** The body's aspect for an object on the page: its own width over height, or null for a shape that has none (audio) or when the host wants it free. */

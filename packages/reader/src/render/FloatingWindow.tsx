@@ -71,12 +71,14 @@ export function FloatingWindow({ title, closeLabel, hint, container, aspect, lay
     // the anchor and aspect are of this window's own object: a new object is a new window (the caller keys it)
   }, [area]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // focus moves into the window when it opens and comes back to what opened it when it closes; the page behind is never made inert
+  // focus returns to what opened the window when it closes; the page behind is never made inert
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
-    win.current?.focus({ preventScroll: true });
     return () => { if (before && document.contains(before)) before.focus?.({ preventScroll: true }); };
   }, []);
+  // ...and moves into the window once it exists: the first render has no room measured yet and draws nothing, so this cannot be a mount-only effect
+  const shown = Boolean(container && area && box);
+  useEffect(() => { if (shown) win.current?.focus({ preventScroll: true }); }, [shown]);
 
   const place = useCallback((next: Box) => setBox(next), []);
   const drag = useRef<{ id: number; x: number; y: number; start: Box; dir: Dir | 'move' } | null>(null);

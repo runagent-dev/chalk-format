@@ -127,6 +127,15 @@ describe('floating window geometry (spec 1.6)', () => {
     expect(sheetBox(phone, null).h).toBeGreaterThanOrEqual(MIN_BODY.h + HEAD);
   });
 
+  it('on a very short reader the sheet is never taller than the reader (header and close stay in view)', () => {
+    for (const h of [60, 100, 128, 200, 300]) {
+      const s = sheetBox({ w: 390, h }, A);
+      expect(s.y, `h=${h}`).toBeGreaterThanOrEqual(0);
+      expect(s.y + s.h, `h=${h}`).toBeLessThanOrEqual(h);
+      expect(s.h, `h=${h}`).toBeLessThanOrEqual(h);
+    }
+  });
+
   it("takes the media's own shape, unless the host says otherwise", () => {
     expect(aspectFor({ width: 800, height: 500 }, 'media')).toBeCloseTo(1.6);
     expect(aspectFor({ width: 800, height: 500 }, 'free')).toBeNull();

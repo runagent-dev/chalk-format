@@ -177,12 +177,30 @@ await clickObj('pendulum-lab'); await p.waitForSelector('.chalk-window');
 await p.click('.chalk-window-head button'); await p.waitForTimeout(250);
 check('the close button closes it', (await winCount()) === 0);
 
+// opened from the keyboard: focus is in the window at once, so Escape closes it straight away, and focus goes back to the card
+await reveal('pendulum-lab');
+await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-lab"]').focus());
+await p.keyboard.press('Enter'); await p.waitForSelector('.chalk-window'); await p.waitForTimeout(300);
+check('opened by the keyboard, focus is in the window', await p.evaluate(() => !!document.activeElement?.closest('.chalk-window')));
+await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+check('...so Escape closes it at once, and focus returns to the card', (await winCount()) === 0 && await p.evaluate(() => document.activeElement?.closest('[data-chalk-id]')?.getAttribute('data-chalk-id') === 'pendulum-lab'));
+
+// one live thing at a time: with a window open, a model that is "live" does not start by itself when its page comes up, and a tap on another lab takes the window's place
+await clickObj('pendulum-lab'); await p.waitForSelector('.chalk-window');
+await go(2); await p.evaluate(() => document.querySelector('[data-chalk-id="screw-gauge"]')?.scrollIntoView({ block: 'center' })); await p.waitForTimeout(3500);
+check('a live model does not start by itself beside an open window', (await p.locator('.chalk-model model-viewer').count()) === 0 && (await winCount()) === 1);
+await go(4);
+await clickObj('screw-gauge-lab'); await p.waitForTimeout(1200);
+check('a tap on another lab takes the window\'s place', (await winCount()) === 0);
+await p.keyboard.press('Escape'); await go(3);
+
 // a narrow reader: a sheet across the bottom, above the dock; live resize between the two
 await clickObj('pendulum-lab'); await p.waitForSelector('.chalk-window[data-layout="floating"]');
 await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(500);
 const sheet = await rect('.chalk-window'); const phoneRoot = await root();
 check('on a narrow reader the window becomes a sheet', (await p.locator('.chalk-window[data-layout="sheet"]').count()) === 1);
 check('...across the whole width, at the bottom, above the dock', near(sheet.x, phoneRoot.x, 1) && near(sheet.w, phoneRoot.w, 1) && sheet.b <= phoneRoot.b - 70 && sheet.h <= phoneRoot.h * 0.7 + 2, JSON.stringify(sheet));
+check('the sheet header and close button are inside the reader', await p.evaluate(() => { const r = document.querySelector('.chalk-reader').getBoundingClientRect(), h = document.querySelector('.chalk-window-head button').getBoundingClientRect(); return h.top >= r.top && h.bottom <= r.bottom; }));
 check('...with nothing to drag or resize', (await p.locator('.chalk-window-grip').count()) === 0);
 const sh0 = await rect('.chalk-window'); const hd = await rect('.chalk-window-head');
 await p.mouse.move(hd.x + 40, hd.y + hd.h / 2); await p.mouse.down(); await p.mouse.move(hd.x + 40, hd.y - 200, { steps: 5 }); await p.mouse.up();

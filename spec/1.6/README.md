@@ -39,7 +39,9 @@ A reader that knows `window`:
 - MUST open the media in a window that **does not cover the whole page and does not dim it**, and MUST leave the page
   behind it scrollable and operable;
 - MUST give the window a title (the object's label, else the kind's name), a visible close control, a role of
-  `dialog` with `aria-modal="false"`, and close it on `Escape` when focus is inside it;
+  `dialog` with `aria-modal="false"`, and close it on `Escape` when focus is on the window's own controls. A lab runs in a
+  sandboxed frame (1.1 §3) and keeps the keys pressed while focus is inside it, as in a dialog; the close control is
+  always there;
 - SHOULD let the student move and resize it (by pointer, touch and keyboard), keep it inside the reader, and open it where it
   does not cover the object that opened it, when it can tell;
 - SHOULD show at most one window at a time (opening another replaces it), and at most one live lab or 3D model overall (1.3 §1);
