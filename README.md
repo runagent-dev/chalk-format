@@ -84,6 +84,7 @@ snip). **Open a book** loads any `.chalk`; **Configure** changes the reader live
 | [1.3 Presentation](spec/1.3/README.md) | 10 | How the author wants each piece of media shown: live or a card, what a tap opens, label, icon, accent, playback |
 | [1.4 Streamed books](spec/1.4/README.md) | 10 (no model change) | A book as static files: an index, one file per page, a search file |
 | [1.5 Lab libraries](spec/1.5/README.md) | 11 | Labs share libraries such as three.js, supplied by the reader; lab manifests describe a lab for libraries and editors |
+| [1.6 Floating window](spec/1.6/README.md) | 11 (no model change) | A new `open` value, `window`: media opens in a window that floats over the page and leaves it usable |
 
 Each version only adds to the ones before: every valid book stays valid, and older readers still open newer books.
 [`schema/`](schema) has the JSON Schemas for readers written in other languages, and
