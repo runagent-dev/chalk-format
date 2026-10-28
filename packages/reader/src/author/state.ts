@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { packLesson, type AssetBundle } from '@chalk-format/container';
+import { gatherAssets } from './gather.js';
+import type { SaveProgress } from './save-run.js';
 import { assetKey, referencedAssetIds, type Lesson } from '@chalk-format/model';
 import type { Book } from '../book.js';
 
@@ -79,14 +81,15 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
    * The book as a .chalk file: every asset it uses that is at hand is carried; others stay external. It is not
    * marked saved here: call `markSaved(lesson)` once the file is really kept (the host's upload may fail).
    */
-  const save = useCallback(async (): Promise<{ bytes: Uint8Array; lesson: Lesson }> => {
-    const bundle: AssetBundle = new Map();
-    for (const id of referencedAssetIds(lesson)) {
-      const a = added.current.get(id);
-      if (a) { bundle.set(id, { type: a.type, bytes: a.bytes }); continue; }
-      const b = await (bytesFrom.current ?? base.assetBytes)(id).catch(() => null);
-      if (b) bundle.set(id, { type: b.type, bytes: new Uint8Array(b.bytes) });
-    }
+  const save = useCallback(async (progress?: (p: SaveProgress) => void): Promise<{ bytes: Uint8Array; lesson: Lesson }> => {
+    const got = await gatherAssets({
+      ids: referencedAssetIds(lesson),
+      held: (id) => { const a = added.current.get(id); return a ? { type: a.type, bytes: a.bytes } : undefined; },
+      fetchOne: async (id) => { const b = await (bytesFrom.current ?? base.assetBytes)(id); return b ? { type: b.type, bytes: new Uint8Array(b.bytes) } : null; },
+      progress,
+    });
+    const bundle: AssetBundle = new Map(got);
+    progress?.({ phase: 'packing' });
     const bytes = await packLesson({ ...lesson, updatedAt: new Date().toISOString() }, bundle);
     return { bytes, lesson };
   }, [lesson, base]);
