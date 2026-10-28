@@ -243,6 +243,18 @@ check('...the lab keeps its own shape inside it', near(sideBody.w / sideBody.h, 
 check('...and the dock is above it', await p.evaluate(() => { const d = document.querySelector('.chalk-dock').getBoundingClientRect(); return !!document.elementFromPoint(d.x + d.width / 2, d.y + d.height / 2)?.closest('.chalk-dock'); }));
 await shot(p, 'window-side');
 await p.evaluate(() => document.querySelector('.chalk-window-head').focus()); await p.keyboard.press('Escape');
+// with the dock on top the panel keeps clear of it: its header and close button are not under the dock
+await p.click('.app-btn:has-text("Configure")');
+await p.click('.pg-choice:has(legend:text-is("Position")) label:has-text("top")');
+await p.click('.pg-choice:has(legend:text-is("Where it opens")) label:has-text("left panel")'); // its close button is under the centred dock otherwise
+await p.click('.app-btn:has-text("Configure")'); await p.waitForTimeout(400);
+await clickObj('pendulum-lab'); await p.waitForSelector('.chalk-window[data-layout="side"]'); await p.waitForTimeout(400);
+check('a side panel under a top dock keeps its close button visible', await p.evaluate(() => { const b = document.querySelector('.chalk-window-head button').getBoundingClientRect(); const e = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2); return !!e?.closest('.chalk-window-head'); }));
+await shot(p, 'window-side-top-dock');
+await p.evaluate(() => document.querySelector('.chalk-window-head').focus()); await p.keyboard.press('Escape');
+await p.click('.app-btn:has-text("Configure")');
+await p.click('.pg-choice:has(legend:text-is("Position")) label:has-text("bottom")');
+await p.click('.app-btn:has-text("Configure")'); await p.waitForTimeout(300);
 // free shape and a 4:3 shape
 await p.click('.app-btn:has-text("Configure")');
 await p.click('.pg-choice:has(legend:text-is("Where it opens")) label:has-text("floating")');
@@ -281,6 +293,22 @@ await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-lab"]').
 check('a host\'s own chrome opened by the keyboard has focus, so Escape closes it at once', await p.evaluate(() => !!document.activeElement?.closest('.chalk-window-custom')));
 await p.keyboard.press('Escape'); await p.waitForTimeout(300);
 check('...and focus returns to the card', (await p.locator('.demo-window').count()) === 0 && await p.evaluate(() => document.activeElement?.closest('[data-chalk-id]')?.getAttribute('data-chalk-id') === 'pendulum-lab'));
+
+// ---- a lab that starts by itself never starts behind a dialog that is open, nor beside a window ----
+await mode('Author'); await go(4);
+await clickObj('screw-gauge-lab'); await p.waitForSelector('.chalk-insp'); await opens('In a dialog');
+await p.click('.app-btn:has-text("Configure")'); await p.click('.pg-check:has-text("Start a lab when its page opens")'); await p.click('.app-btn:has-text("Configure")');
+await mode('Read'); await go(3);
+await reveal('pendulum-video'); await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-video"]').focus()); await p.keyboard.press('Enter'); await p.waitForSelector('.chalk-window, .demo-window'); // the host's demo chrome is still on here
+await go(4); await p.waitForTimeout(2500);
+check('with a window open, a lab does not start by itself (autoStart)', (await p.locator('.chalk-lab iframe').count()) === 0);
+await reveal('screw-gauge-lab');
+await p.evaluate(() => document.querySelector('[data-chalk-id="screw-gauge-lab"]').focus()); await p.keyboard.press('Enter'); await p.waitForSelector('.chalk-modal', { timeout: 5000 });
+await p.waitForTimeout(3500);
+check('replacing the window with a dialog for that lab runs it once, in the dialog', (await p.locator('.chalk-lab iframe').count()) === 1 && (await p.locator('.chalk-modal .chalk-lab iframe').count()) === 1, `iframes ${await p.locator('.chalk-lab iframe').count()}`);
+await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+await p.click('.app-btn:has-text("Configure")'); await p.click('.pg-check:has-text("Start a lab when its page opens")'); await p.click('.app-btn:has-text("Configure")');
+await go(3);
 
 // ---- what already existed is unchanged: the dialog and full screen ----
 await p.click('.app-btn:has-text("Configure")');

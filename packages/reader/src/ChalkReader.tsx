@@ -250,6 +250,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const floatingRef = useRef(floating); floatingRef.current = floating;
   const windowOpen = floating !== null;
   const [modal, setModal] = useState<{ kind: 'snip'; pageId: string } | { kind: 'media'; o: LessonObject; full?: boolean } | null>(null);
+  const modalRef = useRef(modal); modalRef.current = modal;
+  const dialogOpen = modal !== null;
   const storage = props.labStorage ?? (config.persistence === 'local' ? localLabStorage : null);
   const hits = useMemo(() => {
     if (panel !== 'search' && !deferredQuery) return [];
@@ -404,7 +406,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
         if (!o || e.intersectionRatio < 0.5 || tooSmall(e.target as HTMLElement, isLabObject(o))) continue;
         const cur = activeRef.current;
         // never in place of what the student opened: a tapped-open window is theirs, and so is a tapped-open lab
-        if (cur?.id === o.id || (cur && !cur.auto) || floatingRef.current) continue;
+        if (cur?.id === o.id || (cur && !cur.auto) || floatingRef.current || modalRef.current) continue;
         setActive({ id: o.id, page, auto: true });
       }
     }, { threshold: [0, 0.5] });
@@ -413,8 +415,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       for (const id of objects.keys()) { const el = root.current?.querySelector(`[data-chalk-id="${CSS.escape(id)}"]`); if (el) io.observe(el); }
     });
     return () => { cancelAnimationFrame(raf); io.disconnect(); };
-    // `windowOpen` restarts it when the window closes: what became visible meanwhile starts now
-  }, [page, pages, config.labs.autoStart, config.features, pr, author, windowOpen]);
+    // `windowOpen` and `dialogOpen` restart it when a window or dialog closes: what became visible meanwhile starts now (and nothing starts behind one that is open)
+  }, [page, pages, config.labs.autoStart, config.features, pr, author, windowOpen, dialogOpen]);
 
   const noActive = useCallback(() => undefined, []);
   // streamed books: the pages around the current one, nearest first (spec 1.4 §5)

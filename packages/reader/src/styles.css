@@ -339,6 +339,10 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 }
 .chalk-window[data-layout="sheet"] { border-radius: var(--chalk-window-radius, var(--chalk-radius-md)) var(--chalk-window-radius, var(--chalk-radius-md)) 0 0; }
 .chalk-window[data-layout="side"] { top: 0; bottom: 0; width: var(--chalk-window-side-w, 50%); max-width: 100%; border-radius: 0; }
+/* the dock is above the window: a side panel keeps clear of the strip the dock uses, so its header and close button stay visible */
+.chalk-reader[data-dock="top"] .chalk-window[data-layout="side"] { top: 72px; }
+.chalk-reader[data-dock="left"] .chalk-window[data-layout="side"][data-side="left"] { left: 84px; }
+.chalk-reader[data-dock="right"] .chalk-window[data-layout="side"][data-side="right"] { right: 84px; }
 .chalk-window[data-layout="side"][data-side="right"] { right: 0; border-width: 0 0 0 1px; }
 .chalk-window[data-layout="side"][data-side="left"] { left: 0; border-width: 0 1px 0 0; }
 .chalk-window-head {
