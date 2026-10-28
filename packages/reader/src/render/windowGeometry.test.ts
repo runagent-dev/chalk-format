@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEAD, MARGIN, MIN_BODY, aspectFor, fit, move, openBox, resize, sheetBox, type Box } from './windowGeometry.js';
+import { HEAD, MARGIN, MIN_BODY, aspectFor, fit, move, openBox, overlap, resize, sheetBox, type Box } from './windowGeometry.js';
 
 const root = { w: 1280, h: 800 };
 const A = 16 / 9;
@@ -16,9 +16,20 @@ describe('floating window geometry (spec 1.6)', () => {
     expect(inside(b)).toBe(true);
   });
 
-  it('opens at the top left when the object that opened it is on the right half', () => {
-    expect(openBox(root, A, { x: 900, y: 300, w: 300, h: 200 }).x).toBe(24);
-    expect(openBox(root, A, { x: 100, y: 300, w: 300, h: 200 }).x).toBe(root.w - 560 - 24);
+  it('opens beside the object that opened it: on the side that covers less of it', () => {
+    expect(openBox(root, A, { x: 900, y: 40, w: 300, h: 200 }).x).toBe(24);
+    expect(openBox(root, A, { x: 100, y: 40, w: 300, h: 200 }).x).toBe(root.w - 560 - 24);
+    // a wide object that reaches across the page: the side that overlaps it less, never more than the other
+    const wide = { x: 267, y: 177, w: 745, h: 257 };
+    const b = openBox(root, A, wide);
+    const other = { ...b, x: b.x === 24 ? root.w - b.w - 24 : 24 };
+    expect(overlap(b, wide)).toBeLessThanOrEqual(overlap(other, wide));
+    expect(overlap(b, wide) / (wide.w * wide.h)).toBeLessThan(0.4);
+  });
+
+  it('measures how much two boxes share', () => {
+    expect(overlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 5, y: 5, w: 10, h: 10 })).toBe(25);
+    expect(overlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 20, y: 0, w: 5, h: 5 })).toBe(0);
   });
 
   it('a tall medium is held to 80 % of the reader height and keeps its shape', () => {

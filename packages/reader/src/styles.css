@@ -327,7 +327,7 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
    Not a dialog: no backdrop, the page behind stays usable. A host restyles it with these variables set on `.chalk-reader` (or any ancestor):
    --chalk-window-bg, -fg, -border, -radius, -shadow, -head-bg, -body-bg, -z; and for the side layout --chalk-window-side-w. The classes
    chalk-window, chalk-window-head, chalk-window-body and the attributes data-layout (floating | side | sheet) and data-side are stable. */
-.chalk-window-layer { position: absolute; inset: 0; z-index: var(--chalk-window-z, 30); pointer-events: none; }
+.chalk-window-layer { position: absolute; inset: 0; z-index: var(--chalk-window-z, 19); pointer-events: none; } /* just under the dock (20): navigation stays reachable */
 .chalk-window {
   position: absolute; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; outline: none;
   background: var(--chalk-window-bg, var(--chalk-surface)); color: var(--chalk-window-fg, var(--chalk-ink));

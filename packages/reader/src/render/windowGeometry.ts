@@ -47,7 +47,7 @@ export function fit(b: Box, root: Size, aspect: number | null): Box {
 
 /**
  * Where a window opens: at the media's own proportions, about half the reader wide (at most 560 px) and no more than 80 % of its height,
- * at the top right, or at the top left when the object that opened it (`anchor`, in the reader's coordinates) sits on the right half.
+ * at the top right, or at the top left when that covers less of the object that opened it (`anchor`, in the reader's coordinates).
  */
 export function openBox(root: Size, aspect: number | null, anchor?: Box | null): Box {
   const free: Size = { w: 440, h: 300 };
@@ -59,9 +59,20 @@ export function openBox(root: Size, aspect: number | null, anchor?: Box | null):
     h = tall;
     if (aspect) w = (h - HEAD) * aspect;
   }
-  const left = anchor ? anchor.x + anchor.w / 2 > root.w / 2 : false;
-  const x = left ? 24 : root.w - w - 24;
-  return fit({ x, y: 24, w, h }, root, aspect);
+  const right = fit({ x: root.w - w - 24, y: 24, w, h }, root, aspect);
+  const left = fit({ x: 24, y: 24, w, h }, root, aspect);
+  if (!anchor) return right;
+  // beside the object that opened it: whichever side covers less of it (the right one when it is a tie and the object is on the left half)
+  const a = overlap(right, anchor), c = overlap(left, anchor);
+  if (a !== c) return a < c ? right : left;
+  return anchor.x + anchor.w / 2 > root.w / 2 ? left : right;
+}
+
+/** The area two boxes have in common. */
+export function overlap(a: Box, b: Box): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
 }
 
 /** The window moved by (dx, dy), kept inside the reader. */

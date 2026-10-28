@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5' | '1.6'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.5';
+const CURRENT = '1.6';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
