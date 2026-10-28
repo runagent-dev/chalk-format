@@ -26,6 +26,7 @@ import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, video
 import type { LibraryItem } from '@chalk-format/store';
 import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
+import { runSave, singleFlight, throttled, type SaveProgress } from './author/save-run.js';
 import { edit } from './annotate/state.js';
 import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
@@ -65,6 +66,13 @@ export type ChalkReaderProps = {
   onDirtyChange?: (dirty: boolean) => void;
   /** Authoring: the saved book. Without it, Save downloads the .chalk file. */
   onSave?: (bytes: Uint8Array, lesson: Lesson) => void | Promise<void>;
+  /**
+   * Authoring: where a save is, from the click on (before the pictures are fetched): `collecting` (with how many of the book's assets are in
+   * hand), `packing`, `handing-over` (the host's `onSave` runs). Called at most about ten times a second.
+   */
+  onSaveProgress?: (progress: SaveProgress) => void;
+  /** Authoring: true when a save starts and false when it ends (saved or failed), for the host's own Save button. */
+  onSavingChange?: (saving: boolean) => void;
   /** Authoring: the mode, controlled by the host (e.g. its own switch). The dock's switch reports through onModeChange. */
   mode?: 'read' | 'author';
   /** Authoring: when the reader switches between reading and authoring. */
@@ -78,7 +86,7 @@ export type ReaderHandle = {
   next(): void;
   prev(): void;
   zoomTo(zoom: number): void;
-  /** Authoring: saves the book as the Save button does (through `onSave`, else a download). Resolves true once saved, false when it was not (the reader is not authoring, or the save failed). */
+  /** Authoring: saves the book as the Save button does (through `onSave`, else a download). Resolves true once saved, false when it was not (the reader is not authoring, or the save failed). Called while a save is already running, it joins that save: no second one starts, and it resolves with the first one's result. */
   save(): Promise<boolean>;
   readonly book: Book | null;
 };
@@ -512,27 +520,51 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     }
     setToast(null);
   }, [at_, placeItem]);
-  const saveBook = useCallback(async (): Promise<boolean> => {
+  // one save at a time: a second click, Ctrl/⌘+S or handle.save() while one runs joins it. From the click the dock's Save button is busy and the
+  // status line says what the save is doing (the pictures are fetched first, which takes seconds on a big book), and the host hears it too.
+  const saveFlight = useRef(singleFlight<boolean>());
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const savingRef = useRef(false);
+  const hostSaveEvents = useRef({ progress: props.onSaveProgress, change: props.onSavingChange });
+  hostSaveEvents.current = { progress: props.onSaveProgress, change: props.onSavingChange };
+  const saveBook = useCallback((): Promise<boolean> => saveFlight.current.run(async () => {
     let saved: Lesson;
+    const noteFor = (p: SaveProgress) => p.phase === 'collecting' && p.total
+      ? at_.savingPictures.replace('{done}', num(authorLocale, p.done ?? 0)).replace('{total}', num(authorLocale, p.total))
+      : p.phase === 'packing' ? at_.savingPacking : p.phase === 'handing-over' ? (props.onSave ? at_.savingUploading : at_.saving) : at_.saving;
+    const show = throttled((p: SaveProgress) => { setSaveNote(noteFor(p)); hostSaveEvents.current.progress?.(p); }, 100);
+    // the counter is throttled; the first report, a change of phase and the last picture show at once
+    const progress = (p: SaveProgress) => { show(p); if (p.phase !== 'collecting' || p.done === undefined || p.done === p.total) show.flush(); };
+    savingRef.current = true; setToast(null); setSaving(true); hostSaveEvents.current.change?.(true);   // a message from before gives way to the save's own
     try {
-      const { bytes, lesson: l } = await au.save();
-      if (props.onSave) await props.onSave(bytes, l);
-      else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
-        a.download = `${l.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'}.chalk`;
-        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      try {
+        const built = await runSave({
+          build: (pr) => au.save(pr),
+          hand: async ({ bytes, lesson: l }) => {
+            if (props.onSave) await props.onSave(bytes, l);
+            else {
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.chalk+zip' }));
+              a.download = `${l.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'book'}.chalk`;
+              a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            }
+          },
+          progress,
+        });
+        saved = built.lesson;
+      } catch (e) {
+        // not saved: the unsaved mark and the leave-page warning stay
+        setToast(`${at_.saveFailed}: ${e instanceof Error ? e.message : String(e)}`);
+        return false;
       }
-      saved = l;
-    } catch (e) {
-      // not saved: the unsaved mark and the leave-page warning stay
-      setToast(`${at_.saveFailed}: ${e instanceof Error ? e.message : String(e)}`);
-      return false;
+      au.markSaved(saved);
+      setToast(at_.saved);
+      return true;
+    } finally {
+      show.cancel(); savingRef.current = false; setSaving(false); setSaveNote(null); hostSaveEvents.current.change?.(false);
     }
-    au.markSaved(saved);
-    setToast(at_.saved);
-    return true;
-  }, [au, props.onSave, at_]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }), [au, props.onSave, at_, authorLocale]);   // eslint-disable-line react-hooks/exhaustive-deps
   useImperativeHandle(props.handleRef, () => ({ goTo: (n) => goTo(n - 1), next, prev, zoomTo: (z) => viewer.current?.zoomTo(z), save: () => (authoringOn ? saveBook() : Promise.resolve(false)), book }), [goTo, next, prev, book, saveBook, authoringOn]);
   // Ctrl or Cmd+S saves the book while it is being edited, wherever on the page the keyboard focus is (the browser's own "save page" is no use
   // here); a text field outside the reader keeps its keys, and a key another handler already took is left alone
@@ -545,6 +577,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       const t = e.target as HTMLElement | null;
       if (t && !root.current?.contains(t) && t.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       e.preventDefault();
+      if (savingRef.current) { setToast(at_.alreadySaving); return; }   // one save at a time
       // a text still being typed in the reader is part of the book: leaving the field commits it, then the book is saved
       const field = document.activeElement;
       if (field instanceof HTMLElement && root.current?.contains(field) && field.matches('textarea, input')) {
@@ -554,7 +587,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     };
     document.addEventListener('keydown', onSaveKey);
     return () => document.removeEventListener('keydown', onSaveKey);
-  }, [author]);
+  }, [author, at_]);   // eslint-disable-line react-hooks/exhaustive-deps
   // the host hears when the book becomes unsaved or saved (its own notice, its own Save button)
   const onDirtyChange = useRef(props.onDirtyChange);
   onDirtyChange.current = props.onDirtyChange;
@@ -691,14 +724,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
-      {toast && <div className="chalk-toast" role="status">{toast}</div>}
+      {(toast ?? saveNote) && <div className="chalk-toast" role="status">{toast ?? saveNote}</div>}
       {lookup.missing.size > 0 && <MissingChip lesson={lesson} missing={lookup.missing} t={t} locale={locale} onGo={(i) => goTo(i)} />}
       {dockCfg && (
         <Dock
           config={config} dock={dockCfg} locale={author ? authorLocale : locale} page={page} pageCount={pages.length} zoom={zoom} fit={fit} layout={layout} dark={dark === 'dark'} fullscreen={fullscreen}
           open={{ thumbnails: panel === 'thumbnails', search: panel === 'search' }}
           canUndo={author ? au.canUndo : ann.canUndo} canRedo={author ? au.canRedo : ann.canRedo}
-          author={authoringOn ? { on: author, dirty: au.dirty, t: at_ } : undefined}
+          author={authoringOn ? { on: author, dirty: au.dirty, saving, t: at_ } : undefined}
           tools={A.tools.length > 1 ? <ToolsMenu config={A} locale={locale} tool={tool} color={color} highlight={highlight} size={size}
             onTool={setTool} onColor={setColor} onHighlight={setHighlight} onSize={setSize} up={dockCfg.position !== 'top'} /> : undefined}
           actions={{

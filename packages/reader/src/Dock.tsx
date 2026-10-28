@@ -28,7 +28,7 @@ export type DockProps = {
   /** The tools button and its popover (annotations), supplied by the reader. */
   tools?: ReactNode;
   /** Authoring, when the host allows it: which mode, unsaved changes, and the words for its buttons. */
-  author?: { on: boolean; dirty: boolean; t: { edit: string; preview: string; add: string; save: string; saveShort: string; unsaved: string } } | undefined;
+  author?: { on: boolean; dirty: boolean; saving?: boolean; t: { edit: string; preview: string; add: string; save: string; saveShort: string; unsaved: string; saving: string } } | undefined;
 };
 
 const WIDTH: Record<string, number> = { page: 96, '|': 13, more: 40 };
@@ -57,8 +57,8 @@ export function Dock(p: DockProps) {
   useEffect(() => { if (!moreOpen) return; const close = (e: PointerEvent) => { if (!wrap.current?.contains(e.target as Node)) setMoreOpen(false); }; addEventListener('pointerdown', close); return () => removeEventListener('pointerdown', close); }, [moreOpen]);
 
   type Item = { id: string; node: ReactNode; label: string; run?: () => void; menuNode?: ReactNode };
-  const btn = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, o: { pressed?: boolean; disabled?: boolean; primary?: string } = {}): Item | null =>
-    run ? { id, label, run, node: <DockButton key={id} label={label} icon={icon} onClick={run} pressed={o.pressed} disabled={o.disabled} primary={o.primary} /> } : null;
+  const btn = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, o: { pressed?: boolean; disabled?: boolean; primary?: string; busy?: boolean } = {}): Item | null =>
+    run ? { id, label, run, node: <DockButton key={id} label={label} icon={icon} onClick={run} pressed={o.pressed} disabled={o.disabled} primary={o.primary} busy={o.busy} /> } : null;
 
   const build = (it: DockItemId | CustomDockItem): Item | null => {
     if (typeof it === 'object') return { id: it.id, label: it.label, run: it.onClick, node: <DockButton key={it.id} label={it.label} icon={it.icon} onClick={it.onClick} pressed={it.active} /> };
@@ -86,9 +86,9 @@ export function Dock(p: DockProps) {
       case 'tools': return f.annotations && p.tools ? { id: 'tools', label: t.tools, node: <span key="tools">{p.tools}</span> } : null;
       case 'mode': return p.author ? btn('mode', p.author.on ? p.author.t.preview : p.author.t.edit, p.author.on ? <EyeIcon size={20} /> : <PencilSimpleIcon size={20} />, a.mode, { pressed: p.author.on }) : null;
       case 'add': return p.author?.on ? btn('add', p.author.t.add, <PlusCircleIcon size={20} />, a.add) : null;
-      case 'save': return p.author?.on ? btn('save', p.author.dirty ? `${p.author.t.save} · ${p.author.t.unsaved}` : p.author.t.save,
-        <span className={`chalk-dock-save ${p.author.dirty ? 'is-dirty' : ''}`}><FloppyDiskIcon size={20} /></span>, a.save,
-        p.author.dirty ? { primary: p.author.t.saveShort } : {}) : null;   // unsaved: the button is a labelled, filled one, so it cannot be missed
+      case 'save': return p.author?.on ? btn('save', p.author.saving ? p.author.t.saving : p.author.dirty ? `${p.author.t.save} · ${p.author.t.unsaved}` : p.author.t.save,
+        <span className={`chalk-dock-save ${p.author.saving ? 'is-busy' : p.author.dirty ? 'is-dirty' : ''}`}><FloppyDiskIcon size={20} /></span>, a.save,
+        { ...(p.author.dirty || p.author.saving ? { primary: p.author.saving ? p.author.t.saving : p.author.t.saveShort } : {}), ...(p.author.saving ? { busy: true } : {}) }) : null;   // unsaved: the button is a labelled, filled one, so it cannot be missed
       case 'undo': return f.annotations || p.author?.on ? btn('undo', t.undo, <ArrowCounterClockwiseIcon size={20} />, a.undo, { disabled: !p.canUndo }) : null;
       case 'redo': return f.annotations || p.author?.on ? btn('redo', t.redo, <ArrowClockwiseIcon size={20} />, a.redo, { disabled: !p.canRedo }) : null;
       case 'export': return f.export && f.annotations ? btn('export', t.export, <DownloadSimpleIcon size={20} />, a.exportNotes) : null;
@@ -143,9 +143,10 @@ export function Dock(p: DockProps) {
   );
 }
 
-export function DockButton({ label, icon, onClick, pressed, disabled, primary }: { label: string; icon: ReactNode; onClick: () => void; pressed?: boolean | undefined; disabled?: boolean | undefined; primary?: string | undefined }) {
+export function DockButton({ label, icon, onClick, pressed, disabled, primary, busy }: { label: string; icon: ReactNode; onClick: () => void; pressed?: boolean | undefined; disabled?: boolean | undefined; primary?: string | undefined; busy?: boolean | undefined }) {
   return (
-    <button type="button" className={primary ? 'chalk-dock-btn is-primary' : 'chalk-dock-btn'} aria-label={label} data-tip={label} onClick={onClick} disabled={disabled}
+    <button type="button" className={`${primary ? 'chalk-dock-btn is-primary' : 'chalk-dock-btn'}${busy ? ' is-busy' : ''}`} aria-label={label} data-tip={label} onClick={onClick} disabled={disabled}
+      {...(busy ? { 'aria-busy': true, 'aria-disabled': true } : {})}
       {...(pressed !== undefined ? { 'aria-pressed': pressed } : {})}>
       {icon}
       {primary ? <span className="chalk-dock-btn-text" aria-hidden>{primary}</span> : null}
