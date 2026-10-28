@@ -24,6 +24,8 @@ html, body { margin: 0; height: 100%; overflow-x: clip; background: var(--app-pa
   color: inherit; font: inherit; font-size: 0.875rem; white-space: nowrap; cursor: pointer; max-width: 46vw;
 }
 .app-btn:hover, .app-field select:hover { border-color: var(--app-muted); }
+.app-save[data-dirty="true"] { background: var(--app-accent, #2f5db5); border-color: transparent; color: #fff; font-weight: 600; }
+.app-save:disabled { opacity: 0.6; cursor: default; }
 .app-btn:focus-visible, .app-field select:focus-visible { outline: 2px solid var(--app-focus); outline-offset: 1px; }
 .app-main { flex: 1; min-height: 0; display: flex; }
 .app-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -61,6 +61,8 @@ export type ChalkReaderProps = {
   onOverlayChange?: (overlay: Overlay) => void;
   /** Authoring (config.authoring): after every change to the book. */
   onLessonChange?: (lesson: Lesson) => void;
+  /** Authoring: whether the book has changes that are not saved yet, when that changes (for the host's own "unsaved" notice or Save button). */
+  onDirtyChange?: (dirty: boolean) => void;
   /** Authoring: the saved book. Without it, Save downloads the .chalk file. */
   onSave?: (bytes: Uint8Array, lesson: Lesson) => void | Promise<void>;
   /** Authoring: the mode, controlled by the host (e.g. its own switch). The dock's switch reports through onModeChange. */
@@ -76,6 +78,8 @@ export type ReaderHandle = {
   next(): void;
   prev(): void;
   zoomTo(zoom: number): void;
+  /** Authoring: saves the book as the Save button does (through `onSave`, else a download). Resolves true once saved, false when it was not (the reader is not authoring, or the save failed). */
+  save(): Promise<boolean>;
   readonly book: Book | null;
 };
 
@@ -280,7 +284,6 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const prev = useCallback(() => goTo(page - step), [goTo, page, step]);
   const zoomBy = useCallback((f: number) => viewer.current?.zoomTo(zoom * f), [zoom]);
 
-  useImperativeHandle(props.handleRef, () => ({ goTo: (n) => goTo(n - 1), next, prev, zoomTo: (z) => viewer.current?.zoomTo(z), book }), [goTo, next, prev, book]);
 
   useEffect(() => {
     const f = () => setFullscreen(document.fullscreenElement === root.current);
@@ -509,7 +512,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     }
     setToast(null);
   }, [at_, placeItem]);
-  const saveBook = useCallback(async () => {
+  const saveBook = useCallback(async (): Promise<boolean> => {
     let saved: Lesson;
     try {
       const { bytes, lesson: l } = await au.save();
@@ -524,11 +527,39 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     } catch (e) {
       // not saved: the unsaved mark and the leave-page warning stay
       setToast(`${at_.saveFailed}: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      return false;
     }
     au.markSaved(saved);
     setToast(at_.saved);
+    return true;
   }, [au, props.onSave, at_]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useImperativeHandle(props.handleRef, () => ({ goTo: (n) => goTo(n - 1), next, prev, zoomTo: (z) => viewer.current?.zoomTo(z), save: () => (authoringOn ? saveBook() : Promise.resolve(false)), book }), [goTo, next, prev, book, saveBook, authoringOn]);
+  // Ctrl or Cmd+S saves the book while it is being edited, wherever on the page the keyboard focus is (the browser's own "save page" is no use
+  // here); a text field outside the reader keeps its keys, and a key another handler already took is left alone
+  const saveRef = useRef(saveBook);
+  saveRef.current = saveBook;
+  useEffect(() => {
+    if (!author) return;
+    const onSaveKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 's') return;
+      const t = e.target as HTMLElement | null;
+      if (t && !root.current?.contains(t) && t.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+      // a text still being typed in the reader is part of the book: leaving the field commits it, then the book is saved
+      const field = document.activeElement;
+      if (field instanceof HTMLElement && root.current?.contains(field) && field.matches('textarea, input')) {
+        field.blur();
+        setTimeout(() => void saveRef.current(), 30);
+      } else void saveRef.current();
+    };
+    document.addEventListener('keydown', onSaveKey);
+    return () => document.removeEventListener('keydown', onSaveKey);
+  }, [author]);
+  // the host hears when the book becomes unsaved or saved (its own notice, its own Save button)
+  const onDirtyChange = useRef(props.onDirtyChange);
+  onDirtyChange.current = props.onDirtyChange;
+  const dirty = authoringOn && au.dirty;
+  useEffect(() => { onDirtyChange.current?.(dirty); }, [dirty]);
   // unsaved work is not lost to a closed tab without a warning
   useEffect(() => {
     if (!authoringOn || !au.dirty) return;
