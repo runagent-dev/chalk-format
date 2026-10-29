@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { DEFAULT_PRESENTATION, type MediaRenderers, type PresentationConfig } from './present.js';
+import { DEFAULT_WINDOW, type WindowConfig } from './render/windowTypes.js';
 
 /**
  * Everything about the reader that a host app can set. One `config` prop, partial: what is not given keeps
@@ -103,6 +104,9 @@ export type ReaderConfig = {
   streaming: { window: number };
   /** Your own player or viewer for a kind, in place of the reader's (the browser's video and audio, <model-viewer>). */
   renderers: MediaRenderers;
+  /** The floating window media opens in when an author chose `open: window` (spec 1.6): a free window, or a panel docked to one side; the
+   *  shape of its body; or your own chrome around the media. */
+  window: WindowConfig;
 };
 
 export const DEFAULT_CONFIG: ReaderConfig = {
@@ -140,6 +144,7 @@ export const DEFAULT_CONFIG: ReaderConfig = {
   streaming: { window: 5 },
   presentation: DEFAULT_PRESENTATION,
   renderers: {},
+  window: DEFAULT_WINDOW,
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] | ((...a: never[]) => unknown) ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };

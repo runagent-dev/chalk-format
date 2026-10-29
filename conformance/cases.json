@@ -173,5 +173,12 @@
     "kind": "lesson",
     "since": "1.0",
     "covers": "asset declared inline but its bytes are absent"
+  },
+  {
+    "file": "valid/presentation-window.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.6",
+    "covers": "open: window (the floating window) on an image, an icon image, a model, a video and a lab"
   }
 ]
