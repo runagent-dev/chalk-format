@@ -99,8 +99,8 @@ then supplies the shared, verified build, so a book with twenty 3D labs carries 
 ```html
 <!-- only for opening the file on its own: inside a reader, the reader's import map comes first and wins -->
 <script type="importmap">
-  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js",
-                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/" } }
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/" } }
 </script>
 <script type="module">
 import * as THREE from 'three';
@@ -109,7 +109,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 ```
 
 - **Use the shared builds.** [`libraries/catalog.json`](../../libraries/catalog.json) lists them with their
-  keys: three 0.183.2 and its OrbitControls, GLTFLoader and CSS2DRenderer add-ons. Build the files with
+  keys: three 0.185.1 and its OrbitControls, GLTFLoader and CSS2DRenderer add-ons. Build the files with
   `npx tsx tools/lab-libraries.ts` (into `libraries/build/`). The builds are reproducible: the same version gives
   the same bytes and so the same keys on any machine, and CI checks it (`--check`).
 - **Name exactly the specifiers you import.** `three/addons/controls/OrbitControls.js` is its own specifier, with
@@ -144,11 +144,11 @@ place it at the right size, and get its libraries with it. Trimmed from
   "title": { "bn": "স্ক্রু গজ", "en": "Screw gauge" },
   "description": { "bn": "…", "en": "Turn the thimble onto the wire, read the main and circular scales, and enter the diameter." },
   "subject": "physics", "classes": ["9", "10"], "tags": ["measurement", "least count", "screw gauge"],
-  "entry": "c1:l5lsonev5rtspdijwg66epn4cm",
+  "entry": "c1:d2qouiwvb7uk7lamo3ye6hpsom",
   "poster": "c1:fylmqzbkwsvx2owkq5kqo6th7q",
   "libraries": [
-    { "specifier": "three", "version": "0.183.2", "asset": "c1:e5oeyylksj2lwuoz7caib5abb4" },
-    { "specifier": "three/addons/controls/OrbitControls.js", "version": "0.183.2", "asset": "c1:3ieckri5glzee42orejuzbhwie" }
+    { "specifier": "three", "version": "0.185.1", "asset": "c1:tnju7fmkkem7urwcj2quaiihxm" },
+    { "specifier": "three/addons/controls/OrbitControls.js", "version": "0.185.1", "asset": "c1:nqdfnh3c3kmjnngrlj4erirjdm" }
   ],
   "capabilities": ["state", "progress"],
   "size": { "width": 960, "height": 600, "minWidth": 480, "minHeight": 320 },
@@ -209,7 +209,7 @@ gives it. Write a list, as in [`examples/library-seed.json`](../../examples/libr
 ```json
 [
   { "lab": "labs/screw-gauge.lab.json",
-    "files": { "c1:l5lsonev5rtspdijwg66epn4cm": "labs/screw-gauge.html",
+    "files": { "c1:d2qouiwvb7uk7lamo3ye6hpsom": "labs/screw-gauge.html",
                "c1:fylmqzbkwsvx2owkq5kqo6th7q": "labs/screw-gauge-poster.png" } }
 ]
 ```
