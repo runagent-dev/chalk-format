@@ -83,6 +83,9 @@ merge, arrays replace).
 | `presentation.defaults` | none | Presentation for objects whose author set nothing, per kind, e.g. `{ model3d: { show: 'live', autoRotate: true, accent: '#7c3aed' }, lab: { open: 'fullscreen' } }`. What the author set wins. Accents are `#rrggbb`. |
 | `presentation.authorAccents` | `true` | `false`: ignore the colours authors chose; your `defaults` accents (or the theme's) everywhere. |
 | `presentation.live` | `true` | `false`: nothing starts by itself (no live models or labs, no autoplay), e.g. to save data. |
+| `window.layout` | `{ kind: 'floating', side: 'right', width: '50%' }` | Where `open: window` media opens: `kind: 'floating'` (a window the student moves and resizes) or `'side'` (a panel docked to `side`, `'right'` or `'left'`, as wide as `width`, any CSS length). See [Floating window](#floating-window). |
+| `window.aspect` | `'media'` | The shape of the window's body: `'media'` (the object's own width / height), `'free'` (any shape) or a number (`4 / 3`). |
+| `window.render` | none | Your own chrome around the media: `(w) => element` given `{ title, onClose, aspect, kind, children }`. |
 | `renderers` | none | Your own player or viewer: `{ video, audio, model3d }`, each `(p) => element` given `{ object, src, poster, presentation, where: 'page' \| 'popup', locale, theme }`. With your own `model3d`, `<model-viewer>` and three.js are never loaded. |
 
 ### Theming
@@ -128,7 +131,8 @@ Give `source` a streamed book's directory (ending in `/`) or its `book.json`: th
 shows every page at once (placeholders with thumbnails until they arrive), and loads the current page first, then
 outward to `config.streaming.window` pages each way (default 5). A long jump goes straight there and loads only
 around it; search loads the book's text file and finds words on pages not loaded yet; author mode loads the rest
-of the book first. `openStreamedBook(url)` gives the same book outside the component. Publish with
+of the book first (up to 12 requests at a time, with a counter, "Loading the book for editing… 120 of 360", shown
+until the book is whole). `openStreamedBook(url)` gives the same book outside the component. Publish with
 `tools/chalk-stream.ts publish book.chalk out/`.
 
 | Option | Default | |
@@ -189,10 +193,45 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
 | `authoring.contextMenu` | `true` | Right-click a page in author mode for a menu of the media to add there. `false`: the browser's own menu stays. |
 | `authoring.dock` | mode, pages, page turning, zoom, undo, redo, save, theme, language | The dock in author mode (the tools are in the rail). |
 
+## Floating window
+
+When an author chooses **In a floating window** (`presentation.open: 'window'`, spec 1.6), a tap opens the media in a window over the page instead
+of a dimmed dialog: the page behind it stays readable and usable, so a student can keep reading, scroll and turn pages with a lab or video open.
+
+- **Floating** (the default): a window the student moves by its header (mouse, touch or the arrow keys, Shift for bigger steps) and resizes by its
+  edges and corners (Alt and the arrow keys). It opens beside the object that was tapped, stays inside the reader and out of the dock's strip, and the
+  dock stays above it. Escape closes it from its own controls (a lab in a sandboxed frame keeps its own keys, as in a dialog: use the close button); focus returns to what opened it.
+- **Its shape follows the media**: a lab's, image's, video's or model's own width and height, kept while resizing. `window.aspect` changes that:
+  `'free'` for any shape, or a number such as `4 / 3`.
+- **One at a time**: opening another replaces it, and a lab or model running on the page makes way for it.
+- **On a narrow reader** (under 640 px) it is a sheet across the bottom, above the dock, without dragging.
+- Older readers do not know the value and use the book's default for that media (spec 1.6 §2).
+
+Make it your own, from the least to the most:
+
+```tsx
+// 1. a panel docked to the right half of the reader instead of a floating window (the page stays usable on the other half)
+<ChalkReader source={url} config={{ window: { layout: { kind: 'side', side: 'right', width: '50%' } } }} />
+
+// 2. a fixed shape
+<ChalkReader source={url} config={{ window: { aspect: 4 / 3 } }} />
+
+// 3. your own chrome around the media (the media fills `children`; close with `onClose`; Escape inside it closes it too)
+<ChalkReader source={url} config={{ window: { render: (w) => (
+  <MyDrawer title={w.title} onClose={w.onClose} ratio={w.aspect}>{w.children}</MyDrawer>
+) } }} />
+```
+
+The layer lets pointer events through to the page; give your own chrome `pointer-events: auto`. Restyling needs no code: set these on `.chalk-reader` (or any
+ancestor): `--chalk-window-bg`, `-fg`, `-border`, `-radius`, `-shadow`, `-head-bg`, `-body-bg`, `-z`, and for the side panel `--chalk-window-side-w`. The classes
+`chalk-window`, `chalk-window-head`, `chalk-window-body` and the attributes `data-layout` (`floating`, `side` or `sheet`) and `data-side` are stable.
+Custom players and viewers (`renderers`) are told `where: 'popup'` when they are shown in the window. The showcase's Configure panel has a
+"Floating window" section.
+
 ## Restyling media
 
 The book says how the author wants each piece of media presented (spec 1.3: live or a card, what a tap opens,
-label, icon, colour). How it looks is yours: theme variables (`--chalk-*`) for the reader as a whole,
+label, icon, colour; and, since 1.6, a floating window). How it looks is yours: theme variables (`--chalk-*`) for the reader as a whole,
 `presentation` for icons, colours per kind and defaults, `renderers` to replace a player outright. Cards and
 markers carry `data-kind` (`video`, `model3d`, …) for CSS of your own. Try it all in the showcase's Configure
 panel, which prints the config for what you set.

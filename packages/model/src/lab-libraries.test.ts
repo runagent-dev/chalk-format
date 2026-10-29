@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { checkLabParams, labManifestSchema, labObjectFromManifest, labParams, inLanguage, lessonObjectSchema, migrateToLatest, parseLesson, referencedAssetIds, type Lesson } from './index.js';
 
 const K = (c: string) => 'c1:' + c.repeat(25) + 'a';
-const three = { specifier: 'three', version: '0.183.0', asset: K('t') };
+const three = { specifier: 'three', version: '0.185.1', asset: K('t') };
 const lab = (extra: Record<string, unknown> = {}) => ({ id: 'l', type: 'embed', embed: 'plugin', plugin: 'chalk.lab', x: 0, y: 0, width: 960, height: 540,
   lab: { id: 'org.example.gauge', version: '1.0.0', title: 'Gauge', entry: K('e'), ...extra } });
 
 describe('lab libraries (spec 1.5 §2)', () => {
   it('accepts libraries by bare specifier and content-addressed asset', () => {
-    expect(lessonObjectSchema.safeParse(lab({ libraries: [three, { specifier: 'three/addons/controls/OrbitControls.js', version: '0.183.0', asset: K('o') }] })).success).toBe(true);
+    expect(lessonObjectSchema.safeParse(lab({ libraries: [three, { specifier: 'three/addons/controls/OrbitControls.js', version: '0.185.1', asset: K('o') }] })).success).toBe(true);
   });
   it('refuses relative or URL specifiers, plain ids, and a specifier twice', () => {
     for (const specifier of ['./three.js', '/three.js', 'https://cdn.example/three.js']) expect(lessonObjectSchema.safeParse(lab({ libraries: [{ ...three, specifier }] })).success, specifier).toBe(false);
