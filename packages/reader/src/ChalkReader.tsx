@@ -405,10 +405,20 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     return () => clearTimeout(id);
   }, [streamed, page, pages.length, config.streaming.window]);
   const wantsAuthor = authoringOn && mode === 'author';
+  // while the rest of a streamed book loads for editing, say how far it is (not a notice that fades: it stays until the book is whole)
+  const [loadProgress, setLoadProgress] = useState<{ done: number; total: number } | null>(null);
   useEffect(() => {
-    if (!streamed || !wantsAuthor || streamed.complete) return;
-    setToast(authorStrings(config.authoring.locale).loadingAll);
-    streamed.loadAll().catch((e: unknown) => setToast(e instanceof Error ? e.message : String(e)));
+    if (!streamed || !wantsAuthor || streamed.complete) { setLoadProgress(null); return; }
+    let last = 0;
+    const show = () => setLoadProgress({ done: streamed.loadedPages, total: streamed.totalPages });
+    show();
+    // pages arrive many times a second: draw the count a few times a second
+    const off = streamed.subscribe(() => { const now = Date.now(); if (now - last >= 200) { last = now; show(); } });
+    streamed.loadAll().then(
+      () => setLoadProgress(null),
+      (e: unknown) => { setLoadProgress(null); setToast(e instanceof Error ? e.message : String(e)); },
+    );
+    return off;
   }, [streamed, wantsAuthor]);   // eslint-disable-line react-hooks/exhaustive-deps
   // search a streamed book with its text file: pages not loaded yet are searched by their text runs
   useEffect(() => { if (streamed && (panel === 'search' || query)) void streamed.searchText().then(setStreamText); }, [streamed, panel, query]);
@@ -691,7 +701,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       )}
       <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
-      {toast && <div className="chalk-toast" role="status">{toast}</div>}
+      {loadProgress
+        ? <div className="chalk-toast" role="status">{at_.loadingProgress.replace('{done}', num(authorLocale, loadProgress.done)).replace('{total}', num(authorLocale, loadProgress.total))}</div>
+        : toast && <div className="chalk-toast" role="status">{toast}</div>}
       {lookup.missing.size > 0 && <MissingChip lesson={lesson} missing={lookup.missing} t={t} locale={locale} onGo={(i) => goTo(i)} />}
       {dockCfg && (
         <Dock
