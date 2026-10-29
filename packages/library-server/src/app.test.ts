@@ -14,8 +14,8 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'chalk-library-'));
   db = await openDb('pglite:');
   app = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1,admin!:a-1') });
-});
-afterAll(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
+}, 60_000); // starting the in-memory database takes over vitest's 10 s default on a busy machine (every package's tests run at once in `pnpm check`)
+afterAll(async () => { await db?.close(); rmSync(dir, { recursive: true, force: true }); });
 
 describe('the reference library (disk + PGlite)', () => {
   it('passes the conformance checks of the registry API', async () => {
