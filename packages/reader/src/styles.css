@@ -323,6 +323,64 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   .chalk-modal.is-wide .chalk-modal-body > .chalk-live { flex: 1; border-radius: 0; box-shadow: none; }
 }
 
+/* ---------- the floating window (spec 1.6 `open: window`) ----------
+   Not a dialog: no backdrop, the page behind stays usable. A host restyles it with these variables set on `.chalk-reader` (or any ancestor):
+   --chalk-window-bg, -fg, -border, -radius, -shadow, -head-bg, -body-bg, -z; and for the side layout --chalk-window-side-w. The classes
+   chalk-window, chalk-window-head, chalk-window-body and the attributes data-layout (floating | side | sheet) and data-side are stable. */
+.chalk-window-layer { position: absolute; inset: 0; z-index: var(--chalk-window-z, 19); pointer-events: none; } /* just under the dock (20): navigation stays reachable */
+.chalk-window {
+  position: absolute; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; outline: none;
+  background: var(--chalk-window-bg, var(--chalk-surface)); color: var(--chalk-window-fg, var(--chalk-ink));
+  border: 1px solid var(--chalk-window-border, var(--chalk-line)); border-radius: var(--chalk-window-radius, var(--chalk-radius-md));
+  box-shadow: var(--chalk-window-shadow, var(--chalk-float-shadow));
+}
+.chalk-window[data-layout="floating"], .chalk-window[data-layout="sheet"] {
+  left: var(--chalk-window-x); top: var(--chalk-window-y); width: var(--chalk-window-w); height: var(--chalk-window-h);
+}
+.chalk-window[data-layout="sheet"] { border-radius: var(--chalk-window-radius, var(--chalk-radius-md)) var(--chalk-window-radius, var(--chalk-radius-md)) 0 0; }
+.chalk-window[data-layout="side"] { top: 0; bottom: 0; width: var(--chalk-window-side-w, 50%); max-width: 100%; border-radius: 0; }
+/* the dock is above the window: a side panel keeps clear of the strip the dock uses, so its header and close button stay visible */
+.chalk-reader[data-dock="top"] .chalk-window[data-layout="side"] { top: 72px; }
+.chalk-reader[data-dock="left"] .chalk-window[data-layout="side"][data-side="left"] { left: 84px; }
+.chalk-reader[data-dock="right"] .chalk-window[data-layout="side"][data-side="right"] { right: 84px; }
+.chalk-window[data-layout="side"][data-side="right"] { right: 0; border-width: 0 0 0 1px; }
+.chalk-window[data-layout="side"][data-side="left"] { left: 0; border-width: 0 1px 0 0; }
+.chalk-window-head {
+  flex: none; display: flex; align-items: center; gap: var(--chalk-space-xs); height: 44px; padding: 0 var(--chalk-space-xs) 0 var(--chalk-space-lg);
+  background: var(--chalk-window-head-bg, var(--chalk-surface-2)); border-bottom: 1px solid var(--chalk-window-border, var(--chalk-line));
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.chalk-window[data-layout="floating"] .chalk-window-head { cursor: grab; }
+.chalk-window.is-busy .chalk-window-head { cursor: grabbing; }
+.chalk-window-head:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: -2px; }
+.chalk-window-head h2 { margin: 0 auto 0 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--chalk-text-md); font-weight: 600; }
+.chalk-window-body { flex: 1; min-height: 0; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; container-type: size; background: var(--chalk-window-body-bg, var(--chalk-surface)); }
+/* while it is being moved or resized the media must not take the pointer from the handle */
+.chalk-window.is-busy .chalk-window-body { pointer-events: none; }
+.chalk-window-frame { position: relative; flex: none; }
+.chalk-window-frame.is-fill { width: 100%; height: 100%; }
+/* the side panel's body is any shape: the media keeps its own, centred, as large as fits */
+.chalk-window-frame:not(.is-fill) { width: min(100cqw, calc(100cqh * var(--chalk-window-aspect))); aspect-ratio: var(--chalk-window-aspect); }
+.chalk-window-body .chalk-live { border-radius: 0; box-shadow: none; }
+.chalk-window-media { display: block; width: 100%; height: 100%; object-fit: contain; background: oklch(15% 0 0); }
+.chalk-window-custom:focus { outline: none; }
+.chalk-window-custom-media { position: relative; width: 100%; height: 100%; }
+.chalk-window-body .chalk-modal-audio { padding: var(--chalk-space-md); }
+.chalk-window-grip { position: absolute; z-index: 2; touch-action: none; }
+.chalk-window-grip[data-dir="n"] { top: 0; left: 18px; right: 18px; height: 6px; cursor: ns-resize; }
+.chalk-window-grip[data-dir="s"] { bottom: 0; left: 18px; right: 18px; height: 6px; cursor: ns-resize; }
+.chalk-window-grip[data-dir="e"] { right: 0; top: 18px; bottom: 18px; width: 6px; cursor: ew-resize; }
+.chalk-window-grip[data-dir="w"] { left: 0; top: 18px; bottom: 18px; width: 6px; cursor: ew-resize; }
+.chalk-window-grip[data-dir="ne"] { top: 0; right: 0; width: 18px; height: 18px; cursor: nesw-resize; }
+.chalk-window-grip[data-dir="sw"] { bottom: 0; left: 0; width: 18px; height: 18px; cursor: nesw-resize; }
+.chalk-window-grip[data-dir="nw"] { top: 0; left: 0; width: 18px; height: 18px; cursor: nwse-resize; }
+.chalk-window-grip[data-dir="se"] { bottom: 0; right: 0; width: 22px; height: 22px; cursor: nwse-resize; }
+.chalk-window-grip[data-dir="se"]::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 9px; height: 9px; border-right: 2px solid var(--chalk-ink-muted); border-bottom: 2px solid var(--chalk-ink-muted); opacity: 0.55; }
+@media (prefers-reduced-motion: no-preference) {
+  .chalk-window { animation: chalk-window-in var(--chalk-dur) var(--chalk-ease-out); }
+  @keyframes chalk-window-in { from { opacity: 0; transform: translateY(6px); } }
+}
+
 /* ---------- annotations ---------- */
 .chalk-surface { position: absolute; left: 0; top: 0; touch-action: none; cursor: crosshair; z-index: 2; }
 .chalk-surface.is-eraser { cursor: cell; }
@@ -589,3 +647,9 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-author-target::before, .chalk-author-target::after { content: ''; position: absolute; background: var(--chalk-accent); }
 .chalk-author-target::before { left: calc(-10px / var(--s)); width: calc(20px / var(--s)); top: calc(-1px / var(--s)); height: calc(2px / var(--s)); }
 .chalk-author-target::after { top: calc(-10px / var(--s)); height: calc(20px / var(--s)); left: calc(-1px / var(--s)); width: calc(2px / var(--s)); }
+
+/* a save in progress: the dock's Save button is busy (its icon pulses; no motion when the reader asks for none) */
+.chalk-dock-btn.is-busy { cursor: progress; }
+.chalk-dock-save.is-busy svg { animation: chalk-save-pulse 0.9s ease-in-out infinite; }
+@keyframes chalk-save-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.88); } }
+@media (prefers-reduced-motion: reduce) { .chalk-dock-save.is-busy svg { animation: none; opacity: 0.55; } }

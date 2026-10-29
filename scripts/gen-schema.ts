@@ -80,4 +80,4 @@ write('stream-text.schema.json', { ...header('stream-text.schema.json', 'Chalk s
 
 // ---- 1.5: lab manifests ----
 write('lab-manifest.schema.json', { ...header('lab-manifest.schema.json', 'Chalk lab manifest, what a store keeps about a lab (spec 1.5 §4)'), ...z.toJSONSchema(labManifestSchema, { target: 'draft-2020-12', io: 'input' }) });
-write('question-manifest.schema.json', { ...header('question-manifest.schema.json', 'Chalk question manifest, what a store keeps about a question (spec 1.6)'), ...z.toJSONSchema(questionManifestSchema, { target: 'draft-2020-12', io: 'input' }) });
+write('question-manifest.schema.json', { ...header('question-manifest.schema.json', 'Chalk question manifest, what a store keeps about a question (spec 1.7)'), ...z.toJSONSchema(questionManifestSchema, { target: 'draft-2020-12', io: 'input' }) });

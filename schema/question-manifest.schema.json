@@ -1,6 +1,6 @@
 {
   "$id": "https://chalk-format.dev/schema/v11/question-manifest.schema.json",
-  "title": "Chalk question manifest, what a store keeps about a question (spec 1.6)",
+  "title": "Chalk question manifest, what a store keeps about a question (spec 1.7)",
   "x-chalk-format-version": 11,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",

@@ -22,8 +22,8 @@ them. Memory was never the issue (a reader runs one lab at a time); download and
 "lab": { "id": "org.pathshalax.physics.screw-gauge", "version": "1.0.0", "title": "Screw gauge · স্ক্রু গজ",
          "entry": "c1:…",
          "libraries": [
-           { "specifier": "three", "version": "0.183.2", "asset": "c1:…" },
-           { "specifier": "three/addons/controls/OrbitControls.js", "version": "0.183.2", "asset": "c1:…" } ] }
+           { "specifier": "three", "version": "0.185.1", "asset": "c1:…" },
+           { "specifier": "three/addons/controls/OrbitControls.js", "version": "0.185.1", "asset": "c1:…" } ] }
 ```
 
 | Field | | Meaning |
@@ -86,7 +86,7 @@ What a store keeps for a lab, uploaded with its HTML (media type `application/vn
   "title": { "bn": "স্ক্রু গজ", "en": "Screw gauge" },
   "description": { "bn": "…", "en": "Turn the thimble and read the diameter." },
   "subject": "physics", "classes": ["9", "10"], "tags": ["measurement", "least count"],
-  "entry": "c1:…", "poster": "c1:…", "assets": [], "libraries": [ { "specifier": "three", "version": "0.183.2", "asset": "c1:…" } ],
+  "entry": "c1:…", "poster": "c1:…", "assets": [], "libraries": [ { "specifier": "three", "version": "0.185.1", "asset": "c1:…" } ],
   "capabilities": ["state", "progress"],
   "size": { "width": 960, "height": 600, "minWidth": 440, "minHeight": 300 },
   "params": {

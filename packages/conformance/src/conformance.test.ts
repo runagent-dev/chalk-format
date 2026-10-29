@@ -138,8 +138,8 @@ describe('lab manifests and libraries (spec 1.5)', () => {
   });
 });
 
-// ---- 1.6: question manifests ----
-describe('question manifests (spec 1.6)', () => {
+// ---- 1.7: question manifests ----
+describe('question manifests (spec 1.7)', () => {
   const dir = new URL('../../../examples/questions/', import.meta.url);
   const v = ajv.compile(schema('question-manifest.schema.json'));
   const files = readdirSync(dir).filter((f) => f.endsWith('.question.json'));
@@ -150,7 +150,7 @@ describe('question manifests (spec 1.6)', () => {
     expect(v(JSON.parse(readFileSync(new URL(f, dir), 'utf8'))), JSON.stringify(v.errors)).toBe(true);
   });
   it('the example in the spec text is valid too', () => {
-    const text = readFileSync(new URL('../../../spec/1.6/README.md', import.meta.url), 'utf8');
+    const text = readFileSync(new URL('../../../spec/1.7/README.md', import.meta.url), 'utf8');
     const block = text.match(/```json\n([\s\S]*?)\n```/)?.[1];
     expect(block).toBeTruthy();
     expect(v(JSON.parse(block!)), JSON.stringify(v.errors)).toBe(true);

@@ -11,7 +11,7 @@ const KEY = 'c1:aaaaaaaaaaaaaaaaaaaaaaaaay';
 const base = (over: Record<string, unknown> = {}): QuestionManifest => questionManifestSchema.parse({ format: 'chalk.question', manifestVersion: 1, id: 'q', version: '1', kind: 'short_answer', stem: 'Q?', ...over });
 const mcq = (correct: number[], labels = ['a', 'b', 'c']) => base({ kind: 'mcq', options: labels.map((label, i) => ({ label, text: label, ...(correct.includes(i) ? { correct: true } : {}) })) });
 
-describe('question manifests (spec 1.6)', () => {
+describe('question manifests (spec 1.7)', () => {
   it('has its own media type', () => {
     expect(QUESTION_MANIFEST_TYPE).toBe('application/vnd.chalk.question+json');
   });

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { contentKeySchema, inLanguage, localizedTextSchema } from './lab-manifest.js';
 
 /**
- * Question manifests (spec 1.6): what a store keeps about a question, so a book, a reader or an authoring tool can find it, show it and
+ * Question manifests (spec 1.7): what a store keeps about a question, so a book, a reader or an authoring tool can find it, show it and
  * check an answer without the question being copied into every book that uses it. A book refers to a question by the key of its
  * manifest; the store holds the question.
  *
@@ -12,7 +12,7 @@ import { contentKeySchema, inLanguage, localizedTextSchema } from './lab-manifes
 
 export const QUESTION_MANIFEST_TYPE = 'application/vnd.chalk.question+json';
 
-/** The kinds of question this version knows. A manifest may carry another kind: readers show what they can of it (spec 1.6 §3). */
+/** The kinds of question this version knows. A manifest may carry another kind: readers show what they can of it (spec 1.7 §3). */
 export const QUESTION_KINDS = ['mcq', 'mcq_multi', 'short_answer', 'numeric', 'cq'] as const;
 export type QuestionKind = (typeof QUESTION_KINDS)[number];
 
