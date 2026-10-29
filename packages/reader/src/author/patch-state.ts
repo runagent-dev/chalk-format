@@ -6,7 +6,8 @@ import type { Lesson, LessonPage } from '@chalk-format/model';
  * its own.
  *
  * - `saved`: the book as the host now has it, as far as the editor knows: what it sent, with each page the host merged with someone else's work
- *   replaced by the host's version. The next patch starts from it.
+ *   replaced by the host's version. The next patch starts from it. A merged page the user DELETED while the save ran keeps the version that was
+ *   sent: the user never saw the host's changes to it, so their delete must meet them as the conflict it is (the edit is kept), not delete them unseen.
  * - `top`: the editor's working lesson after the answer, or `null` when nothing changes there (the history is kept). A page the host merged comes
  *   back whole; where the user edited that page in the meantime (while the save ran) the two are merged here, with the same rules as the host's
  *   (`mergeLessonPage`): the host's changes and the user's new edits both stay, so neither is lost and the next patch does not undo the host's.
@@ -29,11 +30,13 @@ export function adoptedPatch(o: {
   const known = new Set(o.known);
   for (const id of o.mediaIds) known.add(id);
   for (const id of o.result.dropped ?? []) known.delete(id);
+  for (const a of o.result.assets ?? []) known.add(a.id); // media someone else added, in a page the host merged
 
   const merged = new Map(Object.entries(o.result.pages).flatMap(([id, w]) => (w.page ? [[id, w.page] as [string, LessonPage]] : [])));
   if (!merged.size) return { saved: o.sent, top: null, hashes, known };
   const swap = (l: Lesson, pick: (p: LessonPage) => LessonPage): Lesson => ({ ...l, pages: l.pages.map(pick), snipPages: l.snipPages.map(pick) });
-  const saved = swap(o.sent, (p) => merged.get(p.id) ?? p);
+  const stillThere = new Set([...o.top.pages, ...o.top.snipPages].map((p) => p.id));
+  const saved = swap(o.sent, (p) => (o.top === o.sent || stillThere.has(p.id) ? merged.get(p.id) : undefined) ?? p);
   if (o.top === o.sent) return { saved, top: saved, hashes, known };
   const sentPages = new Map([...o.sent.pages, ...o.sent.snipPages].map((p) => [p.id, p]));
   const top = swap(o.top, (p) => {
@@ -43,4 +46,12 @@ export function adoptedPatch(o: {
     return !was || p === was ? m : mergeLessonPage(was, p, m).page; // edited since the click: the user's new edits on top of the host's merged page
   });
   return { saved, top, hashes, known };
+}
+
+/**
+ * The assets a patch must carry: those a changed page uses that the host does not have the bytes of. One the host lists as external (no file) is
+ * left external, as in a whole-book save, unless the editor holds the bytes itself (a local file with the same key was imported): then they are sent.
+ */
+export function mediaWanted(o: { referenced: readonly string[]; carried: ReadonlySet<string>; external: ReadonlySet<string>; local: (id: string) => boolean }): string[] {
+  return o.referenced.filter((id) => !o.carried.has(id) && (!o.external.has(id) || o.local(id)));
 }

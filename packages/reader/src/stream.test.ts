@@ -37,6 +37,19 @@ describe('streamed books in the reader (spec 1.4 §5)', () => {
     expect(b.version).toBe(want);
   });
 
+  it('learns where files the host gained since it was opened are, without replacing the lesson', async () => {
+    const s = await server();
+    const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+    expect(b.peekUrl('c1:newmedia')).toBeUndefined();
+    const lessonBefore = b.lesson;
+    let told = 0; b.subscribe(() => told++);
+    b.addAssets([{ id: 'c1:newmedia', type: 'image/png', path: 'assets/c1_newmedia' }]);
+    expect(b.peekUrl('c1:newmedia')).toBe('https://cdn.example/books/big/assets/c1_newmedia');
+    expect(await b.assetUrl('c1:newmedia')).toBe('https://cdn.example/books/big/assets/c1_newmedia');
+    expect(b.lesson).toBe(lessonBefore); // an editor that follows the book's lesson must not be handed the original again
+    expect(told).toBe(0);
+  });
+
   it('shows the book from its index alone: every page there, none loaded', async () => {
     const s = await server();
     const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });

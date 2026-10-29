@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BookPatch, PatchResult } from '@chalk-format/container';
 import type { Lesson, LessonObject, LessonPage } from '@chalk-format/model';
-import { adoptedPatch } from './patch-state.js';
+import { adoptedPatch, mediaWanted } from './patch-state.js';
 
 const text = (id: string, over: Record<string, unknown> = {}) => ({ id, type: 'text', x: 0, y: 0, text: 'hi', fontSize: 20, fill: '#000000', ...over }) as LessonObject;
 const page = (id: string, objects: LessonObject[], over: Record<string, unknown> = {}) => ({ id, title: id, background: { type: 'blank' }, objects, ...over }) as LessonPage;
@@ -57,5 +57,34 @@ describe('what the editor keeps after the host kept a patch', () => {
   it('an asset sent in this very patch that the host also dropped is forgotten too', () => {
     const r = adoptedPatch({ patch: patchOf(), sent: sentLesson, top: sentLesson, result: result({}, { dropped: ['pic'] }), hashes: new Map(), known: new Set(), mediaIds: ['pic'] });
     expect(r.known.has('pic')).toBe(false);
+  });
+});
+
+describe('review findings, round 2 (the editor)', () => {
+  const sent = lesson([page('a', [text('a1', { x: 1, y: 1 })]), page('b', [text('b1')])]);
+
+  it('a page the host merged and the user DELETED during the save keeps the sent version as the base, so the delete meets the host\'s changes as a conflict', () => {
+    const merged = page('a', [text('a1', { x: 1, y: 3 })]);
+    const top = lesson([sent.pages[1]!]); // the user deleted page a while the save ran
+    const r = adoptedPatch({ patch: patchOf(), sent, top, result: result({ a: { file: 'f', hash: 'h', page: merged } }), hashes: new Map(), known: new Set(), mediaIds: [] });
+    expect(get(r.saved, 'a', 'a1').y).toBe(1); // not the host's page: a later delete is then not a clean delete of unchanged work
+    expect(r.top!.pages.map((p) => p.id)).toEqual(['b']);
+  });
+
+  it('media another editor added, in a merged page, counts as carried', () => {
+    const r = adoptedPatch({ patch: patchOf(), sent, top: sent, result: result({}, { assets: [{ id: 'theirs', type: 'image/png', path: 'assets/theirs' }] }), hashes: new Map(), known: new Set(), mediaIds: [] });
+    expect(r.known.has('theirs')).toBe(true);
+  });
+});
+
+describe('which assets a patch carries', () => {
+  const none = new Set<string>();
+  it('only those the host has no bytes of', () => {
+    expect(mediaWanted({ referenced: ['have', 'new'], carried: new Set(['have']), external: none, local: () => false })).toEqual(['new']);
+  });
+  it('an asset the host lists as external stays external, unless the editor holds the bytes (a local file with the same key was imported)', () => {
+    const ext = new Set(['lib']);
+    expect(mediaWanted({ referenced: ['lib'], carried: none, external: ext, local: () => false })).toEqual([]);
+    expect(mediaWanted({ referenced: ['lib'], carried: none, external: ext, local: (id) => id === 'lib' })).toEqual(['lib']);
   });
 });

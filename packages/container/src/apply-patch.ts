@@ -156,5 +156,10 @@ export async function applyStreamPatch(
   const indexBytes = json(index);
   const kept = new Set(index.assets.map((a) => a.id));
   const dropped = idx.assets.map((a) => a.id).filter((id) => !kept.has(id));
-  return { files, indexBytes, index, result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report, ...(dropped.length ? { dropped } : {}) } };
+  const mergedUse = new Set(merge.merged.flatMap((id) => written.get(id)?.assets ?? []));
+  const lookup = index.assets.filter((a) => a.path && mergedUse.has(a.id)).map((a) => ({ id: a.id, type: a.type, ...(a.size !== undefined ? { size: a.size } : {}), path: a.path! }));
+  return {
+    files, indexBytes, index,
+    result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report, ...(dropped.length ? { dropped } : {}), ...(lookup.length ? { assets: lookup } : {}) },
+  };
 }

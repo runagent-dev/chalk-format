@@ -468,3 +468,43 @@ describe('review findings, round 1 (container)', () => {
     expect(h.index.assets.map((a) => a.id)).toEqual([]);
   });
 });
+
+describe('review findings, round 2 (container)', () => {
+  const layer = (t: string) => [{ text: t, x: 1, y: 2, width: 3, fontSize: 4 }];
+  const bg = (n: number) => ({ type: 'image', assetId: `sha256:${String(n).repeat(64)}` }) as LessonPage['background'];
+
+  it('a picture the HOST replaced, with a text layer it made for it, is not cleared by an older editor\'s unrelated edit', async () => {
+    const h = await Host.open(lessonOf([page('a', [text('a1'), text('a2')], { background: bg(0), textLayer: layer('old') })]));
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: bg(1), textLayer: layer('fresh') })))); // the host: new picture, new text
+    const m = await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === 'a2' ? ({ ...o, x: 99 } as LessonObject) : o)) }))));
+    expect(h.page('a').textLayer).toEqual(layer('fresh'));
+    expect((h.page('a').background as { assetId: string }).assetId).toBe(`sha256:${'1'.repeat(64)}`);
+    expect(m.merge.report.notes.map((n) => n.rule)).not.toContain('background-replaced-text-cleared');
+    expect(obj(h.page('a'), 'a2')!.x).toBe(99);
+  });
+
+  it('both replaced the picture: the editor\'s picture stands and its text layer is cleared', async () => {
+    const h = await Host.open(lessonOf([page('a', [text('a1')], { background: bg(0), textLayer: layer('old') })]));
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: bg(1), textLayer: layer('host') }))));
+    const m = await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: bg(2) }))));
+    expect((h.page('a').background as { assetId: string }).assetId).toBe(`sha256:${'2'.repeat(64)}`);
+    expect(h.page('a').textLayer).toBeUndefined();
+    expect(m.merge.report.notes.map((n) => n.rule)).toContain('background-replaced-text-cleared');
+  });
+
+  it('the answer lists the carried media of a merged page, which the editor has never heard of', async () => {
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    const png = new Uint8Array([6, 6, 6]);
+    const key = await assetKey(png);
+    const other = createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, objects: [...p.objects, { id: 'i', type: 'image', x: 0, y: 0, width: 10, height: 10, assetId: key } as LessonObject] })), [{ id: key, type: 'image/png' }]);
+    await h.save(other, new Map([[key, { type: 'image/png', bytes: png }]])); // someone else adds a picture to page b
+    const m = await h.save(createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, title: 'Mine' })))); // I edit b from the old base: the host merges
+    expect(m.result.pages.b!.page?.objects.some((o) => o.id === 'i')).toBe(true);
+    expect(m.result.assets).toEqual([{ id: key, type: 'image/png', size: 3, path: `assets/${key.replace(':', '_')}` }]);
+    const plain = await h.save(createPatch(await h.editor(), edit((await h.editor()).lesson, 'a', (p) => ({ ...p, title: 'X' }))));
+    expect(plain.result.assets).toBeUndefined(); // nothing merged, nothing to tell
+  });
+});

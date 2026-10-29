@@ -5,7 +5,7 @@ import type { SaveProgress } from './save-run.js';
 import { assetKey, referencedAssetIds, type Lesson } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { isStreamed } from '../stream.js';
-import { adoptedPatch } from './patch-state.js';
+import { adoptedPatch, mediaWanted } from './patch-state.js';
 
 const HISTORY = 200;
 
@@ -102,14 +102,16 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
   // ---- the patch save (a streamed book whose host takes patches): only what changed is sent
   /** The version id and the `hex8` of every page the host has, as far as this editor knows: from the index it opened, then from each answer. */
   const patchBase = useRef<{ of: Book; version: string; hashes: Map<string, string> } | null>(null);
-  /** Assets the host has (or was sent): not sent again. */
-  const hostAssets = useRef<{ of: Book; ids: Set<string> } | null>(null);
+  /** Assets the host carries (or was sent): not sent again. `external`: assets it lists without a file: left external unless the editor holds the bytes. */
+  const hostAssets = useRef<{ of: Book; carried: Set<string>; external: Set<string> } | null>(null);
   const canPatch = isStreamed(base);
   const baseOfPatch = () => {
     if (!isStreamed(base)) throw new Error('a patch needs a streamed book');
     if (patchBase.current?.of !== base) patchBase.current = { of: base, version: base.version, hashes: pageHashes(base.index) };
-    if (hostAssets.current?.of !== base) hostAssets.current = { of: base, ids: new Set(base.index.assets.map((a) => a.id)) };
-    return { pb: patchBase.current, known: hostAssets.current.ids };
+    if (hostAssets.current?.of !== base) {
+      hostAssets.current = { of: base, carried: new Set(base.index.assets.filter((a) => a.path).map((a) => a.id)), external: new Set(base.index.assets.filter((a) => !a.path).map((a) => a.id)) };
+    }
+    return { pb: patchBase.current, known: hostAssets.current.carried, external: hostAssets.current.external };
   };
 
   /**
@@ -117,11 +119,11 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
    * book; a library item a changed page uses that the book does not carry yet is fetched once and sent with it.
    */
   const savePatch = useCallback(async (progress?: (p: SaveProgress) => void): Promise<{ patch: BookPatch; media: Map<string, { type: string; bytes: Uint8Array }>; lesson: Lesson }> => {
-    const { pb, known } = baseOfPatch();
+    const { pb, known, external } = baseOfPatch();
     const patch = createPatch({ version: pb.version, lesson: saved, hashes: pb.hashes }, lesson);
     const changedIds = new Set(Object.keys(patch.mine.pages));
     const sub = { ...lesson, pages: lesson.pages.filter((p) => changedIds.has(p.id)), snipPages: lesson.snipPages.filter((p) => changedIds.has(p.id)) } as Lesson;
-    const wanted = referencedAssetIds(sub).filter((id) => !known.has(id));
+    const wanted = mediaWanted({ referenced: referencedAssetIds(sub), carried: known, external, local: (id) => added.current.has(id) });
     const got = await gatherAssets({
       ids: wanted,
       held: (id) => { const a = added.current.get(id); return a ? { type: a.type, bytes: a.bytes } : undefined; },
@@ -139,10 +141,14 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
    * undo that work), so the next patch cannot undo it either.
    */
   const adoptPatch = useCallback((built: { patch: BookPatch; media: Map<string, unknown>; lesson: Lesson }, result: PatchResult) => {
-    const { pb, known } = baseOfPatch();
+    const { pb, known, external } = baseOfPatch();
     const next = adoptedPatch({ patch: built.patch, sent: built.lesson, top: hNow.current.stack[hNow.current.i]!, result, hashes: pb.hashes, known, mediaIds: built.media.keys() });
     patchBase.current = { of: pb.of, version: result.version, hashes: next.hashes };
-    hostAssets.current = { of: pb.of, ids: next.known };
+    // what was sent or merged in now has its file; what the host dropped is no longer there at all
+    const nowCarried = new Set([...built.media.keys(), ...(result.assets ?? []).map((a) => a.id), ...(result.dropped ?? [])]);
+    hostAssets.current = { of: pb.of, carried: next.known, external: new Set([...external].filter((id) => !nowCarried.has(id))) };
+    // someone else's new media in a page the host merged: the book this editor draws from learns where its files are
+    if (isStreamed(pb.of) && result.assets?.length) pb.of.addAssets(result.assets);
     if (next.top) setH({ stack: [next.top], i: 0, gesture: null });
     setSaved(next.saved);
   }, [base]);

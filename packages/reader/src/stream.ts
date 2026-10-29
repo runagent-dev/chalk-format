@@ -23,6 +23,8 @@ export type StreamedBook = Book & {
   loadAll(): Promise<void>;
   /** The search file (spec 1.4 §4), fetched once; null if the book has none. */
   searchText(): Promise<StreamText | null>;
+  /** Tells the book where files the host has gained since it was opened are (a patch save's answer: media another editor added), so pages using them can be drawn. */
+  addAssets(entries: readonly { id: string; type: string; path: string }[]): void;
   /** Called whenever pages arrive (`lesson` is then a new object). */
   subscribe(fn: () => void): () => void;
 };
@@ -136,6 +138,10 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
       if (!index.text) return Promise.resolve(null);
       text ??= doFetch(at(index.text.file), { signal: abort.signal }).then(async (r) => (r.ok ? parseStreamText(await r.json()) : null)).catch(() => { text = null; return null; });
       return text;
+    },
+    addAssets(entries) {
+      // no `changed()`: that would hand an editor a fresh copy of the book as opened (and could replace its edits); the pages that use these files ask for them as they draw
+      for (const e of entries) { assetPath.set(e.id, e.path); assetType.set(e.id, e.type); urls.delete(e.id); settled.delete(e.id); }
     },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     dispose() { abort.abort(); owned.forEach((u) => URL.revokeObjectURL(u)); listeners.clear(); urls.clear(); queue = []; },

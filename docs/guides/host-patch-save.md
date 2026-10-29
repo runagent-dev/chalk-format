@@ -64,7 +64,8 @@ await withBookLock(slug, async () => {                       // ONE writer of th
   their key are refused. An empty merge returns `result.unchanged` and nothing to write.
 - **The `PatchResult`** carries the new `version` (the hash of the new `book.json`), the new file name and `hex8` of every page written, for a page
   that was merged with someone else's work that page whole (`page`), which the editor takes in (merging it with anything the user edited meanwhile),
-  and `dropped`: the assets taken out of the index, which the editor forgets so it sends their bytes again if the picture comes back.
+  `dropped`: the assets taken out of the index, which the editor forgets so it sends their bytes again if the picture comes back, and `assets`: the
+  carried media (id, type, file) that the merged pages use, which may be someone else's new pictures: the editor adds them to the book it draws from.
 - **The version id is informational.** A patch is untrusted input: a claimed `version` or page `hash` proves nothing. The merge decides whether the
   store changed a page since the editor opened it by comparing the page itself with the editor's base copy, which is why `pagesNeeded` lists every page
   the patch touches that the store has (a patch touches a few). Never reject a patch for a version mismatch alone.
@@ -79,7 +80,7 @@ await withBookLock(slug, async () => {                       // ONE writer of th
 | One deleted an object or page the other edited | **The edit is kept**; reported |
 | Both inserted at the same spot | Both, the earlier save first |
 | Both moved the same page or object | The last saver's place |
-| A page's picture was replaced | Its text layer is cleared (the positions belong to the old picture) |
+| The editor replaced a page's picture and left its text layer as it was | The text layer is cleared (the positions belong to the old picture). A layer the same patch supplies is kept, and so is one the host made for a picture the host replaced |
 | The merge would leave the book without a page | The first deleted page stays (`last-page-kept`) |
 
 Applying the same patch twice changes nothing more. Edits that do not touch the same thing give the same book whichever was saved first

@@ -73,6 +73,11 @@ export type PatchResult = {
   unchanged?: boolean;
   /** Assets the host took out of the index because no page uses them any more: the editor must send their bytes again if it uses them again. */
   dropped?: string[];
+  /**
+   * The carried assets (with their file) that the merged pages in `pages` use: someone else's new media the editor has never heard of. It adds them
+   * to the book it draws from, or those pictures could not be shown until it reopened the book.
+   */
+  assets?: { id: string; type: string; size?: number; path: string }[];
 };
 
 /** The current state of the book in the store ("theirs"): its index, and the pages `pagesNeeded` asked for. */
