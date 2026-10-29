@@ -17,7 +17,7 @@ inside (it works offline) or only name it, and a reader then fetches it by key f
 
 Specs: [1.0 Core](../../spec/1.0/README.md) (the container, pages, objects, overlays),
 [1.2](../../spec/1.2/README.md) (keys and stores), [1.3](../../spec/1.3/README.md) (how media is presented),
-[1.4](../../spec/1.4/README.md) (streamed books).
+[1.4](../../spec/1.4/README.md) (streamed books), [1.6](../../spec/1.6/README.md) (the floating window).
 
 ## 2. Convert a PDF
 
@@ -78,7 +78,7 @@ Switch **Read / Author** at the top of the showcase. In your own app, author mod
   [Libraries](../../packages/reader/README.md#libraries); a library server speaks the
   [registry API](../../spec/1.2/registry-api.md) and `packages/library-server` is one you can run.
 - **The sidebar (right)** shows the settings of what you are working on: a selected object's position, size
-  and presentation (spec 1.3: live or a card, what a tap opens, label, icon, colour), the drawing tool's colour
+  and presentation (spec 1.3: live or a card, what a tap opens (in place, in a dialog, in a floating window that leaves the page usable, or full screen), label, icon, colour), the drawing tool's colour
   and thickness, or, with nothing selected, the book and page titles and what is on the page.
 - **Read mode** shows the book exactly as students will see it.
 

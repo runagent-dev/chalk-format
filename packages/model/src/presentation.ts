@@ -15,7 +15,8 @@ export const ICON_NAMES = [
 export type IconName = (typeof ICON_NAMES)[number];
 
 export const SHOW_VALUES = ['card', 'live'] as const;
-export const OPEN_VALUES = ['inline', 'popup', 'fullscreen', 'none'] as const;
+// `window` (spec 1.6) is a floating window over the page, not a dimmed dialog; a reader that does not know it uses the default (spec 1.3 §1)
+export const OPEN_VALUES = ['inline', 'popup', 'window', 'fullscreen', 'none'] as const;
 export type Show = (typeof SHOW_VALUES)[number];
 export type Open = (typeof OPEN_VALUES)[number];
 

@@ -3,29 +3,29 @@
   "libraries": [
     {
       "specifier": "three",
-      "version": "0.183.2",
-      "file": "build/three-0.183.2-core.js",
-      "size": 720844,
-      "key": "c1:e5oeyylksj2lwuoz7caib5abb4"
+      "version": "0.185.1",
+      "file": "build/three-0.185.1-core.js",
+      "size": 729902,
+      "key": "c1:tnju7fmkkem7urwcj2quaiihxm"
     },
     {
       "specifier": "three/addons/controls/OrbitControls.js",
-      "version": "0.183.2",
-      "file": "build/three-0.183.2-OrbitControls.js",
-      "size": 19732,
-      "key": "c1:3ieckri5glzee42orejuzbhwie"
+      "version": "0.185.1",
+      "file": "build/three-0.185.1-OrbitControls.js",
+      "size": 19728,
+      "key": "c1:nqdfnh3c3kmjnngrlj4erirjdm"
     },
     {
       "specifier": "three/addons/loaders/GLTFLoader.js",
-      "version": "0.183.2",
-      "file": "build/three-0.183.2-GLTFLoader.js",
-      "size": 45637,
-      "key": "c1:5dsc5ytwaa4wclubuk56nqe7oy"
+      "version": "0.185.1",
+      "file": "build/three-0.185.1-GLTFLoader.js",
+      "size": 45689,
+      "key": "c1:lwq77txearu4ueh57koubhv43e"
     },
     {
       "specifier": "three/addons/renderers/CSS2DRenderer.js",
-      "version": "0.183.2",
-      "file": "build/three-0.183.2-CSS2DRenderer.js",
+      "version": "0.185.1",
+      "file": "build/three-0.185.1-CSS2DRenderer.js",
       "size": 2469,
       "key": "c1:4hz5hrfsx3uzrxa3mx55r6i4qm"
     }

@@ -35,6 +35,11 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@google/model-viewer>three": "0.185.1"
+      }
+    }
   }
 }

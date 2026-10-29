@@ -22,6 +22,25 @@ async function server() {
 }
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
+/** A web server with a delay per file, that counts how many requests are in flight at once, and can fail some files. */
+async function slowServer(o: { delay?: (path: string) => number; fail?: (path: string) => boolean } = {}) {
+  const { files } = await publishStreamed(lesson);
+  const state = { inFlight: 0, maxInFlight: 0 };
+  const fetch = (async (url: string) => {
+    const path = new URL(url).pathname.replace(/^\/books\/big\//, '');
+    state.inFlight++; state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+    try {
+      const ms = o.delay?.(path) ?? 0;
+      if (ms) await new Promise((r) => setTimeout(r, ms));
+      if (o.fail?.(path)) return new Response(null, { status: 500 });
+      const f = files.get(path);
+      return f ? new Response(f as unknown as BodyInit, { status: 200 }) : new Response(null, { status: 404 });
+    } finally { state.inFlight--; }
+  }) as unknown as typeof globalThis.fetch;
+  return { fetch, state };
+}
+const pageNumber = (path: string) => Number(/^pages\/(\d+)-/.exec(path)?.[1] ?? -1);
+
 describe('streamed books in the reader (spec 1.4 §5)', () => {
   it('orders a window nearest first, inside the book', () => {
     expect(windowAround(10, 40, 2)).toEqual([10, 11, 9, 12, 8]);
@@ -100,5 +119,65 @@ describe('streamed books in the reader (spec 1.4 §5)', () => {
     const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
     await b.loadAll();
     expect(b.complete).toBe(true);
+  });
+
+  describe('loading the whole book for author mode', () => {
+    it('does not let one slow page hold up the pages after it (no waiting for the slowest of a batch)', async () => {
+      const s = await slowServer({ delay: (p) => (pageNumber(p) === 2 ? 300 : 5) });
+      const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+      const all = b.loadAll({ concurrency: 3 });
+      await new Promise((r) => setTimeout(r, 120));
+      // page 2 (p1) is still in its 300 ms; with batches of 3 nothing past the first batch could have started
+      expect(b.isLoaded('p0')).toBe(true);
+      expect(b.isLoaded('p1')).toBe(false);
+      expect(b.loadedPages).toBeGreaterThan(10);
+      await all;
+      expect(b.complete).toBe(true);
+    });
+
+    it('keeps at most `concurrency` requests in flight, and uses all of them', async () => {
+      const s = await slowServer({ delay: () => 15 });
+      const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+      await b.loadAll({ concurrency: 5 });
+      expect(s.state.maxInFlight).toBe(5);
+      const s2 = await slowServer({ delay: () => 15 });
+      const b2 = await openStreamedBook('https://cdn.example/books/big/', { fetch: s2.fetch });
+      await b2.loadAll();   // the default is 12
+      expect(s2.state.maxInFlight).toBe(12);
+    });
+
+    it('counts its progress from none to every page', async () => {
+      const s = await slowServer({ delay: () => 5 });
+      const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+      expect([b.loadedPages, b.totalPages]).toEqual([0, 40]);
+      const seen: number[] = [];
+      b.subscribe(() => seen.push(b.loadedPages));
+      await b.loadAll({ concurrency: 4 });
+      expect(seen.length).toBe(40);
+      expect(seen).toEqual([...seen].sort((x, y) => x - y));   // never goes back
+      expect(seen.at(-1)).toBe(40);
+      expect([b.loadedPages, b.totalPages]).toEqual([40, 40]);
+    });
+
+    it('rejects when a page cannot be loaded, and keeps the others', async () => {
+      const s = await slowServer({ fail: (p) => pageNumber(p) === 7 });
+      const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+      await expect(b.loadAll()).rejects.toThrow('could not be loaded');
+      expect(b.isLoaded('p6')).toBe(false);   // page 7 is index 6
+      expect(b.loadedPages).toBe(39);
+      expect(b.complete).toBe(false);
+    });
+
+    it('leaves the reading window as it was: still 6 at a time, nearest first, even after a loadAll', async () => {
+      const s = await slowServer({ delay: () => 30 });
+      const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+      b.want(windowAround(20, 40, 8));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(s.state.maxInFlight).toBe(6);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(s.state.maxInFlight).toBe(6);
+      await b.loadAll();   // the rest, with the larger pool
+      expect(b.complete).toBe(true);
+    });
   });
 });

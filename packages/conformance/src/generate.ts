@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5' | '1.6'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.5';
+const CURRENT = '1.6';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
@@ -181,16 +181,16 @@ for (const [name, doc] of Object.entries(storeFiles)) writeFileSync(new URL(`sto
 // ── 1.5: lab libraries ───────────────────────────────────────────────────
 // A lab that imports three.js (a stand-in module here: the real build is 700 KB) supplied by the reader.
 const THREE_STUB = new TextEncoder().encode('export const REVISION = "stub"; export class Scene {}\n');
-const LAB3D = new TextEncoder().encode('<!doctype html><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js"}}</script><script type="module">import * as THREE from "three"; document.title = THREE.REVISION;</script>');
+const LAB3D = new TextEncoder().encode('<!doctype html><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js"}}</script><script type="module">import * as THREE from "three"; document.title = THREE.REVISION;</script>');
 {
   const k3 = await assetKey(THREE_STUB), kl = await assetKey(LAB3D), kp = await assetKey(PNG);
   write('valid', 'lab-libraries.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
-    { ...labObject, poster: kp, lab: { ...labObject.lab, id: 'org.example.three-lab', entry: kl, assets: [], libraries: [{ specifier: 'three', version: '0.183.2', asset: k3 }] } },
+    { ...labObject, poster: kp, lab: { ...labObject.lab, id: 'org.example.three-lab', entry: kl, assets: [], libraries: [{ specifier: 'three', version: '0.185.1', asset: k3 }] } },
   ] })] }), new Map([[k3, { type: 'text/javascript', bytes: THREE_STUB }], [kl, { type: 'text/html', bytes: LAB3D }], [kp, { type: 'image/png', bytes: PNG }]])),
   { kind: 'lesson', since: '1.5', covers: 'a lab with a library the reader supplies, and its own import map for running on its own' });
 }
 const labWith = (libraries: unknown) => JSON.stringify(page('p1', { objects: [{ ...labObject, lab: { ...labObject.lab, libraries } } as never] }));
-write('invalid', 'lab-library-not-content-addressed.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 11 }), 'pages/page-1.json': labWith([{ specifier: 'three', version: '0.183.2', asset: 'three.js' }]) }),
+write('invalid', 'lab-library-not-content-addressed.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 11 }), 'pages/page-1.json': labWith([{ specifier: 'three', version: '0.185.1', asset: 'three.js' }]) }),
   { kind: 'lesson', since: '1.5', covers: 'a library whose asset is not content-addressed' });
 write('invalid', 'lab-library-duplicate.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 11 }), 'pages/page-1.json': labWith([{ specifier: 'three', version: '1', asset: 'c1:' + 'a'.repeat(25) + 'a' }, { specifier: 'three', version: '2', asset: 'c1:' + 'b'.repeat(25) + 'a' }]) }),
   { kind: 'lesson', since: '1.5', covers: 'the same library specifier twice' });
@@ -215,6 +215,20 @@ write('invalid', 'unknown-object-type.chalk', await rawZip({ 'manifest.json': ma
 write('invalid', 'missing-inline-asset.chalk', await rawZip({
   'manifest.json': manifest({ assets: [{ id: png, type: 'image/png', path: `assets/${png.replace(':', '_')}`, inline: true }] }), 'pages/page-1.json': blankPage }),
   { kind: 'lesson', covers: 'asset declared inline but its bytes are absent' });
+
+// ── 1.6: the floating window ─────────────────────────────────────────────
+// `open: window` on an image, a video, a model, a lab and an icon; a pre-1.6 reader treats it as an unknown value (the defaults).
+{
+  const k = { png: await assetKey(PNG), glb: await assetKey(GLB), lab: await assetKey(PENDULUM) };
+  const media: AssetBundle = new Map([[k.png, { type: 'image/png', bytes: PNG }], [k.glb, { type: 'model/gltf-binary', bytes: GLB }], [k.lab, { type: 'text/html', bytes: PENDULUM }]]);
+  write('valid', 'presentation-window.chalk', await packLesson(lesson({ pages: [page('p1', { objects: [
+    { id: 'img-window', type: 'image', x: 10, y: 10, width: 120, height: 90, assetId: k.png, presentation: { open: 'window', label: 'চিত্র ২' } },
+    { id: 'img-icon-window', type: 'image', x: 150, y: 10, width: 120, height: 90, assetId: k.png, displayMode: 'icon', presentation: { open: 'window', icon: 'eye' } },
+    { id: 'model-window', type: 'embed', embed: 'model3d', x: 10, y: 120, width: 400, height: 300, assetId: k.glb, poster: k.png, presentation: { open: 'window', label: 'স্ক্রু গজ' } },
+    { id: 'video-window', type: 'embed', embed: 'video', x: 420, y: 120, width: 320, height: 180, url: 'https://media.example.org/pendulum.mp4', poster: k.png, presentation: { open: 'window' } },
+    { ...labObject, id: 'lab-window', poster: k.png, lab: { ...labObject.lab, entry: k.lab, assets: [k.glb] }, presentation: { open: 'window', icon: 'atom' } },
+  ] })] }), media), { kind: 'lesson', since: '1.6', covers: 'open: window (the floating window) on an image, an icon image, a model, a video and a lab' });
+}
 
 writeFileSync(new URL('cases.json', ROOT), JSON.stringify(cases, null, 2) + '\n');
 console.log(`${cases.length} cases → conformance/`);

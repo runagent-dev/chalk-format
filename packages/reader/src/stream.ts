@@ -20,7 +20,14 @@ export type StreamedBook = Book & {
   isLoaded(pageId: string): boolean;
   /** Every page loaded (author mode, saving). */
   readonly complete: boolean;
-  loadAll(): Promise<void>;
+  /** How many pages (and snip pages) have arrived, and how many the book has: for a progress display while `loadAll` runs. */
+  readonly loadedPages: number;
+  readonly totalPages: number;
+  /**
+   * Loads every page not loaded yet, keeping up to `concurrency` requests (default 12) in flight and starting the next as soon as one
+   * finishes (a slow page holds up only itself). Rejects when some page could not be loaded; the others stay loaded.
+   */
+  loadAll(o?: { concurrency?: number }): Promise<void>;
   /** The search file (spec 1.4 §4), fetched once; null if the book has none. */
   searchText(): Promise<StreamText | null>;
   /** Tells the book where files the host has gained since it was opened are (a patch save's answer: media another editor added), so pages using them can be drawn. */
@@ -34,6 +41,8 @@ export const isStreamed = (b: Book): b is StreamedBook => (b as Partial<Streamed
 export const isStreamSource = (s: unknown): s is string | URL => (typeof s === 'string' || s instanceof URL) && /(\/|\/book\.json)(\?.*)?$/.test(String(s));
 
 const MAX_REQUESTS = 6;
+/** Requests in flight at once for `loadAll` (author mode needs every page); the reading window keeps MAX_REQUESTS. */
+const LOAD_ALL_CONCURRENCY = 12;
 
 export async function openStreamedBook(source: string | URL, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch } = {}): Promise<StreamedBook> {
   const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
@@ -128,10 +137,14 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
     },
     isLoaded: (id) => loaded.has(id),
     get complete() { return loaded.size === index.pages.length + (index.snipPages?.length ?? 0); },
-    async loadAll() {
-      const all = [...index.pages.keys(), ...(index.snipPages ?? []).map((_, i) => -1 - i)];
-      // a few at a time, in reading order
-      for (let i = 0; i < all.length; i += MAX_REQUESTS) await Promise.all(all.slice(i, i + MAX_REQUESTS).map((k) => (loaded.has(entryOf(k)!.id) ? undefined : loadPage(k))));
+    get loadedPages() { return loaded.size; },
+    get totalPages() { return index.pages.length + (index.snipPages?.length ?? 0); },
+    async loadAll(o = {}) {
+      const todo = [...index.pages.keys(), ...(index.snipPages ?? []).map((_, i) => -1 - i)].filter((k) => !loaded.has(entryOf(k)!.id));
+      const limit = Math.max(1, Math.floor(o.concurrency ?? LOAD_ALL_CONCURRENCY));
+      // a pool, in reading order: each worker takes the next page the moment its last one is done (no waiting for the slowest of a batch)
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(limit, todo.length) }, async () => { while (next < todo.length) await loadPage(todo[next++]!); }));
       if (!book.complete) throw new Error('some pages of this book could not be loaded');
     },
     searchText() {
