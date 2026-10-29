@@ -68,7 +68,7 @@ starting point. Never commit the real `.env`.
 | `NAME` | `Chalk library` | Shown at `/` and `/healthz`. |
 
 Accepted types: images, video, audio, `model/gltf-binary`, PDF, `text/html` and `text/javascript` (labs and the
-libraries they import), and lab manifests (`application/vnd.chalk.lab+json`).
+libraries they import), lab manifests (`application/vnd.chalk.lab+json`) and question manifests (`application/vnd.chalk.question+json`, spec 1.6).
 
 ## Postgres
 

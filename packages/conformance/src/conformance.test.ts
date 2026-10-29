@@ -137,3 +137,29 @@ describe('lab manifests and libraries (spec 1.5)', () => {
     for (const l of m.libraries) expect(html).toContain(`three@${l.version}`);
   });
 });
+
+// ---- 1.6: question manifests ----
+describe('question manifests (spec 1.6)', () => {
+  const dir = new URL('../../../examples/questions/', import.meta.url);
+  const v = ajv.compile(schema('question-manifest.schema.json'));
+  const files = readdirSync(dir).filter((f) => f.endsWith('.question.json'));
+  it('there are examples of a multiple-choice, a numeric and a creative question', () => {
+    expect(files.map((f) => JSON.parse(readFileSync(new URL(f, dir), 'utf8')).kind).sort()).toEqual(['cq', 'mcq', 'numeric']);
+  });
+  it.each(files)('%s is valid against schema/question-manifest.schema.json', (f) => {
+    expect(v(JSON.parse(readFileSync(new URL(f, dir), 'utf8'))), JSON.stringify(v.errors)).toBe(true);
+  });
+  it('the example in the spec text is valid too', () => {
+    const text = readFileSync(new URL('../../../spec/1.6/README.md', import.meta.url), 'utf8');
+    const block = text.match(/```json\n([\s\S]*?)\n```/)?.[1];
+    expect(block).toBeTruthy();
+    expect(v(JSON.parse(block!)), JSON.stringify(v.errors)).toBe(true);
+  });
+  it('the schema refuses a lab manifest, a missing stem and an unlisted code shape', () => {
+    const ok = { format: 'chalk.question', manifestVersion: 1, id: 'q', version: '1', kind: 'mcq', stem: 'Q' };
+    expect(v(ok)).toBe(true);
+    expect(v({ ...ok, format: 'chalk.lab' })).toBe(false);
+    expect(v({ ...ok, stem: undefined })).toBe(false);
+    expect(v({ ...ok, code: 'has space' })).toBe(false);
+  });
+});

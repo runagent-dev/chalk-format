@@ -47,6 +47,35 @@ describe('the reference library (disk + PGlite)', () => {
     expect((await post({ ...k, type: 'video/mp4', size: 10 * 1024 * 1024 * 1024 })).status).toBe(413);
   });
 
+  it('keeps question manifests: found by their tags, their type and their code, and delivered as they were published', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { createRegistryClient } = await import('@chalk-format/store');
+    const { QUESTION_MANIFEST_TYPE, questionManifestSchema, questionRegistryTags } = await import('@chalk-format/model');
+    const examples = new URL('../../../examples/questions/', import.meta.url);
+    const client = createRegistryClient(BASE, { token: 't-1', fetch: fetchApp });
+    const published: Record<string, string> = {};
+    for (const f of readdirSync(examples).filter((x) => x.endsWith('.question.json'))) {
+      const bytes = new Uint8Array(readFileSync(new URL(f, examples)));
+      const m = questionManifestSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+      const rec = await client.add(bytes, { type: QUESTION_MANIFEST_TYPE, filename: f, title: m.code ?? m.id, tags: questionRegistryTags(m), ...(m.subject ? { subject: m.subject } : {}) });
+      published[m.kind] = rec.key;
+    }
+    const keys = async (q: Parameters<typeof client.search>[0]) => (await client.search(q)).items.map((i) => i.key).sort();
+    expect(await keys({ type: [QUESTION_MANIFEST_TYPE] })).toEqual(Object.values(published).sort());
+    expect(await keys({ tag: ['kind:question'] })).toEqual(Object.values(published).sort());
+    expect(await keys({ tag: ['question-kind:cq'] })).toEqual([published.cq]);
+    expect(await keys({ tag: ['kind:question', 'question-kind:numeric'] })).toEqual([published.numeric]);
+    // a code is looked up by its tag (free text splits EX-2-M1 into words, and would find all three)
+    expect(await keys({ tag: ['code:EX-2-M1'] })).toEqual([published.mcq]);
+    expect(await keys({ tag: ['code:EX-9-X9'] })).toEqual([]);
+    // what comes back is what went in, and it is not served as a web page
+    const { registryLibrary } = await import('@chalk-format/store');
+    const url = (await registryLibrary({ url: BASE, token: 't-1', fetch: fetchApp }).url(published.mcq!))!;
+    const got = await fetchApp(url);
+    expect(questionManifestSchema.parse(await got.json()).code).toBe('EX-2-M1');
+    expect(got.headers.get('content-security-policy')).toBe('sandbox');
+  });
+
   it('a private library: reading needs a token too', async () => {
     const priv = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1'), publicRead: false });
     expect((await priv.fetch(new Request(`${BASE}/v1/search?q=x`))).status).toBe(401);
