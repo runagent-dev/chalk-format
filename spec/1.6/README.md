@@ -61,8 +61,8 @@ Like the lab manifest, a manifest is an open object: writers keep fields they do
 
 | `kind` | Has | Rules |
 |---|---|---|
-| `mcq` | `options` | Two or more options, **exactly one** `correct` |
-| `mcq_multi` | `options` | Two or more options, **at least one** `correct` |
+| `mcq` | `options` | Two or more options, **at most one** `correct` (none marked: the key is not known) |
+| `mcq_multi` | `options` | Two or more options, any number `correct` |
 | `short_answer` | | `answer` is the model answer |
 | `numeric` | | `answer.value` (and `unit`) is the number; `answer.text` may show the working |
 | `cq` | `parts` | At least one part. Marks and answers belong to the parts |

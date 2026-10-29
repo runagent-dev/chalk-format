@@ -39,16 +39,17 @@ describe('question manifests (spec 1.6)', () => {
   });
 
   describe('checkQuestion', () => {
-    it('a multiple-choice question has two or more options and exactly one correct', () => {
+    it('a multiple-choice question has two or more options and at most one marked correct', () => {
       expect(checkQuestion(mcq([1]))).toEqual([]);
-      expect(checkQuestion(mcq([]))).toEqual(['mcq: exactly one correct option (found 0)']);
-      expect(checkQuestion(mcq([0, 1]))).toEqual(['mcq: exactly one correct option (found 2)']);
+      expect(checkQuestion(mcq([]))).toEqual([]); // the key is not known: allowed
+      expect(checkQuestion(mcq([0, 1]))).toEqual(['mcq: at most one correct option (found 2)']);
       expect(checkQuestion(base({ kind: 'mcq', options: [{ label: 'a', text: 'x', correct: true }] }))).toEqual(['mcq: at least two options']);
     });
-    it('a many-answers question needs at least one correct option', () => {
+    it('a many-answers question needs two or more options, any number marked', () => {
       const m = (c: number[]) => ({ ...mcq(c), kind: 'mcq_multi' }) as QuestionManifest;
       expect(checkQuestion(m([0, 2]))).toEqual([]);
-      expect(checkQuestion(m([]))).toEqual(['mcq_multi: at least one correct option']);
+      expect(checkQuestion(m([]))).toEqual([]);
+      expect(checkQuestion({ ...m([0]), options: [{ label: 'a', text: 'x' }] } as QuestionManifest)).toEqual(['mcq_multi: at least two options']);
     });
     it('a creative question has parts, and only it does', () => {
       expect(checkQuestion(base({ kind: 'cq' }))).toEqual(['cq: at least one part']);

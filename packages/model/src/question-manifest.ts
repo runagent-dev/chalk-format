@@ -119,14 +119,12 @@ export function checkQuestion(m: QuestionManifest): string[] {
   const problems: string[] = [];
   const options = m.options ?? [], parts = m.parts ?? [];
   const correct = options.filter((o) => o.correct).length;
+  // a key that is not known is allowed (no option marked); two marked is never right for a single-answer question
   if (m.kind === 'mcq') {
     if (options.length < 2) problems.push('mcq: at least two options');
-    else if (correct !== 1) problems.push(`mcq: exactly one correct option (found ${correct})`);
+    else if (correct > 1) problems.push(`mcq: at most one correct option (found ${correct})`);
   }
-  if (m.kind === 'mcq_multi') {
-    if (options.length < 2) problems.push('mcq_multi: at least two options');
-    else if (correct < 1) problems.push('mcq_multi: at least one correct option');
-  }
+  if (m.kind === 'mcq_multi' && options.length < 2) problems.push('mcq_multi: at least two options');
   if (m.kind === 'cq' && parts.length < 1) problems.push('cq: at least one part');
   if (m.kind !== 'mcq' && m.kind !== 'mcq_multi' && options.length) problems.push(`${m.kind}: options are for multiple choice`);
   if (m.kind !== 'cq' && parts.length) problems.push(`${m.kind}: parts are for a creative question`);
