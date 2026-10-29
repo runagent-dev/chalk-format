@@ -208,6 +208,9 @@ export function mergeBook(patch: BookPatch, theirs: TheirsState): MergeResult {
       result = clearStaleText(b?.page, mineP, t, result, id, notes);
       stored = t;
     }
+    // a merged page the rest of the code cannot read is refused here, with the page and the object named, not as a TypeError further on
+    const noText = result.objects.find((o) => o.type === 'text' && typeof (o as { text?: unknown }).text !== 'string');
+    if (noText) throw new Error(`page ${id}: the merged text object ${noText.id} has no text, so the patch does not describe a valid page`);
     if (!stored || !sameValue(result, stored)) {
       write.set(id, result);
       if (!sameValue(result, mineP)) merged.push(id);

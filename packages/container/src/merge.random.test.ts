@@ -80,7 +80,8 @@ async function run(seed: number, opts: { force?: boolean } = {}) {
   return { h, e, l0: e.lesson, la, lb, first, second, final: await h.lesson() };
 }
 
-describe('mergeBook, randomised: two editors from one base', () => {
+// 250 seeded cases each: heavy by design, so they get room when the whole repo's checks run in parallel (vitest's default is 5 s)
+describe('mergeBook, randomised: two editors from one base', { timeout: 60_000 }, () => {
   it('never loses an object or a page either side added', async () => {
     for (const seed of SEEDS) {
       const { l0, la, lb, final } = await run(seed);
