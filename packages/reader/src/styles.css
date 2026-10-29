@@ -647,3 +647,9 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-author-target::before, .chalk-author-target::after { content: ''; position: absolute; background: var(--chalk-accent); }
 .chalk-author-target::before { left: calc(-10px / var(--s)); width: calc(20px / var(--s)); top: calc(-1px / var(--s)); height: calc(2px / var(--s)); }
 .chalk-author-target::after { top: calc(-10px / var(--s)); height: calc(20px / var(--s)); left: calc(-1px / var(--s)); width: calc(2px / var(--s)); }
+
+/* a save in progress: the dock's Save button is busy (its icon pulses; no motion when the reader asks for none) */
+.chalk-dock-btn.is-busy { cursor: progress; }
+.chalk-dock-save.is-busy svg { animation: chalk-save-pulse 0.9s ease-in-out infinite; }
+@keyframes chalk-save-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.88); } }
+@media (prefers-reduced-motion: reduce) { .chalk-dock-save.is-busy svg { animation: none; opacity: 0.55; } }

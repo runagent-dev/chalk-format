@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig, type ReaderHandle } from '@chalk-format/reader';
+import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig, type ReaderHandle, type SaveProgress } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
 // pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -33,6 +33,13 @@ export function App() {
   // the host's own Save: the reader says when the book has unsaved changes (onDirtyChange) and saves when asked (handle.save)
   const reader = useRef<ReaderHandle>(null);
   const [dirty, setDirty] = useState(false);
+  // what a host can do with a save in progress (onSavingChange, onSaveProgress); `?save=slow` or `?save=fail` makes the showcase's own save take a
+  // moment, or refuse, so this (and the tests) can be tried: without it the book is downloaded as before
+  const [saving, setSaving] = useState(false);
+  const [phase, setPhase] = useState<SaveProgress | null>(null);
+  const demoSave = new URLSearchParams(location.search).get('save');
+  const callbacks = new URLSearchParams(location.search).get('callbacks'); // `throw`: a host callback with a bug; `resave`: one that calls save() at once
+  const onSave = demoSave ? async () => { (window as unknown as { __saveCalls?: number }).__saveCalls = ((window as unknown as { __saveCalls?: number }).__saveCalls ?? 0) + 1; await new Promise((r) => setTimeout(r, 1500)); if (demoSave === 'fail') throw new Error('The host refused the save'); } : undefined;
   // the libraries connected in this browser (This device, folders, library servers), kept for next time;
   // a library server named in .env.local is connected for you (see .env.example)
   const [libraries, setLibraries] = useSavedLibraries({ preset: PRESET });
@@ -55,8 +62,8 @@ export function App() {
           </div>
         )}
         {config.authoring.enabled && mode === 'author' && (
-          <button type="button" className="app-btn app-save" data-dirty={dirty} disabled={!dirty} onClick={() => void reader.current?.save()}>
-            {dirty ? 'Save changes' : 'Saved'}
+          <button type="button" className="app-btn app-save" data-dirty={dirty} data-saving={saving} data-phase={phase ? `${phase.phase}${phase.total ? ` ${phase.done}/${phase.total}` : ''}` : ''} disabled={!dirty || saving} onClick={() => void reader.current?.save()}>
+            {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
           </button>
         )}
         <button type="button" className="app-btn" onClick={() => file.current?.click()}>Open a book</button>
@@ -65,7 +72,7 @@ export function App() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} libraries={libraries} onLibrariesChange={setLibraries} />
+        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} />
         {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>
