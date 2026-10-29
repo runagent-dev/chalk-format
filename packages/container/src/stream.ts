@@ -12,7 +12,7 @@ import { assetStorageKey } from './pack.js';
  */
 
 const enc = new TextEncoder();
-const hex8 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].slice(0, 4).map((b) => b.toString(16).padStart(2, '0')).join('');
+export const hex8 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].slice(0, 4).map((b) => b.toString(16).padStart(2, '0')).join('');
 const json = (v: unknown) => enc.encode(JSON.stringify(v));
 
 /** The asset ids one page uses. */
@@ -21,7 +21,7 @@ export function pageAssetIds(lesson: Lesson, page: LessonPage): string[] {
 }
 
 /** What has to be fetched to draw a page (its background picture and the pictures on it), not media a tap starts. */
-function drawnAssetIds(page: LessonPage): string[] {
+export function drawnAssetIds(page: LessonPage): string[] {
   const bg = page.background as Record<string, unknown>;
   const ids = [bg.type === 'pdf_page' ? (bg.renderedImageAssetId ?? bg.assetId) : bg.assetId];
   for (const o of page.objects) {

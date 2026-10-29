@@ -7,7 +7,7 @@ anything that changes the format, open an issue first.
 
 | Part | State |
 |---|---|
-| Format | Chalk 1.0 to 1.5 (`formatVersion` 7 to 11): pages, objects, overlays, labs and the Host API, asset stores, presentation, streamed books, lab libraries and lab manifests. Spec, JSON Schemas, migrations and conformance cases for each |
+| Format | Chalk 1.0 to 1.7 (`formatVersion` 7 to 11): pages, objects, overlays, labs and the Host API, asset stores, presentation, streamed books, lab libraries and lab manifests, the floating window (1.6), question manifests (1.7). Spec, JSON Schemas, migrations and conformance cases for each |
 | Reader | `@chalk-format/reader`: every object type, search, notes, presentation, streamed books, libraries, author mode. Checked in the browser with real input on desktop and phone |
 | Libraries | This device, folders and library servers, one interface. A library server (Postgres and S3-compatible storage) with a conformance check |
 | Converters | PDF → `.chalk` (CLI and Node) |
@@ -32,6 +32,8 @@ anything that changes the format, open an issue first.
 - A settings form for a lab, made from its manifest's `params`.
 - Replacing a poster; editing text in place (today it is edited in the sidebar); a snip-region tool.
 - Pages: add, reorder, delete, and import pages from a PDF.
+- Concurrent editing: patch saves with a three-way merge, a quick start, and the page operations above; design in
+  [spec/design-history/2026-10-28-concurrent-section-editing-design.md](../spec/design-history/2026-10-28-concurrent-section-editing-design.md).
 - Linked saving: a book that keeps only keys, with a check that warns about media that lives only on this device.
 - Autosaved drafts.
 

@@ -165,7 +165,7 @@ The list is JSON, and paths are relative to the list file:
   { "file": "media/pendulum.webm", "poster": "media/pendulum-poster.png",
     "title": "সরল দোলক · Simple pendulum", "tags": ["pendulum", "period"], "subject": "physics", "license": "CC-BY-4.0" },
   { "lab": "labs/screw-gauge.lab.json",
-    "files": { "c1:l5lsonev5rtspdijwg66epn4cm": "labs/screw-gauge.html", "c1:fylmqzbkwsvx2owkq5kqo6th7q": "labs/screw-gauge-poster.png" } }
+    "files": { "c1:d2qouiwvb7uk7lamo3ye6hpsom": "labs/screw-gauge.html", "c1:fylmqzbkwsvx2owkq5kqo6th7q": "labs/screw-gauge-poster.png" } }
 ]
 ```
 

@@ -62,3 +62,4 @@ export {
 export * from './presentation.js';
 export * from './stream.js';
 export * from './lab-manifest.js';
+export * from './question-manifest.js';

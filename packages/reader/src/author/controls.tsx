@@ -102,11 +102,11 @@ export function PresentationFields({ o, setP, setDisplay, setLabTitle, t }: {
           <Seg label={t.show} value={(own.show === 'live' || own.show === 'card' ? own.show : p.show)} options={[['card', t.card], ['live', t.live]]} onChange={(v) => setP('show', v)} />
         )}
         {o.type === 'embed' && o.embed !== 'audio' && (
-          <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['fullscreen', t.fullscreen]] : [['inline', t.inline], ['popup', t.popup], ['fullscreen', t.fullscreen]]}
+          <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['window', t.window], ['fullscreen', t.fullscreen]] : [['inline', t.inline], ['popup', t.popup], ['window', t.window], ['fullscreen', t.fullscreen]]}
             onChange={(v) => setP('open', v)} />
         )}
         {o.type === 'image' && (
-          <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['fullscreen', t.fullscreen]] : [['none', t.none], ['popup', t.popup], ['fullscreen', t.fullscreen]]}
+          <Seg label={t.open} value={p.open} options={icon ? [['popup', t.popup], ['window', t.window], ['fullscreen', t.fullscreen]] : [['none', t.none], ['popup', t.popup], ['window', t.window], ['fullscreen', t.fullscreen]]}
             onChange={(v) => setP('open', v)} />
         )}
         {o.type === 'embed' && (o.embed === 'video' || o.embed === 'audio' || o.embed === 'model3d') && (

@@ -10,14 +10,28 @@ import type { AssetResolver, Book } from './book.js';
 export type StreamedBook = Book & {
   readonly streamed: true;
   readonly index: StreamIndex;
+  /**
+   * `sha256:` + SHA-256 of the exact `book.json` bytes this book was opened from: the version a patch save starts from (the host compares it with
+   * the book it has; a different one only means a merge, never a failure).
+   */
+  readonly version: string;
   /** Pages to load, most wanted first. Requests not started yet for other pages are dropped (spec 1.4 §5). */
   want(pages: number[]): void;
   isLoaded(pageId: string): boolean;
   /** Every page loaded (author mode, saving). */
   readonly complete: boolean;
-  loadAll(): Promise<void>;
+  /** How many pages (and snip pages) have arrived, and how many the book has: for a progress display while `loadAll` runs. */
+  readonly loadedPages: number;
+  readonly totalPages: number;
+  /**
+   * Loads every page not loaded yet, keeping up to `concurrency` requests (default 12) in flight and starting the next as soon as one
+   * finishes (a slow page holds up only itself). Rejects when some page could not be loaded; the others stay loaded.
+   */
+  loadAll(o?: { concurrency?: number }): Promise<void>;
   /** The search file (spec 1.4 §4), fetched once; null if the book has none. */
   searchText(): Promise<StreamText | null>;
+  /** Tells the book where files the host has gained since it was opened are (a patch save's answer: media another editor added), so pages using them can be drawn. */
+  addAssets(entries: readonly { id: string; type: string; path: string }[]): void;
   /** Called whenever pages arrive (`lesson` is then a new object). */
   subscribe(fn: () => void): () => void;
 };
@@ -27,13 +41,18 @@ export const isStreamed = (b: Book): b is StreamedBook => (b as Partial<Streamed
 export const isStreamSource = (s: unknown): s is string | URL => (typeof s === 'string' || s instanceof URL) && /(\/|\/book\.json)(\?.*)?$/.test(String(s));
 
 const MAX_REQUESTS = 6;
+/** Requests in flight at once for `loadAll` (author mode needs every page); the reading window keeps MAX_REQUESTS. */
+const LOAD_ALL_CONCURRENCY = 12;
 
 export async function openStreamedBook(source: string | URL, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch } = {}): Promise<StreamedBook> {
   const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
   const indexUrl = new URL(String(source).endsWith('/') ? `${String(source)}book.json` : String(source), globalThis.location?.href);
   const res = await doFetch(indexUrl.href);
   if (!res.ok) throw new Error(`could not fetch the book (${res.status})`);
-  const index = parseStreamIndex(await res.json());
+  // the index as BYTES: the version id is the hash of exactly what the host wrote, so it is hashed before it is parsed (and the same bytes are parsed)
+  const indexBytes = new Uint8Array(await res.arrayBuffer());
+  const version = `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', indexBytes as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  const index = parseStreamIndex(JSON.parse(new TextDecoder().decode(indexBytes)));
   const at = (path: string) => new URL(path, indexUrl).href;
   const assetPath = new Map(index.assets.filter((a) => a.path).map((a) => [a.id, a.path!]));
   const assetType = new Map(index.assets.map((a) => [a.id, a.type]));
@@ -95,7 +114,7 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   let text: Promise<StreamText | null> | null = null;
 
   const book: StreamedBook = {
-    streamed: true, index,
+    streamed: true, index, version,
     get lesson() { return lesson; },
     missingAssetIds: [],
     assetUrl(id) {
@@ -118,16 +137,24 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
     },
     isLoaded: (id) => loaded.has(id),
     get complete() { return loaded.size === index.pages.length + (index.snipPages?.length ?? 0); },
-    async loadAll() {
-      const all = [...index.pages.keys(), ...(index.snipPages ?? []).map((_, i) => -1 - i)];
-      // a few at a time, in reading order
-      for (let i = 0; i < all.length; i += MAX_REQUESTS) await Promise.all(all.slice(i, i + MAX_REQUESTS).map((k) => (loaded.has(entryOf(k)!.id) ? undefined : loadPage(k))));
+    get loadedPages() { return loaded.size; },
+    get totalPages() { return index.pages.length + (index.snipPages?.length ?? 0); },
+    async loadAll(o = {}) {
+      const todo = [...index.pages.keys(), ...(index.snipPages ?? []).map((_, i) => -1 - i)].filter((k) => !loaded.has(entryOf(k)!.id));
+      const limit = Math.max(1, Math.floor(o.concurrency ?? LOAD_ALL_CONCURRENCY));
+      // a pool, in reading order: each worker takes the next page the moment its last one is done (no waiting for the slowest of a batch)
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(limit, todo.length) }, async () => { while (next < todo.length) await loadPage(todo[next++]!); }));
       if (!book.complete) throw new Error('some pages of this book could not be loaded');
     },
     searchText() {
       if (!index.text) return Promise.resolve(null);
       text ??= doFetch(at(index.text.file), { signal: abort.signal }).then(async (r) => (r.ok ? parseStreamText(await r.json()) : null)).catch(() => { text = null; return null; });
       return text;
+    },
+    addAssets(entries) {
+      // no `changed()`: that would hand an editor a fresh copy of the book as opened (and could replace its edits); the pages that use these files ask for them as they draw
+      for (const e of entries) { assetPath.set(e.id, e.path); assetType.set(e.id, e.type); urls.delete(e.id); settled.delete(e.id); }
     },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     dispose() { abort.abort(); owned.forEach((u) => URL.revokeObjectURL(u)); listeners.clear(); urls.clear(); queue = []; },

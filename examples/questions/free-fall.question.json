@@ -1,0 +1,17 @@
+{
+  "format": "chalk.question", "manifestVersion": 1,
+  "id": "org.pathshalax.physics.motion.free-fall-cq", "version": "1.0.0",
+  "kind": "cq", "code": "EX-2-C1",
+  "context": { "bn": "একটি পাথর $45\\ \\mathrm{m}$ উঁচু ভবনের ছাদ থেকে স্থির অবস্থান থেকে ছেড়ে দেওয়া হলো। ($g = 10\\ \\mathrm{m\\,s^{-2}}$)", "en": "A stone is let go from rest from the roof of a $45\\ \\mathrm{m}$ building. ($g = 10\\ \\mathrm{m\\,s^{-2}}$)" },
+  "stem": { "bn": "পাথরটির পতন নিয়ে নিচের প্রশ্নগুলোর উত্তর দাও।", "en": "Answer these about the stone's fall." },
+  "parts": [
+    { "label": "ক", "marks": 1, "level": "knowledge", "stem": { "bn": "মুক্তভাবে পড়ন্ত বস্তু কাকে বলে?", "en": "What is a freely falling body?" } },
+    { "label": "খ", "marks": 2, "level": "comprehension", "stem": { "bn": "পড়ন্ত বস্তুর বেগ সময়ের সাথে কেন বাড়ে?", "en": "Why does a falling body's velocity grow with time?" } },
+    { "label": "গ", "marks": 3, "level": "application", "stem": { "bn": "পাথরটি মাটিতে পৌঁছাতে কত সময় লাগবে?", "en": "How long does the stone take to reach the ground?" },
+      "answer": { "detail": "full", "value": 3, "unit": "s", "text": { "en": "$h = \\tfrac12 g t^2 \\Rightarrow t = \\sqrt{2h/g} = \\sqrt{2 \\times 45 / 10} = 3\\ \\mathrm{s}$" } } },
+    { "label": "ঘ", "marks": 4, "level": "higher_order", "stem": { "bn": "মাটিতে পড়ার ঠিক আগে পাথরের বেগ কত এবং তা প্রথম সেকেন্ডের বেগের কত গুণ?", "en": "What is its speed just before landing, and how many times its speed after the first second?" } }
+  ],
+  "marks": 10, "difficulty": 3,
+  "subject": "physics", "classes": ["9", "10"], "tags": ["motion", "free fall"],
+  "license": "CC-BY-4.0", "authors": ["PathshalaX"]
+}

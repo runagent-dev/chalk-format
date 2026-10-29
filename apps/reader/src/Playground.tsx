@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_CONFIG, type DockItemId, type MediaRendererProps, type PresentationConfig, type ReaderConfig, type ReaderConfigInput, type ToolId } from '@chalk-format/reader';
+import { DEFAULT_CONFIG, type DockItemId, type MediaRendererProps, type PresentationConfig, type ReaderConfig, type ReaderConfigInput, type ToolId, type WindowChrome } from '@chalk-format/reader';
 
 const ALL_TOOLS: ToolId[] = ['pan', 'pen', 'highlighter', 'eraser', 'text', 'rect', 'ellipse', 'line', 'arrow', 'select'];
 const ALL_ITEMS: Exclude<DockItemId, '|'>[] = ['thumbnails', 'search', 'prev', 'page', 'next', 'zoomOut', 'fit', 'zoomIn', 'layout', 'tools', 'undo', 'redo', 'export', 'import', 'theme', 'language', 'fullscreen'];
@@ -29,6 +29,15 @@ function DemoViewer(p: MediaRendererProps) {
       {p.poster && <img src={p.poster} alt="" />}
       <span>{p.locale === 'bn' ? 'আপনার নিজের ভিউয়ার' : 'Your own viewer'} · {p.where}</span>
     </div>
+  );
+}
+/** Stands in for a host's own chrome around a floating window (config.window.render): the media is the host's to frame. */
+function DemoWindow(w: WindowChrome) {
+  return (
+    <aside className="demo-window" role="dialog" aria-modal="false" aria-label={w.title} data-layout={w.kind}>
+      <header><strong>{w.title}</strong><button type="button" aria-label="Close" onClick={w.onClose}>×</button></header>
+      <div className="demo-window-body" style={w.aspect ? { aspectRatio: String(w.aspect) } : { height: 280 }}>{w.children}</div>
+    </aside>
   );
 }
 /** Printed as is in the code sample (not quoted). */
@@ -66,8 +75,9 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
     set({ dock: { ...dock, items: next } });
   };
   // the app's own setting (the pdf.js worker URL) is not something to copy
-  const diff = changed({ ...config, pdfWorkerSrc: null, renderers: {} }, DEFAULT_CONFIG) as Record<string, unknown> | undefined as ReaderConfigInput | undefined;
+  const diff = changed({ ...config, pdfWorkerSrc: null, renderers: {}, window: { ...config.window, render: undefined } }, DEFAULT_CONFIG) as Record<string, unknown> | undefined as ReaderConfigInput | undefined;
   if (config.renderers.model3d) Object.assign(diff ?? {}, { renderers: { model3d: new Raw('(p) => <MyViewer src={p.src} poster={p.poster} />') } });
+  if (config.window.render) Object.assign(diff ?? {}, { window: { ...(diff as { window?: object } | undefined)?.window, render: new Raw('(w) => <MyWindow title={w.title} onClose={w.onClose}>{w.children}</MyWindow>') } });
   const pres = config.presentation;
   const setPres = (patch: Partial<PresentationConfig>) => set({ presentation: { ...pres, ...patch } });
   const brand = Object.values(pres.defaults).some((d) => d?.accent);
@@ -140,6 +150,14 @@ export function Playground({ config, base, onChange, onClose }: { config: Reader
           <Choice label="3D models with no choice of their own" value={pres.defaults.model3d?.show === 'live' ? 'live' : 'card'} options={['card', 'live']}
             onChange={(v) => { const m = { ...pres.defaults.model3d }; delete m.show; delete m.autoRotate; setPres({ defaults: { ...pres.defaults, model3d: v === 'live' ? { ...m, show: 'live', autoRotate: true } : m } }); }} />
           <Check wide label="My own 3D viewer (demo renderer)" checked={Boolean(config.renderers.model3d)} onChange={(v) => set({ renderers: v ? { model3d: DemoViewer } : {} })} />
+        </section>
+        <section>
+          <h3>Floating window (open: window)</h3>
+          <Choice label="Where it opens" value={config.window.layout.kind === 'side' ? (config.window.layout.side === 'left' ? 'left panel' : 'right panel') : 'floating'} options={['floating', 'right panel', 'left panel']}
+            onChange={(v) => set({ window: { ...config.window, layout: v === 'floating' ? { ...config.window.layout, kind: 'floating' } : { ...config.window.layout, kind: 'side', side: v === 'left panel' ? 'left' : 'right' } } })} />
+          <Choice label="Its shape" value={config.window.aspect === 'free' ? 'free' : config.window.aspect === 'media' ? 'media' : '4:3'} options={['media', 'free', '4:3']}
+            onChange={(v) => set({ window: { ...config.window, aspect: v === '4:3' ? 4 / 3 : v } })} />
+          <Check wide label="My own window chrome (demo)" checked={Boolean(config.window.render)} onChange={(v) => set({ window: { ...config.window, render: v ? DemoWindow : undefined } })} />
         </section>
         <section>
           <h3>Labs</h3>

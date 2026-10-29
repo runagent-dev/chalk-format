@@ -30,6 +30,27 @@ describe('presentation (spec 1.3)', () => {
     expect(resolvePresentation({ ...image, presentation: { open: 'inline' } }).open).toBe('popup');
   });
 
+  it('knows the floating window (spec 1.6), for images and embeds, on the page or as an icon', () => {
+    expect(resolvePresentation({ ...model, presentation: { open: 'window' } }).open).toBe('window');
+    expect(resolvePresentation({ ...model, displayMode: 'icon', presentation: { open: 'window' } }).open).toBe('window');
+    expect(resolvePresentation({ ...image, presentation: { open: 'window' } }).open).toBe('window');
+    expect(resolvePresentation({ ...image, displayMode: 'icon', presentation: { open: 'window' } }).open).toBe('window');
+    expect(lessonObjectSchema.safeParse({ ...model, presentation: { open: 'window' } }).success).toBe(true);
+  });
+
+  it('a reader that does not know a value (what a pre-1.6 reader does with `window`) uses the default for the object', () => {
+    // a 1.3 reader's list of `open` values, as it was before `window`
+    const old = ['inline', 'popup', 'fullscreen', 'none'];
+    const asOldReader = (o: Parameters<typeof resolvePresentation>[0]) => {
+      const p = o.presentation ?? {};
+      return resolvePresentation({ ...o, presentation: { ...p, ...(p.open && !old.includes(p.open) ? { open: undefined } : {}) } as typeof p }).open;
+    };
+    expect(asOldReader({ ...model, presentation: { open: 'window' } })).toBe('inline');
+    expect(asOldReader({ ...model, displayMode: 'icon', presentation: { open: 'window' } })).toBe('popup');
+    expect(asOldReader({ ...image, presentation: { open: 'window' } })).toBe('none');
+    expect(asOldReader({ ...image, displayMode: 'icon', presentation: { open: 'window' } })).toBe('popup');
+  });
+
   it('refuses CSS in place of a colour, and an empty label', () => {
     expect(lessonObjectSchema.safeParse({ ...model, presentation: { accent: 'url(https://x)' } }).success).toBe(false);
     expect(lessonObjectSchema.safeParse({ ...image, presentation: { accent: 'red' } }).success).toBe(false);

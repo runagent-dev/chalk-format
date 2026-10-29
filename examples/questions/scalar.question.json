@@ -1,0 +1,20 @@
+{
+  "format": "chalk.question", "manifestVersion": 1,
+  "id": "org.pathshalax.physics.motion.scalar-quantity", "version": "1.0.0",
+  "kind": "mcq", "code": "EX-2-M1",
+  "stem": { "bn": "নিচের কোনটি স্কেলার রাশি?", "en": "Which of these is a scalar quantity?" },
+  "options": [
+    { "label": "ক", "text": { "bn": "সরণ", "en": "Displacement" } },
+    { "label": "খ", "text": { "bn": "দূরত্ব", "en": "Distance" }, "correct": true },
+    { "label": "গ", "text": { "bn": "বেগ", "en": "Velocity" } },
+    { "label": "ঘ", "text": { "bn": "ত্বরণ", "en": "Acceleration" } }
+  ],
+  "answer": {
+    "detail": "final",
+    "text": { "bn": "দূরত্বের কেবল মান আছে, দিক নেই।", "en": "Distance has magnitude only, no direction." }
+  },
+  "marks": 1, "difficulty": 1, "level": "knowledge",
+  "subject": "physics", "classes": ["9", "10"], "tags": ["motion", "scalar and vector"],
+  "source": { "book": "Example", "number": "1" },
+  "license": "CC-BY-4.0", "authors": ["PathshalaX"]
+}

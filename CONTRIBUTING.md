@@ -51,6 +51,7 @@ npx tsx tools/reader-library-e2e.mjs [url] [shots]   # libraries: gallery, uploa
 node tools/reader-stream-e2e.mjs [url] [shots]       # a streamed 60-page book: what is fetched, and when
 node tools/reader-insert-menu-e2e.mjs [url]          # author mode's right-click menu: what is added lands where you clicked
 node tools/reader-save-e2e.mjs [url]                 # author mode's Save: the filled button, Ctrl+S, onDirtyChange, the ref's save()
+node tools/reader-window-e2e.mjs [url] [shots]       # the floating window (open: window): author UI, the window, side panel, sheet, host chrome
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]   # desktop + phone screenshots
 ```
 
@@ -148,7 +149,8 @@ small Vite + React app with `@chalk-format/reader`.
 **Publishing is done by CI, from the `prod` branch.** To release:
 
 1. On `main`, change the version in `release.json` (all four packages share it) and merge.
-2. Fast-forward `prod` to `main`: `git push origin main:prod`.
+2. Open a pull request from `main` into `prod` (`gh pr create --base prod --head main --title "Release 0.1.1"`) and merge it with a merge commit once
+   the `check` job is green. `prod` is protected: it only takes pull requests, for admins too, and cannot be force-pushed or deleted.
 3. `.github/workflows/release.yml` runs the checks, assembles the packages, publishes the ones whose `name@version` is not on npm
    yet (`scripts/publish-packages.mjs`: `core`, `reader`, `pdf`, `library-server`, in that order) and tags `v<version>`.
 
@@ -166,7 +168,7 @@ done
 npm trust list @chalk-format/core        # shows the relationship
 ```
 
-Provenance statements are added automatically once the repository is public.
+Because the repository is public, npm adds a provenance statement to every package published this way.
 
 ## Security
 
