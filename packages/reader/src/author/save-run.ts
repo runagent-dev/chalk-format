@@ -81,15 +81,23 @@ export interface HostSaveEvents {
 export function saveEvents(host: () => HostSaveEvents) {
   let alive = true;
   let saving = false;
+  let key: object | null = null; // the host's onSavingChange as it was when this save started: who owns that callback
+  const me = {};
   const call = (fn: () => void) => { try { fn(); } catch (e) { console.error('chalk reader: a save callback threw', e); } };
+  // a newer save that reports to the same callback (a replacement reader, started before this one's delayed end) owns it: this one stays quiet,
+  // or its `false` would clear the busy state of the save that is still running
+  const release = () => { const mine = key === null || owners.get(key) === me; if (key !== null && mine) owners.delete(key); key = null; return mine; };
+  const finish = () => { saving = false; if (release()) call(() => host().change?.(false)); };
   return {
-    start() { if (alive && !saving) { saving = true; call(() => host().change?.(true)); } },
+    start() { if (alive && !saving) { saving = true; const fn = host().change; key = fn ?? null; if (fn) owners.set(fn, me); call(() => host().change?.(true)); } },
     progress(p: SaveProgress) { if (alive) call(() => host().progress?.(p)); },
-    end() { if (alive && saving) { saving = false; call(() => host().change?.(false)); } },
-    dispose() { if (alive && saving) { saving = false; call(() => host().change?.(false)); } alive = false; },
+    end() { if (alive && saving) finish(); },
+    dispose() { if (alive && saving) finish(); alive = false; },
     get alive() { return alive; },
   };
 }
+
+const owners = new WeakMap<object, object>();
 
 /** A button's action that does nothing while `busy()` says so (a button announced as disabled still gets clicks and Enter). */
 export const ignoreWhile = (busy: () => boolean, fn: () => void) => () => { if (!busy()) fn(); };

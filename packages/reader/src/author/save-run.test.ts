@@ -169,3 +169,34 @@ describe('review findings, round 2: the host link', () => {
     expect(heard).toEqual(['change true', 'change false']);
   });
 });
+
+describe('review findings, round 3: a replacement reader\'s save is not cleared by the old one', () => {
+  it('with the same host callback, the old reader\'s late end stays quiet; the new one\'s own end is heard', () => {
+    const heard: string[] = [];
+    const change = (s: boolean) => heard.push(`change ${s}`);
+    const a = saveEvents(() => ({ change }));
+    const b = saveEvents(() => ({ change }));
+    a.start();
+    b.start();            // the replacement starts before the old one's delayed end runs
+    a.dispose();          // ...which now arrives: it must not tell the host the saving is over
+    expect(heard).toEqual(['change true', 'change true']);
+    b.end();
+    expect(heard).toEqual(['change true', 'change true', 'change false']);
+  });
+
+  it('different host callbacks are independent, and one after another is as before', () => {
+    const one: string[] = [], two: string[] = [];
+    const a = saveEvents(() => ({ change: (s) => one.push(String(s)) }));
+    const b = saveEvents(() => ({ change: (s) => two.push(String(s)) }));
+    a.start(); b.start(); a.end(); b.end();
+    expect(one).toEqual(['true', 'false']);
+    expect(two).toEqual(['true', 'false']);
+    const shared: string[] = [];
+    const change = (s: boolean) => shared.push(String(s));
+    const c = saveEvents(() => ({ change }));
+    c.start(); c.end();
+    const d = saveEvents(() => ({ change }));
+    d.start(); d.end();
+    expect(shared).toEqual(['true', 'false', 'true', 'false']);
+  });
+});
