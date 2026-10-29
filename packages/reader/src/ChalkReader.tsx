@@ -13,7 +13,7 @@ import { Modal } from './render/Modal.js';
 import { FloatingWindow } from './render/FloatingWindow.js';
 import { aspectFor, type Box as WindowBox } from './render/windowGeometry.js';
 import { useAssetUrl } from './render/assets.js';
-import { packOverlay, unpackOverlay } from '@chalk-format/container';
+import { packOverlay, unpackOverlay, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/container';
 import type { Overlay } from '@chalk-format/model';
 import { useAnnotations } from './annotate/state.js';
 import { Surface, type Pen } from './annotate/Surface.js';
@@ -28,7 +28,7 @@ import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, video
 import type { LibraryItem } from '@chalk-format/store';
 import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
-import { runSave, saveHostLink, singleFlight, throttled, type SaveProgress } from './author/save-run.js';
+import { runPatchSave, runSave, saveHostLink, singleFlight, throttled, type SaveProgress } from './author/save-run.js';
 import { edit } from './annotate/state.js';
 import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
@@ -68,6 +68,16 @@ export type ChalkReaderProps = {
   onDirtyChange?: (dirty: boolean) => void;
   /** Authoring: the saved book. Without it, Save downloads the .chalk file. */
   onSave?: (bytes: Uint8Array, lesson: Lesson) => void | Promise<void>;
+  /**
+   * Authoring, streamed books: the patch save. When given, Save sends only the pages that changed since the last save and the media added since
+   * (a patch, usually a few kilobytes) instead of the whole book: the host merges it with what it has and answers with the new version and the
+   * pages it wrote (`PatchResult`, see `mergeBook` and `applyStreamPatch` in @chalk-format/container). No picture of the book is fetched for it.
+   * It is used instead of `onSave` for a streamed book; a book opened from a .chalk file still saves as a whole through `onSave`. Throw to say
+   * the patch was not kept (the book stays unsaved).
+   */
+  onSavePatch?: (patch: BookPatch, media: Map<string, { type: string; bytes: Uint8Array }>) => Promise<PatchResult>;
+  /** Authoring: after a patch save whose merge with someone else's work had to decide something (the host's report, only when it is not empty). */
+  onMergeReport?: (report: MergeReport) => void;
   /**
    * Authoring: where a save is, from the click on (before the pictures are fetched): `collecting` (with how many of the book's assets are in
    * hand), `packing`, `handing-over` (the host's `onSave` runs). Called at most about ten times a second.
@@ -573,7 +583,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     let saved: Lesson;
     const noteFor = (p: SaveProgress) => p.phase === 'collecting' && p.total
       ? at_.savingPictures.replace('{done}', num(authorLocale, p.done ?? 0)).replace('{total}', num(authorLocale, p.total))
-      : p.phase === 'packing' ? at_.savingPacking : p.phase === 'handing-over' ? (props.onSave ? at_.savingUploading : at_.saving) : at_.saving;
+      : p.phase === 'packing' ? at_.savingPacking : p.phase === 'handing-over' ? (props.onSave || props.onSavePatch ? at_.savingUploading : at_.saving) : at_.saving;
     const ev = saveHost.current!.get();
     const show = throttled((p: SaveProgress) => { setSaveNote(noteFor(p)); ev.progress(p); }, 100);
     activeShow.current = show;
@@ -581,6 +591,32 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     const progress = (p: SaveProgress) => { show(p); if (p.phase !== 'collecting' || p.done === undefined || p.done === p.total) show.flush(); };
     savingRef.current = true; setToast(null); setSaving(true); ev.start();   // a message from before gives way to the save's own
     try {
+      // the patch save: a streamed book and a host that takes patches. Only the pages that changed travel; no picture of the book is fetched.
+      if (props.onSavePatch && au.canPatch) {
+        try {
+          const { built, result } = await runPatchSave({
+            build: (pr) => au.savePatch(pr),
+            hand: (b) => props.onSavePatch!(b.patch, b.media),
+            progress,
+          });
+          au.adoptPatch(built, result);
+          const notes = result.report?.notes.length ?? 0;
+          if (notes) props.onMergeReport?.(result.report);
+          // the host could not restore pictures another save had taken out of the book: they are sent again, once, as a patch of nothing but their bytes
+          let missing = 0;
+          if (result.unresolved?.length) {
+            const again = await runPatchSave({ build: (pr) => au.savePatchMedia(result.unresolved!, pr), hand: (b) => props.onSavePatch!(b.patch, b.media), progress });
+            au.adoptPatch(again.built, again.result);
+            missing = again.result.unresolved?.length ?? 0;
+          }
+          setToast(missing ? at_.savedMissing.replace('{n}', num(authorLocale, missing)) : notes ? at_.savedMerged.replace('{n}', num(authorLocale, notes)) : at_.saved);
+          return true;
+        } catch (e) {
+          // not saved: the unsaved mark and the leave-page warning stay
+          setToast(`${at_.saveFailed}: ${e instanceof Error ? e.message : String(e)}`);
+          return false;
+        }
+      }
       try {
         const built = await runSave({
           build: (pr) => au.save(pr),
@@ -607,7 +643,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     } finally {
       show.cancel(); if (activeShow.current === show) activeShow.current = null; savingRef.current = false; setSaving(false); setSaveNote(null); ev.end();
     }
-  }), [au, props.onSave, at_, authorLocale]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }), [au, props.onSave, props.onSavePatch, props.onMergeReport, at_, authorLocale]);   // eslint-disable-line react-hooks/exhaustive-deps
   useImperativeHandle(props.handleRef, () => ({ goTo: (n) => goTo(n - 1), next, prev, zoomTo: (z) => viewer.current?.zoomTo(z), save: () => (authoringOn ? saveBook() : Promise.resolve(false)), book }), [goTo, next, prev, book, saveBook, authoringOn]);
   // Ctrl or Cmd+S saves the book while it is being edited, wherever on the page the keyboard focus is (the browser's own "save page" is no use
   // here); a text field outside the reader keeps its keys, and a key another handler already took is left alone

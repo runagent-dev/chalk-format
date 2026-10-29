@@ -53,6 +53,8 @@ The reader fills its container; give the container a height.
 | `onPageChange` | `(index, page) => void` | The current page changed (0-based). |
 | `onSavingChange` | `(saving) => void` | Authoring: a save started (`true`) or ended (`false`), for your own Save button. |
 | `onSaveProgress` | `({ phase, done?, total? }) => void` | Authoring: where a save is: collecting the pictures, packing, handing over to `onSave`. |
+| `onSavePatch` | `(patch, media) => Promise<PatchResult>` | Authoring, streamed books: Save sends only the pages that changed and the media added (a patch) instead of the whole book. See [the patch save](../../docs/guides/host-patch-save.md). |
+| `onMergeReport` | `(report) => void` | Authoring: after a patch save whose merge with someone else's work decided something. |
 
 A ref gives `goTo(page)`, `next()`, `prev()`, `zoomTo(zoom)` and, while authoring, `save()` (the same as the Save button; resolves `true` once the book is saved, `false` if it was not; called while a save is running it joins that one).
 
@@ -184,6 +186,16 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   `onSaveProgress({ phase, done?, total? })` with `phase` `'collecting'` (with how many of the book's assets are in hand),
   `'packing'` or `'handing-over'` (your `onSave` is running); it is called at most about ten times a second, the first
   time before anything is fetched. What is saved is the same file as before, byte for byte.
+- **The patch save** (streamed books, `onSavePatch`). A save of a big book moves the whole book twice (every picture is fetched and
+  packed, the host unpacks and rewrites it all), however small the edit. Give the reader `onSavePatch` and a streamed book saves a
+  **patch** instead: the pages changed since the last save (with the version they started from) and the media added since,
+  typically a few kilobytes, with no picture of the book fetched. Your host merges it with the book it has (so two people's edits to
+  different objects both land) and answers with the new version and the pages it wrote; the reader takes that answer as its next
+  base, so the next save is a patch too. A page the host merged with someone else's work comes back whole and replaces the
+  editor's copy (the undo history starts again there). `onMergeReport` hears what the merge had to decide, and the status line says
+  "Saved; N changes were merged with someone else's". Throw from `onSavePatch` to say the patch was not kept: the book stays
+  unsaved. Without `onSavePatch`, or for a book opened from a `.chalk` file, Save works exactly as above. The host side is
+  `mergeBook` and `applyStreamPatch` in `@chalk-format/container`: see [docs/guides/host-patch-save.md](../../docs/guides/host-patch-save.md).
 
 | Option | Default | |
 |---|---|---|
