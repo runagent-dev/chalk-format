@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ignoreWhile, runSave, saveEvents, singleFlight, throttled, type SaveProgress } from './save-run.js';
+import { ignoreWhile, runSave, saveEvents, saveHostLink, singleFlight, throttled, type SaveProgress } from './save-run.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -120,5 +120,52 @@ describe('review findings, round 1', () => {
     const go = ignoreWhile(() => busy, () => n++);
     go(); go(); expect(n).toBe(0);
     busy = false; go(); expect(n).toBe(1);
+  });
+});
+
+describe('review findings, round 2: the host link', () => {
+  const manual = () => { const q: (() => void)[] = []; return { schedule: (fn: () => void) => { q.push(fn); return q.length - 1; }, cancel: (i: unknown) => { q[i as number] = () => {}; }, flush: () => { for (const fn of q.splice(0)) fn(); } }; };
+
+  it('a save that starts before the reader\'s effects have run still reaches the host', () => {
+    const heard: string[] = [];
+    const m = manual();
+    const link = saveHostLink(() => ({ change: (s) => heard.push(`change ${s}`), progress: (p) => heard.push(p.phase) }), m.schedule, m.cancel);
+    const ev = link.get();            // before attach()
+    ev.start(); ev.progress({ phase: 'collecting' });
+    link.attach();                    // the effect runs after; it keeps the same emitter
+    expect(link.get()).toBe(ev);
+    ev.end();
+    expect(heard).toEqual(['change true', 'collecting', 'change false']);
+  });
+
+  it('StrictMode\'s unmount and immediate remount in the middle of a save changes nothing for the host', () => {
+    const heard: string[] = [];
+    const m = manual();
+    const link = saveHostLink(() => ({ change: (s) => heard.push(`change ${s}`), progress: (p) => heard.push(p.phase) }), m.schedule, m.cancel);
+    link.attach();
+    const ev = link.get();
+    ev.start();                       // a save begun in a mount effect
+    link.detach(); link.attach();     // the fake unmount and remount
+    m.flush();                        // nothing left to run: the end was cancelled
+    expect(link.get()).toBe(ev);
+    ev.progress({ phase: 'packing' }); ev.end();
+    expect(heard).toEqual(['change true', 'packing', 'change false']);
+  });
+
+  it('a real unmount ends it a tick later: the host hears false once, then nothing', () => {
+    const heard: string[] = [];
+    const m = manual();
+    const link = saveHostLink(() => ({ change: (s) => heard.push(`change ${s}`), progress: (p) => heard.push(p.phase) }), m.schedule, m.cancel);
+    link.attach();
+    const ev = link.get();
+    ev.start();
+    let ended = 0;
+    link.detach(() => ended++);
+    expect(heard).toEqual(['change true']);   // not yet: it waits to see whether a remount follows
+    m.flush();
+    expect(heard).toEqual(['change true', 'change false']);
+    expect(ended).toBe(1);
+    ev.progress({ phase: 'packing' }); ev.end();
+    expect(heard).toEqual(['change true', 'change false']);
   });
 });

@@ -93,3 +93,19 @@ export function saveEvents(host: () => HostSaveEvents) {
 
 /** A button's action that does nothing while `busy()` says so (a button announced as disabled still gets clicks and Enter). */
 export const ignoreWhile = (busy: () => boolean, fn: () => void) => () => { if (!busy()) fn(); };
+
+/**
+ * The host's view of a save, tied to the reader's life. `get()` always gives an emitter (made on first use, so a save started before the
+ * reader's effects have run still reaches the host). `detach()` ends it one tick later: React's StrictMode unmounts and at once remounts, and
+ * that `attach()` cancels the end, so the same emitter goes on; a real unmount runs it, and the host hears `false` once.
+ */
+export function saveHostLink(host: () => HostSaveEvents, schedule: (fn: () => void) => unknown = (fn) => setTimeout(fn, 0), cancel: (t: unknown) => void = (t) => clearTimeout(t as ReturnType<typeof setTimeout>)) {
+  let ev: ReturnType<typeof saveEvents> | null = null;
+  let timer: unknown = null;
+  const get = () => (ev ??= saveEvents(host));
+  return {
+    get,
+    attach() { if (timer !== null) { cancel(timer); timer = null; } get(); },
+    detach(onEnded?: () => void) { timer = schedule(() => { timer = null; ev?.dispose(); ev = null; onEnded?.(); }); },
+  };
+}
