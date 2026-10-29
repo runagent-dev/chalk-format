@@ -3,7 +3,7 @@ import type { Lesson, LessonObject, LessonPage } from '@chalk-format/model';
 import { assetKey } from '@chalk-format/model';
 import { assertContentNamedFiles, createPatch, fileHash, mergeBook, pagesNeeded } from './index.js';
 
-import { text, page, lessonOf, Host, sha } from './__fixtures__/patch-host.js';
+import { text, page, lessonOf, Host } from './__fixtures__/patch-host.js';
 const ids = (l: LessonPage[]) => l.map((p) => p.id);
 const obj = (p: LessonPage, id: string) => p.objects.find((o) => o.id === id) as Record<string, unknown> | undefined;
 const edit = (l: Lesson, id: string, fn: (p: LessonPage) => LessonPage): Lesson => ({ ...l, pages: l.pages.map((p) => (p.id === id ? fn(p) : p)) });

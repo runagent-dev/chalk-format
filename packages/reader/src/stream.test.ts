@@ -28,6 +28,15 @@ describe('streamed books in the reader (spec 1.4 §5)', () => {
     expect(windowAround(0, 40, 2)).toEqual([0, 1, 2]);
   });
 
+  it('knows its version: the SHA-256 of the exact book.json bytes it opened', async () => {
+    const { files } = await publishStreamed(lesson);
+    const raw = files.get('book.json')!;
+    const want = `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', raw as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+    const s = await server();
+    const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });
+    expect(b.version).toBe(want);
+  });
+
   it('shows the book from its index alone: every page there, none loaded', async () => {
     const s = await server();
     const b = await openStreamedBook('https://cdn.example/books/big/', { fetch: s.fetch });

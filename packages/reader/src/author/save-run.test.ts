@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ignoreWhile, runSave, saveEvents, saveHostLink, singleFlight, throttled, type SaveProgress } from './save-run.js';
+import { ignoreWhile, runPatchSave, runSave, saveEvents, saveHostLink, singleFlight, throttled, type SaveProgress } from './save-run.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -198,5 +198,24 @@ describe('review findings, round 3: a replacement reader\'s save is not cleared 
     const d = saveEvents(() => ({ change }));
     d.start(); d.end();
     expect(shared).toEqual(['true', 'false', 'true', 'false']);
+  });
+});
+
+describe('the steps of a patch save', () => {
+  it('reports preparing before anything is built, then handing-over, and returns what was built and what the host answered', async () => {
+    const seen: string[] = [];
+    const r = await runPatchSave({
+      build: async (pr) => { seen.push('build'); pr({ phase: 'collecting', done: 1, total: 1 }); return { patch: 'p' }; },
+      hand: async (b) => { seen.push(`hand ${b.patch}`); return 'answer'; },
+      progress: (p) => seen.push(p.phase),
+    });
+    expect(seen).toEqual(['preparing', 'build', 'collecting', 'handing-over', 'hand p']);
+    expect(r).toEqual({ built: { patch: 'p' }, result: 'answer' });
+  });
+  it('a failure while building, or in the host, is thrown as it is and the host is not asked after a build failure', async () => {
+    let handed = false;
+    await expect(runPatchSave({ build: async () => { throw new Error('no pictures'); }, hand: async () => { handed = true; return 1; }, progress: () => {} })).rejects.toThrow('no pictures');
+    expect(handed).toBe(false);
+    await expect(runPatchSave({ build: async () => 1, hand: async () => { throw new Error('refused'); }, progress: () => {} })).rejects.toThrow('refused');
   });
 });

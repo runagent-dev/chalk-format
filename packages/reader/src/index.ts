@@ -1,5 +1,6 @@
 export { ChalkReader, type ChalkReaderProps, type ReaderHandle } from './ChalkReader.js';
 export type { SaveProgress } from './author/save-run.js';
+export type { BookPatch, MergeReport, MergeNote, PatchResult } from '@chalk-format/container';
 export { openBook, bookFrom, type Book, type BookSource, type AssetResolver } from './book.js';
 export {
   DEFAULT_CONFIG, resolveConfig,

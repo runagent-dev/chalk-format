@@ -5,7 +5,7 @@
 
 /** Where a save is: fetching the pictures the book uses, packing the .chalk, handing it to the host (`onSave`: its upload). */
 export interface SaveProgress {
-  phase: 'collecting' | 'packing' | 'handing-over';
+  phase: 'collecting' | 'preparing' | 'packing' | 'handing-over';
   /** While collecting: how many of the book's assets are in hand, of how many. */
   done?: number;
   total?: number;
@@ -65,6 +65,22 @@ export async function runSave<R extends { bytes: Uint8Array }>(o: {
   o.progress({ phase: 'handing-over' });
   await o.hand(built);
   return built;
+}
+
+/**
+ * The patch save's steps: build the patch (`preparing`: only what changed, and the few new files; no picture of the book is fetched), then hand it to
+ * the host (`onSavePatch`), whose answer comes back. A failure in either is thrown as it is (the caller keeps the unsaved mark).
+ */
+export async function runPatchSave<B, R>(o: {
+  build: (progress: (p: SaveProgress) => void) => Promise<B>;
+  hand: (built: B) => Promise<R>;
+  progress: (p: SaveProgress) => void;
+}): Promise<{ built: B; result: R }> {
+  o.progress({ phase: 'preparing' });
+  const built = await o.build(o.progress);
+  o.progress({ phase: 'handing-over' });
+  const result = await o.hand(built);
+  return { built, result };
 }
 
 /** What a host can listen to while a save runs (the reader's `onSavingChange` and `onSaveProgress`). */

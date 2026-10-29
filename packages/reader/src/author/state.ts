@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { packLesson, type AssetBundle } from '@chalk-format/container';
+import { createPatch, packLesson, pageHashes, type AssetBundle, type BookPatch, type PatchResult } from '@chalk-format/container';
 import { gatherAssets } from './gather.js';
 import type { SaveProgress } from './save-run.js';
-import { assetKey, referencedAssetIds, type Lesson } from '@chalk-format/model';
+import { assetKey, referencedAssetIds, type Lesson, type LessonPage } from '@chalk-format/model';
 import type { Book } from '../book.js';
+import { isStreamed } from '../stream.js';
 
 const HISTORY = 200;
 
@@ -95,7 +96,72 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
   }, [lesson, base]);
   const markSaved = useCallback((l: Lesson) => setSaved(l), []);
 
-  return { lesson, book, apply, undo, redo, addAsset, save, markSaved, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
+  // ---- the patch save (a streamed book whose host takes patches): only what changed is sent
+  /** The version id and the `hex8` of every page the host has, as far as this editor knows: from the index it opened, then from each answer. */
+  const patchBase = useRef<{ of: Book; version: string; hashes: Map<string, string> } | null>(null);
+  /** Assets the host has (or was sent): not sent again. */
+  const hostAssets = useRef<{ of: Book; ids: Set<string> } | null>(null);
+  const canPatch = isStreamed(base);
+  const baseOfPatch = () => {
+    if (!isStreamed(base)) throw new Error('a patch needs a streamed book');
+    if (patchBase.current?.of !== base) patchBase.current = { of: base, version: base.version, hashes: pageHashes(base.index) };
+    if (hostAssets.current?.of !== base) hostAssets.current = { of: base, ids: new Set(base.index.assets.map((a) => a.id)) };
+    return { pb: patchBase.current, known: hostAssets.current.ids };
+  };
+
+  /**
+   * What a save sends instead of the whole book: the pages that changed since the last save, and the media added since. Fetches no picture of the
+   * book; a library item a changed page uses that the book does not carry yet is fetched once and sent with it.
+   */
+  const savePatch = useCallback(async (progress?: (p: SaveProgress) => void): Promise<{ patch: BookPatch; media: Map<string, { type: string; bytes: Uint8Array }>; lesson: Lesson }> => {
+    const { pb, known } = baseOfPatch();
+    const patch = createPatch({ version: pb.version, lesson: saved, hashes: pb.hashes }, lesson);
+    const changedIds = new Set(Object.keys(patch.mine.pages));
+    const sub = { ...lesson, pages: lesson.pages.filter((p) => changedIds.has(p.id)), snipPages: lesson.snipPages.filter((p) => changedIds.has(p.id)) } as Lesson;
+    const wanted = referencedAssetIds(sub).filter((id) => !known.has(id));
+    const got = await gatherAssets({
+      ids: wanted,
+      held: (id) => { const a = added.current.get(id); return a ? { type: a.type, bytes: a.bytes } : undefined; },
+      fetchOne: async (id) => { const b = await (bytesFrom.current ?? base.assetBytes)(id); return b ? { type: b.type, bytes: new Uint8Array(b.bytes) } : null; },
+      progress,
+    });
+    const media = new Map(got);
+    patch.media = [...media].map(([id, m]) => ({ id, type: m.type }));
+    return { patch, media, lesson };
+  }, [lesson, saved, base]);
+
+  /**
+   * The host kept the patch: its answer is the next base (the version id and the new `hex8` of each page it wrote). A page the host merged with
+   * someone else's work comes back whole: it replaces the editor's copy (and the history starts again from there, since earlier snapshots would
+   * undo that work), so the next patch cannot undo it either.
+   */
+  const adoptPatch = useCallback((built: { patch: BookPatch; media: Map<string, unknown>; lesson: Lesson }, result: PatchResult) => {
+    const { pb, known } = baseOfPatch();
+    const hashes = new Map(pb.hashes);
+    for (const id of built.patch.mine.deleted) hashes.delete(id);
+    for (const [id, w] of Object.entries(result.pages)) hashes.set(id, w.hash);
+    patchBase.current = { of: pb.of, version: result.version, hashes };
+    for (const id of built.media.keys()) known.add(id);
+    const mergedPages = new Map(Object.entries(result.pages).flatMap(([id, w]) => (w.page ? [[id, w.page] as [string, LessonPage]] : [])));
+    const swap = (l: Lesson, only?: (id: string) => boolean): Lesson => (mergedPages.size
+      ? { ...l, pages: l.pages.map((p) => (mergedPages.has(p.id) && (!only || only(p.id)) ? mergedPages.get(p.id)! : p)), snipPages: l.snipPages.map((p) => (mergedPages.has(p.id) && (!only || only(p.id)) ? mergedPages.get(p.id)! : p)) }
+      : l);
+    const next = swap(built.lesson);
+    if (next !== built.lesson) {
+      // pages edited since the click keep the editor's version; the rest take the merged one
+      const sent = new Map([...built.lesson.pages, ...built.lesson.snipPages].map((p) => [p.id, p]));
+      setH((s) => {
+        const top = s.stack[s.i]!;
+        if (top === built.lesson) return { stack: [next], i: 0, gesture: null }; // nothing edited since the click: exactly the saved book
+        const topPages = new Map([...top.pages, ...top.snipPages].map((p) => [p.id, p]));
+        const merged = swap(top, (id) => topPages.get(id) === sent.get(id));
+        return { stack: [merged], i: 0, gesture: null };
+      });
+    }
+    setSaved(next);
+  }, [base]);
+
+  return { lesson, book, apply, undo, redo, addAsset, save, markSaved, canPatch, savePatch, adoptPatch, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
 }
 
 export type Authoring = ReturnType<typeof useAuthoring>;

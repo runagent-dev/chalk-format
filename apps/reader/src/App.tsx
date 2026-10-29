@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig, type ReaderHandle, type SaveProgress } from '@chalk-format/reader';
+import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig, type ReaderHandle, type SaveProgress, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
 // pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -40,6 +40,29 @@ export function App() {
   const demoSave = new URLSearchParams(location.search).get('save');
   const callbacks = new URLSearchParams(location.search).get('callbacks'); // `throw`: a host callback with a bug; `resave`: one that calls save() at once
   const onSave = demoSave ? async () => { (window as unknown as { __saveCalls?: number }).__saveCalls = ((window as unknown as { __saveCalls?: number }).__saveCalls ?? 0) + 1; await new Promise((r) => setTimeout(r, 1500)); if (demoSave === 'fail') throw new Error('The host refused the save'); } : undefined;
+  // a host that takes patches (`?save=patch`; `patchfail` refuses them; `patchmerge` answers as if someone else's work was merged into the first page):
+  // each patch is recorded in `window.__patches` (its size, the pages and media in it) and answered the way a host would
+  const onSavePatch = demoSave?.startsWith('patch') ? async (patch: BookPatch, media: Map<string, { type: string; bytes: Uint8Array }>): Promise<PatchResult> => {
+    const w = window as unknown as { __patches?: unknown[]; __patchCounter?: number };
+    const enc = new TextEncoder();
+    (w.__patches ??= []).push({
+      bytes: enc.encode(JSON.stringify(patch)).length, pages: Object.keys(patch.mine.pages), base: Object.keys(patch.base.pages), deleted: patch.mine.deleted,
+      version: patch.base.version, baseTitles: Object.fromEntries(Object.entries(patch.base.pages).map(([id, b]) => [id, b.page.title])), media: [...media.keys()], mediaBytes: [...media.values()].reduce((n, m) => n + m.bytes.length, 0), order: patch.mine.order.length,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    if (demoSave === 'patchfail') throw new Error('the host did not keep the patch');
+    const hex8 = async (b: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b as unknown as ArrayBuffer))].slice(0, 4).map((x) => x.toString(16).padStart(2, '0')).join('');
+    const pages: PatchResult['pages'] = {};
+    for (const [id, pg] of Object.entries(patch.mine.pages)) { const hash = await hex8(enc.encode(JSON.stringify(pg))); pages[id] = { file: `pages/${(w.__patchCounter = (w.__patchCounter ?? 1000) + 1)}-${hash}.json`, hash }; }
+    const notes: MergeReport['notes'] = [];
+    const first = Object.keys(pages)[0];
+    if (demoSave === 'patchmerge' && first) {
+      const merged = { ...patch.mine.pages[first]!, title: `${patch.mine.pages[first]!.title} (merged)` };
+      pages[first] = { ...pages[first]!, hash: await hex8(enc.encode(JSON.stringify(merged))), page: merged };
+      notes.push({ page: first, rule: 'same-property-last-saver', by: 'mine', property: 'title', loser: 'someone else' });
+    }
+    return { version: `sha256:${await hex8(enc.encode(JSON.stringify(patch)))}${'0'.repeat(56)}`, pages, report: { notes } };
+  } : undefined;
   // the libraries connected in this browser (This device, folders, library servers), kept for next time;
   // a library server named in .env.local is connected for you (see .env.example)
   const [libraries, setLibraries] = useSavedLibraries({ preset: PRESET });
@@ -72,7 +95,7 @@ export function App() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} />
+        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} {...(onSavePatch ? { onSavePatch } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} />
         {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>
