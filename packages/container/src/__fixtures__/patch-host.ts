@@ -31,11 +31,11 @@ export class Host {
   async lesson(): Promise<Lesson> { return (await assembleStreamed(async (p) => this.files.get(p)!)).lesson; }
   /** What an editor that opened this book sees: its lesson, its hashes and its version id. */
   async editor() { return { version: this.version, lesson: await this.lesson(), hashes: pageHashes(this.index) }; }
-  async save(patch: BookPatch, media = new Map<string, { type: string; bytes: Uint8Array }>(), now = '2026-02-01T00:00:00.000Z'): Promise<{ merge: MergeResult; result: PatchResult; written: string[] }> {
+  async save(patch: BookPatch, media = new Map<string, { type: string; bytes: Uint8Array }>(), now = '2026-02-01T00:00:00.000Z', restore?: ReadonlyMap<string, { type: string; size?: number }>): Promise<{ merge: MergeResult; result: PatchResult; written: string[] }> {
     const idx = this.index;
     const pages = new Map(pagesNeeded(patch, idx).map((id) => [id, this.page(id)]));
     const merge = mergeBook(patch, { index: idx, pages });
-    const applied = await applyStreamPatch({ index: idx, text: this.text }, merge, media, { now });
+    const applied = await applyStreamPatch({ index: idx, text: this.text }, merge, media, { now, ...(patch.expects ? { expects: patch.expects } : {}), ...(restore ? { restore } : {}) });
     const written = [...applied.files.keys()];
     for (const [p, b] of applied.files) this.files.set(p, b);
     if (!applied.result.unchanged) this.files.set('book.json', applied.indexBytes); // the index goes last

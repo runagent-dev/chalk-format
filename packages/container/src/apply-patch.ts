@@ -43,7 +43,14 @@ export async function applyStreamPatch(
   current: { index: StreamIndex; text?: StreamText | null },
   merge: MergeResult,
   media: ReadonlyMap<string, { type: string; bytes: Uint8Array }> = new Map(),
-  o: { now?: string; external?: ReadonlyMap<string, { type: string; size?: number }> } = {},
+  o: {
+    now?: string;
+    external?: ReadonlyMap<string, { type: string; size?: number }>;
+    /** `patch.expects`: assets the editor believes the host carries. */
+    expects?: readonly string[];
+    /** Files the host still has in its store for assets that are not in the index (it checked: `assets/<key>` exists); they are listed again, with their file. */
+    restore?: ReadonlyMap<string, { type: string; size?: number }>;
+  } = {},
 ): Promise<AppliedPatch> {
   const idx = current.index;
   const carriedAlready = new Set(idx.assets.filter((a) => a.path).map((a) => a.id));
@@ -115,6 +122,8 @@ export async function applyStreamPatch(
   for (const e of allEntries) for (const id of e.assets ?? []) used.add(id);
   for (const id of used) {
     if (have.has(id)) continue;
+    const back = o.restore?.get(id);
+    if (back) { assets.push({ id, type: back.type, ...(back.size !== undefined ? { size: back.size } : {}), path: assetStorageKey(id) }); have.add(id); continue; }
     const ext = o.external?.get(id);
     assets.push({ id, type: ext?.type ?? 'application/octet-stream', ...(ext?.size !== undefined ? { size: ext.size } : {}) });
     have.add(id);
@@ -156,10 +165,13 @@ export async function applyStreamPatch(
   const indexBytes = json(index);
   const kept = new Set(index.assets.map((a) => a.id));
   const dropped = idx.assets.map((a) => a.id).filter((id) => !kept.has(id));
+  // an asset the editor expected the host to carry, which is not carried now (another save removed it), and could not be restored
+  const carriedNow = new Set(index.assets.filter((a) => a.path).map((a) => a.id));
+  const unresolved = (o.expects ?? []).filter((id) => used.has(id) && !carriedNow.has(id));
   const mergedUse = new Set(merge.merged.flatMap((id) => written.get(id)?.assets ?? []));
   const lookup = index.assets.filter((a) => a.path && mergedUse.has(a.id)).map((a) => ({ id: a.id, type: a.type, ...(a.size !== undefined ? { size: a.size } : {}), path: a.path! }));
   return {
     files, indexBytes, index,
-    result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report, ...(dropped.length ? { dropped } : {}), ...(lookup.length ? { assets: lookup } : {}) },
+    result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report, ...(dropped.length ? { dropped } : {}), ...(lookup.length ? { assets: lookup } : {}), ...(unresolved.length ? { unresolved } : {}) },
   };
 }

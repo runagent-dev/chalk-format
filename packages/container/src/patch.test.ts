@@ -508,3 +508,54 @@ describe('review findings, round 2 (container)', () => {
     expect(plain.result.assets).toBeUndefined(); // nothing merged, nothing to tell
   });
 });
+
+describe('review findings, round 3 (container)', () => {
+  const layer = (t: string) => [{ text: t, x: 1, y: 2, width: 3, fontSize: 4 }];
+  const bg = (n: number) => ({ type: 'image', assetId: `sha256:${String(n).repeat(64)}` }) as LessonPage['background'];
+
+  it('both choose the same new picture and only the host makes the text layer for it: that layer stays (even when the page had none before)', async () => {
+    const h = await Host.open(lessonOf([page('a', [text('a1')], { background: bg(0) })])); // no text layer at all
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: bg(1), textLayer: layer('ocr') })))); // the host: new picture and its OCR
+    const m = await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: bg(1) })))); // the editor chose the same picture, no text
+    expect(h.page('a').textLayer).toEqual(layer('ocr'));
+    expect(m.merge.report.notes.map((n) => n.rule)).not.toContain('background-replaced-text-cleared');
+  });
+
+  it('an asset the editor expected to be carried, that another save took out of the index, is restored from the store when the host still has the file', async () => {
+    const png = new Uint8Array([8, 8, 8, 8]);
+    const key = await assetKey(png);
+    const withImg = lessonOf([page('b', [{ id: 'i', type: 'image', x: 0, y: 0, width: 10, height: 10, assetId: key } as LessonObject, text('b1')])]);
+    const h = await Host.open(withImg, new Map([[key, { type: 'image/png', bytes: png }]]));
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, objects: p.objects.filter((o) => o.id !== 'i') })))); // another editor deletes the picture: the index drops it
+    expect(h.index.assets.map((a) => a.id)).toEqual([]);
+    const stale = createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === 'i' ? ({ ...o, x: 50 } as LessonObject) : o)) }))); // I move it: the edit is kept
+    stale.expects = [key];
+    const m = await h.save(stale, new Map(), '2026-02-02T00:00:00.000Z', new Map([[key, { type: 'image/png', size: 4 }]]));
+    const entry = h.index.assets.find((a) => a.id === key)!;
+    expect(entry.path).toBe(`assets/${key.replace(':', '_')}`);
+    expect(m.result.unresolved).toBeUndefined();
+  });
+
+  it('and is reported as unresolved when the host cannot restore it, so the editor sends the bytes again', async () => {
+    const png = new Uint8Array([8, 8, 8, 8]);
+    const key = await assetKey(png);
+    const withImg = lessonOf([page('b', [{ id: 'i', type: 'image', x: 0, y: 0, width: 10, height: 10, assetId: key } as LessonObject])]);
+    const h = await Host.open(withImg, new Map([[key, { type: 'image/png', bytes: png }]]));
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, objects: [] }))));
+    const stale = createPatch(e, edit(e.lesson, 'b', (p) => ({ ...p, objects: p.objects.map((o) => ({ ...o, x: 50 }) as LessonObject) })));
+    stale.expects = [key];
+    const m = await h.save(stale);
+    expect(m.result.unresolved).toEqual([key]);
+    expect(h.index.assets.find((a) => a.id === key)!.path).toBeUndefined();
+    // the editor's follow-up: nothing changed but the bytes
+    const e2 = await h.editor();
+    const follow = createPatch(e2, e2.lesson, [{ id: key, type: 'image/png' }]);
+    const again = await h.save(follow, new Map([[key, { type: 'image/png', bytes: png }]]));
+    expect(again.result.unresolved).toBeUndefined();
+    expect(h.index.assets.find((a) => a.id === key)!.path).toBe(`assets/${key.replace(':', '_')}`);
+    expect(h.files.get(`assets/${key.replace(':', '_')}`)).toEqual(png);
+  });
+});

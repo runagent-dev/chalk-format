@@ -46,7 +46,10 @@ await withBookLock(slug, async () => {                       // ONE writer of th
   // 2. merge (pure)
   const merge = mergeBook(patch, { index, pages });
   // 3. the new files and the new index (pure); content-named media is verified by file name here
-  const applied = await applyStreamPatch({ index, text: await readSearchText(slug, index) }, merge, media);
+  const applied = await applyStreamPatch({ index, text: await readSearchText(slug, index) }, merge, media, {
+    expects: patch.expects,                                    // assets the editor believes the book carries (see below)
+    restore: await filesStillInTheStore(slug, patch.expects),  // optional: Map<id, { type, size }> for those that are no longer in the index but whose file is
+  });
   // 4. write the new files FIRST, then book.json LAST: a reader sees the old book or the new one, never a mix
   for (const [path, bytes] of applied.files) await write(`${slug}/${path}`, bytes);
   if (!applied.result.unchanged) await write(`${slug}/book.json`, applied.indexBytes);
@@ -66,6 +69,11 @@ await withBookLock(slug, async () => {                       // ONE writer of th
   that was merged with someone else's work that page whole (`page`), which the editor takes in (merging it with anything the user edited meanwhile),
   `dropped`: the assets taken out of the index, which the editor forgets so it sends their bytes again if the picture comes back, and `assets`: the
   carried media (id, type, file) that the merged pages use, which may be someone else's new pictures: the editor adds them to the book it draws from.
+- **`patch.expects` and `restore`.** Another editor's save may have taken an asset out of the index (its last reference was deleted) after this editor
+  opened the book; a stale edit can bring a reference to it back. The editor lists, in `patch.expects`, the assets its changed pages use that it
+  believes the book carries. Pass them to `applyStreamPatch` with `restore`: for those no longer in the index whose `assets/<key>` file your store
+  still has (it prunes after a grace period), the entry is listed again with its file. Any that cannot be restored come back in
+  `PatchResult.unresolved`; the editor then sends their bytes in one follow-up patch that changes no page.
 - **The version id is informational.** A patch is untrusted input: a claimed `version` or page `hash` proves nothing. The merge decides whether the
   store changed a page since the editor opened it by comparing the page itself with the editor's base copy, which is why `pagesNeeded` lists every page
   the patch touches that the store has (a patch touches a few). Never reject a patch for a version mismatch alone.

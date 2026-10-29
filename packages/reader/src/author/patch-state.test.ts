@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BookPatch, PatchResult } from '@chalk-format/container';
 import type { Lesson, LessonObject, LessonPage } from '@chalk-format/model';
-import { adoptedPatch, mediaWanted } from './patch-state.js';
+import { adoptedPatch, mediaWanted, patchReferences } from './patch-state.js';
 
 const text = (id: string, over: Record<string, unknown> = {}) => ({ id, type: 'text', x: 0, y: 0, text: 'hi', fontSize: 20, fill: '#000000', ...over }) as LessonObject;
 const page = (id: string, objects: LessonObject[], over: Record<string, unknown> = {}) => ({ id, title: id, background: { type: 'blank' }, objects, ...over }) as LessonPage;
@@ -86,5 +86,21 @@ describe('which assets a patch carries', () => {
     const ext = new Set(['lib']);
     expect(mediaWanted({ referenced: ['lib'], carried: none, external: ext, local: () => false })).toEqual([]);
     expect(mediaWanted({ referenced: ['lib'], carried: none, external: ext, local: (id) => id === 'lib' })).toEqual(['lib']);
+  });
+});
+
+describe('review findings, round 3 (the editor)', () => {
+  const sent = lesson([page('a', [text('a1')])]);
+  it('assets the host has no bytes for are forgotten, so they are sent again', () => {
+    const r = adoptedPatch({ patch: patchOf(), sent, top: sent, result: result({}, { unresolved: ['pic'] }), hashes: new Map(), known: new Set(['pic', 'ok']), mediaIds: [] });
+    expect([...r.known]).toEqual(['ok']);
+  });
+  it('a patch looks at the changed pages\' assets, at every asset the editor holds bytes for that the book uses (even on an unchanged page), and at what the host asked for again', () => {
+    const refs = patchReferences({ changed: ['c1'], all: new Set(['c1', 'imported', 'x']), local: ['imported', 'unused'], resend: ['again'] });
+    expect(refs.sort()).toEqual(['again', 'c1', 'imported']);
+  });
+  it('so a local file for an asset the host lists as external is sent although the page that uses it did not change', () => {
+    const referenced = patchReferences({ changed: [], all: new Set(['lib']), local: ['lib'], resend: [] });
+    expect(mediaWanted({ referenced, carried: new Set(), external: new Set(['lib']), local: (id) => id === 'lib' })).toEqual(['lib']);
   });
 });

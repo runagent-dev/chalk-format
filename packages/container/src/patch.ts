@@ -36,6 +36,11 @@ export type BookPatch = {
   };
   /** Media added in this session (the bytes travel beside the patch, keyed by id). */
   media: { id: string; type: string }[];
+  /**
+   * Assets the changed pages use that the editor believes the host carries (it saw them in the index). Another save may have taken one out of the
+   * index since (its last reference was deleted); the host then restores it from its store, or says so in `PatchResult.unresolved` so the editor can send the bytes.
+   */
+  expects?: string[];
 };
 
 export type MergeRule =
@@ -78,6 +83,8 @@ export type PatchResult = {
    * to the book it draws from, or those pictures could not be shown until it reopened the book.
    */
   assets?: { id: string; type: string; size?: number; path: string }[];
+  /** Assets the patch expected the host to carry that it could not restore: they are listed without a file now. The editor sends their bytes again. */
+  unresolved?: string[];
 };
 
 /** The current state of the book in the store ("theirs"): its index, and the pages `pagesNeeded` asked for. */

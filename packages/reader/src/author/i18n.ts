@@ -3,7 +3,7 @@ import type { Locale } from '../config.js';
 /** Author mode's own words (the reader's are in ../i18n.ts). */
 const STRINGS = {
   en: {
-    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saveShort: 'Save', saved: 'Book saved', saveFailed: 'The book was not saved', saving: 'Saving…', savingPictures: 'Saving… collecting pictures, {done} of {total}', savingPacking: 'Saving… packing the book', savingUploading: 'Saving… uploading', savedMerged: 'Saved; {n} changes were merged with someone else\'s', alreadySaving: 'Already saving, one moment', loadingAll: 'Loading the whole book to edit it…',
+    edit: 'Edit this book', preview: 'Preview as a student', add: 'Add media', save: 'Save the book', saveShort: 'Save', saved: 'Book saved', saveFailed: 'The book was not saved', saving: 'Saving…', savingPictures: 'Saving… collecting pictures, {done} of {total}', savingPacking: 'Saving… packing the book', savingUploading: 'Saving… uploading', savedMissing: 'Saved, but {n} pictures could not be saved with it', savedMerged: 'Saved; {n} changes were merged with someone else\'s', alreadySaving: 'Already saving, one moment', loadingAll: 'Loading the whole book to edit it…',
     unsaved: 'Unsaved changes', leave: 'This book has unsaved changes. Leave anyway?', notPlaceable: 'This file cannot be added',
     properties: 'Properties', nothing: 'Select something on the page to change how it is shown. Add media with the + button, or drop files on a page.',
     display: 'On the page', full: 'Full size', icon: 'Small icon',
@@ -31,7 +31,7 @@ const STRINGS = {
     image: 'Image', video: 'Video', audio: 'Sound', model3d: '3D model', lab: 'Lab', plugin: 'Widget', snip: 'Snip', other: 'Object',
   },
   bn: {
-    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saveShort: 'সংরক্ষণ', saved: 'বই সংরক্ষিত হয়েছে', saveFailed: 'বইটি সংরক্ষণ করা যায়নি', saving: 'সংরক্ষণ হচ্ছে…', savingPictures: 'সংরক্ষণ হচ্ছে… ছবি সংগ্রহ হচ্ছে, {total}টির মধ্যে {done}টি', savingPacking: 'সংরক্ষণ হচ্ছে… বইটি গোছানো হচ্ছে', savingUploading: 'সংরক্ষণ হচ্ছে… আপলোড হচ্ছে', savedMerged: 'সংরক্ষিত হয়েছে; {n}টি পরিবর্তন অন্য কারও কাজের সঙ্গে মেলানো হয়েছে', alreadySaving: 'সংরক্ষণ চলছে, একটু অপেক্ষা করুন', loadingAll: 'সম্পাদনার জন্য পুরো বই আনা হচ্ছে…',
+    edit: 'বইটি সম্পাদনা করুন', preview: 'শিক্ষার্থীর চোখে দেখুন', add: 'মিডিয়া যোগ করুন', save: 'বইটি সংরক্ষণ করুন', saveShort: 'সংরক্ষণ', saved: 'বই সংরক্ষিত হয়েছে', saveFailed: 'বইটি সংরক্ষণ করা যায়নি', saving: 'সংরক্ষণ হচ্ছে…', savingPictures: 'সংরক্ষণ হচ্ছে… ছবি সংগ্রহ হচ্ছে, {total}টির মধ্যে {done}টি', savingPacking: 'সংরক্ষণ হচ্ছে… বইটি গোছানো হচ্ছে', savingUploading: 'সংরক্ষণ হচ্ছে… আপলোড হচ্ছে', savedMissing: 'সংরক্ষিত হয়েছে, কিন্তু {n}টি ছবি সংরক্ষণ করা যায়নি', savedMerged: 'সংরক্ষিত হয়েছে; {n}টি পরিবর্তন অন্য কারও কাজের সঙ্গে মেলানো হয়েছে', alreadySaving: 'সংরক্ষণ চলছে, একটু অপেক্ষা করুন', loadingAll: 'সম্পাদনার জন্য পুরো বই আনা হচ্ছে…',
     unsaved: 'পরিবর্তন সংরক্ষণ করা হয়নি', leave: 'বইটির পরিবর্তন সংরক্ষণ করা হয়নি। তবুও বের হবেন?', notPlaceable: 'এই ফাইলটি যোগ করা যায় না',
     properties: 'বৈশিষ্ট্য', nothing: 'পাতার কিছু নির্বাচন করুন, তারপর এটি কীভাবে দেখাবে তা বদলান। + বোতাম দিয়ে মিডিয়া যোগ করুন, অথবা ফাইল পাতার ওপর ছেড়ে দিন।',
     display: 'পাতায়', full: 'পূর্ণ আকারে', icon: 'ছোট আইকন',

@@ -570,7 +570,14 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
           au.adoptPatch(built, result);
           const notes = result.report?.notes.length ?? 0;
           if (notes) props.onMergeReport?.(result.report);
-          setToast(notes ? at_.savedMerged.replace('{n}', num(authorLocale, notes)) : at_.saved);
+          // the host could not restore pictures another save had taken out of the book: they are sent again, once, as a patch of nothing but their bytes
+          let missing = 0;
+          if (result.unresolved?.length) {
+            const again = await runPatchSave({ build: (pr) => au.savePatchMedia(result.unresolved!, pr), hand: (b) => props.onSavePatch!(b.patch, b.media), progress });
+            au.adoptPatch(again.built, again.result);
+            missing = again.result.unresolved?.length ?? 0;
+          }
+          setToast(missing ? at_.savedMissing.replace('{n}', num(authorLocale, missing)) : notes ? at_.savedMerged.replace('{n}', num(authorLocale, notes)) : at_.saved);
           return true;
         } catch (e) {
           // not saved: the unsaved mark and the leave-page warning stay

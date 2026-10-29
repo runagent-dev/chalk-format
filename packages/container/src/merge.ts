@@ -153,9 +153,11 @@ function mergePage(base: LessonPage | undefined, mine: LessonPage, theirs: Lesso
  * its picture is the one that stands (`page`), the page's text layer is cleared. A picture replaced by the HOST (and a text layer it made for it)
  * is the host's business: an unrelated edit by an older editor must not clear it.
  */
-function clearStaleText(base: LessonPage | undefined, mine: LessonPage, page: LessonPage, id: string, notes: MergeNote[]): LessonPage {
+function clearStaleText(base: LessonPage | undefined, mine: LessonPage, theirs: LessonPage | undefined, page: LessonPage, id: string, notes: MergeNote[]): LessonPage {
   // a patch that replaced the picture AND supplied a text layer for the new one (OCR) keeps that layer: only a layer it left as it was is stale
   if (!base || sameValue(mine.background, base.background) || !sameValue(page.background, mine.background) || !page.textLayer?.length || !sameValue(mine.textLayer, base.textLayer)) return page;
+  // the host chose this very picture too and made the text layer for it (OCR): that layer is valid
+  if (theirs && sameValue(theirs.background, page.background) && !sameValue(theirs.textLayer, base.textLayer)) return page;
   const { textLayer: _gone, ...rest } = page;
   void _gone;
   notes.push({ page: id, rule: 'background-replaced-text-cleared', by: 'mine', detail: 'the page\'s picture was replaced: its text layer was cleared' });
@@ -165,7 +167,7 @@ function clearStaleText(base: LessonPage | undefined, mine: LessonPage, page: Le
 /** Merges three versions of one page (a page's properties one by one, its objects by id) as the host does; for an editor that takes a merged page in while it has edited the page since. */
 export function mergeLessonPage(base: LessonPage | undefined, mine: LessonPage, theirs: LessonPage): { page: LessonPage; report: MergeReport } {
   const notes: MergeNote[] = [];
-  const page = clearStaleText(base, mine, mergePage(base, mine, theirs, mine.id, notes), mine.id, notes);
+  const page = clearStaleText(base, mine, theirs, mergePage(base, mine, theirs, mine.id, notes), mine.id, notes);
   return { page, report: { notes } };
 }
 
@@ -196,14 +198,14 @@ export function mergeBook(patch: BookPatch, theirs: TheirsState): MergeResult {
     let stored: LessonPage | undefined;
     if (!e) {
       if (b) notes.push({ page: id, rule: 'deleted-vs-edited-kept', by: 'mine', detail: 'the page was deleted by someone else and edited here: the edit is kept' });
-      result = clearStaleText(b?.page, mineP, mineP, id, notes);
+      result = clearStaleText(b?.page, mineP, undefined, mineP, id, notes);
       survivors.add(id);
     } else {
       const t = theirs.pages.get(id);
       if (!t) throw new Error(`page ${id} is in the store, but its current form was not supplied (see pagesNeeded)`);
       // the store has not changed it since the editor opened it when it IS the editor's base copy (a claimed hash proves nothing: the patch is untrusted)
       result = b && sameValue(t, b.page) ? mineP : mergePage(b?.page, mineP, t, id, notes);
-      result = clearStaleText(b?.page, mineP, result, id, notes);
+      result = clearStaleText(b?.page, mineP, t, result, id, notes);
       stored = t;
     }
     if (!stored || !sameValue(result, stored)) {

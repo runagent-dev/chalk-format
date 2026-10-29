@@ -30,6 +30,7 @@ export function adoptedPatch(o: {
   const known = new Set(o.known);
   for (const id of o.mediaIds) known.add(id);
   for (const id of o.result.dropped ?? []) known.delete(id);
+  for (const id of o.result.unresolved ?? []) known.delete(id); // the host has no bytes for these: they are sent again
   for (const a of o.result.assets ?? []) known.add(a.id); // media someone else added, in a page the host merged
 
   const merged = new Map(Object.entries(o.result.pages).flatMap(([id, w]) => (w.page ? [[id, w.page] as [string, LessonPage]] : [])));
@@ -54,4 +55,12 @@ export function adoptedPatch(o: {
  */
 export function mediaWanted(o: { referenced: readonly string[]; carried: ReadonlySet<string>; external: ReadonlySet<string>; local: (id: string) => boolean }): string[] {
   return o.referenced.filter((id) => !o.carried.has(id) && (!o.external.has(id) || o.local(id)));
+}
+
+/**
+ * The assets a patch looks at: those the changed pages use, plus every asset the editor holds bytes for (added or imported this session) that the book
+ * uses anywhere (an import may be for a picture an unchanged page already uses), plus the ones the host just said it has no bytes for (`resend`).
+ */
+export function patchReferences(o: { changed: readonly string[]; all: ReadonlySet<string>; local: Iterable<string>; resend: readonly string[] }): string[] {
+  return [...new Set([...o.changed, ...[...o.local].filter((id) => o.all.has(id)), ...o.resend])];
 }

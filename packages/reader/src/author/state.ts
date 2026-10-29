@@ -5,7 +5,7 @@ import type { SaveProgress } from './save-run.js';
 import { assetKey, referencedAssetIds, type Lesson } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { isStreamed } from '../stream.js';
-import { adoptedPatch, mediaWanted } from './patch-state.js';
+import { adoptedPatch, mediaWanted, patchReferences } from './patch-state.js';
 
 const HISTORY = 200;
 
@@ -19,6 +19,7 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
   const [h, setH] = useState(() => ({ stack: [base.lesson], i: 0, gesture: null as string | null }));
   // the lesson as last saved: what "unsaved changes" compares against
   const [saved, setSaved] = useState(base.lesson);
+  const savedNow = useRef(saved); savedNow.current = saved;
   // a streamed book's pages arrive after it opened: follow them while nothing has been edited
   const [seenLesson, setSeenLesson] = useState(base.lesson);
   if (seenLesson !== base.lesson) {
@@ -123,7 +124,10 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
     const patch = createPatch({ version: pb.version, lesson: saved, hashes: pb.hashes }, lesson);
     const changedIds = new Set(Object.keys(patch.mine.pages));
     const sub = { ...lesson, pages: lesson.pages.filter((p) => changedIds.has(p.id)), snipPages: lesson.snipPages.filter((p) => changedIds.has(p.id)) } as Lesson;
-    const wanted = mediaWanted({ referenced: referencedAssetIds(sub), carried: known, external, local: (id) => added.current.has(id) });
+    const changedRefs = referencedAssetIds(sub);
+    const referenced = patchReferences({ changed: changedRefs, all: new Set(referencedAssetIds(lesson)), local: added.current.keys(), resend: [] });
+    const wanted = mediaWanted({ referenced, carried: known, external, local: (id) => added.current.has(id) });
+    patch.expects = changedRefs.filter((id) => known.has(id)); // the host is believed to carry these: it restores or reports any that another save removed
     const got = await gatherAssets({
       ids: wanted,
       held: (id) => { const a = added.current.get(id); return a ? { type: a.type, bytes: a.bytes } : undefined; },
@@ -134,6 +138,25 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
     patch.media = [...media].map(([id, m]) => ({ id, type: m.type }));
     return { patch, media, lesson };
   }, [lesson, saved, base]);
+
+  /**
+   * A patch that changes no page and carries only the bytes of `ids`: what the host asked for again (`unresolved`). Built from the base the last
+   * answer left, which this reads from refs (the answer was adopted a moment ago, before the next render).
+   */
+  const savePatchMedia = useCallback(async (ids: readonly string[], progress?: (p: SaveProgress) => void): Promise<{ patch: BookPatch; media: Map<string, { type: string; bytes: Uint8Array }>; lesson: Lesson }> => {
+    const { pb } = baseOfPatch();
+    const from = savedNow.current;
+    const patch = createPatch({ version: pb.version, lesson: from, hashes: pb.hashes }, from);
+    const got = await gatherAssets({
+      ids: [...ids],
+      held: (id) => { const a = added.current.get(id); return a ? { type: a.type, bytes: a.bytes } : undefined; },
+      fetchOne: async (id) => { const b = await (bytesFrom.current ?? base.assetBytes)(id); return b ? { type: b.type, bytes: new Uint8Array(b.bytes) } : null; },
+      progress,
+    });
+    const media = new Map(got);
+    patch.media = [...media].map(([id, m]) => ({ id, type: m.type }));
+    return { patch, media, lesson: from };
+  }, [base]);
 
   /**
    * The host kept the patch: its answer is the next base (the version id and the new `hex8` of each page it wrote). A page the host merged with
@@ -150,10 +173,11 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
     // someone else's new media in a page the host merged: the book this editor draws from learns where its files are
     if (isStreamed(pb.of) && result.assets?.length) pb.of.addAssets(result.assets);
     if (next.top) setH({ stack: [next.top], i: 0, gesture: null });
+    savedNow.current = next.saved; // read at once by a follow-up patch, before the next render
     setSaved(next.saved);
   }, [base]);
 
-  return { lesson, book, apply, undo, redo, addAsset, save, markSaved, canPatch, savePatch, adoptPatch, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
+  return { lesson, book, apply, undo, redo, addAsset, save, markSaved, canPatch, savePatch, savePatchMedia, adoptPatch, canUndo: h.i > 0, canRedo: h.i < h.stack.length - 1, dirty: lesson !== saved };
 }
 
 export type Authoring = ReturnType<typeof useAuthoring>;
