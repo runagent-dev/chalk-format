@@ -62,10 +62,12 @@ await withBookLock(slug, async () => {                       // ONE writer of th
   dropped from the index (prune their files later, under your lock); the one search-text file is rewritten only when a page's text really
   changed; files named by their content (`assets/c1_…`, `assets/sha256_…`) must hold those bytes or it throws; media whose bytes do not match
   their key are refused. An empty merge returns `result.unchanged` and nothing to write.
-- **The `PatchResult`** carries the new `version` (the hash of the new `book.json`), the new file name and `hex8` of every page written, and,
-  for a page that was merged with someone else's work, that page whole (`page`), which the editor takes in.
-- **The version id is a fast path only.** If it does not match the book the host has, the per-page `hex8` checks decide; the cost is a merge.
-  Never reject a patch for a version mismatch alone.
+- **The `PatchResult`** carries the new `version` (the hash of the new `book.json`), the new file name and `hex8` of every page written, for a page
+  that was merged with someone else's work that page whole (`page`), which the editor takes in (merging it with anything the user edited meanwhile),
+  and `dropped`: the assets taken out of the index, which the editor forgets so it sends their bytes again if the picture comes back.
+- **The version id is informational.** A patch is untrusted input: a claimed `version` or page `hash` proves nothing. The merge decides whether the
+  store changed a page since the editor opened it by comparing the page itself with the editor's base copy, which is why `pagesNeeded` lists every page
+  the patch touches that the store has (a patch touches a few). Never reject a patch for a version mismatch alone.
 
 ## The rules (always reported in `report.notes`)
 

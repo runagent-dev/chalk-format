@@ -1,6 +1,6 @@
 import { C1_KEY_PATTERN, verifyAssetBytes, type Lesson, type LessonPage, type StreamAsset, type StreamIndex, type StreamPage, type StreamText, type TextRun } from '@chalk-format/model';
 import type { MergeResult } from './merge.js';
-import type { PatchResult } from './patch.js';
+import { setOwn, type PatchResult } from './patch.js';
 import { assetStorageKey } from './pack.js';
 import { drawnAssetIds, hex8, pageAssetIds, pageText, parseStreamIndex } from './stream.js';
 
@@ -46,7 +46,10 @@ export async function applyStreamPatch(
   o: { now?: string; external?: ReadonlyMap<string, { type: string; size?: number }> } = {},
 ): Promise<AppliedPatch> {
   const idx = current.index;
-  if (merge.noop && !media.size) {
+  const carriedAlready = new Set(idx.assets.filter((a) => a.path).map((a) => a.id));
+  // media the index already carries (a replayed patch): verified like any, but not written or listed again
+  const newMedia = new Map([...media].filter(([id]) => !carriedAlready.has(id)));
+  if (merge.noop && !newMedia.size) {
     const bytes = json(idx);
     return { files: new Map(), indexBytes: bytes, index: idx, result: { version: `sha256:${await sha256hex(bytes)}`, pages: {}, report: merge.report, unchanged: true } };
   }
@@ -55,7 +58,7 @@ export async function applyStreamPatch(
   // media: the bytes must be what their id says (an id that names no content is taken as given)
   for (const [id, m] of media) {
     if (C1_KEY_PATTERN.test(id) || /^sha256:[0-9a-f]{64}$/.test(id)) if (!(await verifyAssetBytes(id, m.bytes))) throw new Error(`the media ${id} does not match its key`);
-    files.set(assetStorageKey(id), m.bytes);
+    if (newMedia.has(id)) files.set(assetStorageKey(id), m.bytes);
   }
 
   const old = new Map([...idx.pages, ...(idx.snipPages ?? [])].map((e) => [e.id, e]));
@@ -64,7 +67,7 @@ export async function applyStreamPatch(
   const sizes = new Map<string, number>();
   for (const a of idx.assets) if (a.size !== undefined) sizes.set(a.id, a.size);
   for (const [id, m] of media) sizes.set(id, m.bytes.byteLength);
-  const carried = new Set([...idx.assets.filter((a) => a.path).map((a) => a.id), ...media.keys()]);
+  const carried = new Set([...carriedAlready, ...media.keys()]);
 
   const shell = { id: idx.id, title: merge.title, locale: idx.locale, createdAt: idx.createdAt, updatedAt: idx.updatedAt, pages: [], snipPages: [] } as unknown as Lesson;
   const written = new Map<string, StreamPage>();
@@ -88,7 +91,7 @@ export async function applyStreamPatch(
       assetBytes: [...new Set(drawnAssetIds(page))].reduce((s, a) => s + (sizes.get(a) ?? 0), 0),
     });
     if (!thumb && was && 'thumb' in was) delete (written.get(id) as { thumb?: unknown }).thumb;
-    resultPages[id] = { file, hash, ...(merge.merged.includes(id) ? { page } : {}) };
+    setOwn(resultPages, id, { file, hash, ...(merge.merged.includes(id) ? { page } : {}) });
   }
   const entryOf = (id: string): StreamPage => {
     const e = written.get(id) ?? old.get(id);
@@ -101,7 +104,11 @@ export async function applyStreamPatch(
   // the assets: what the book had, plus the media, plus references to assets no one carries yet (external); minus what no page uses any more
   let assets: StreamAsset[] = [...idx.assets];
   const have = new Set(assets.map((a) => a.id));
-  for (const [id, m] of media) if (!have.has(id)) { assets.push({ id, type: m.type, size: m.bytes.byteLength, path: assetStorageKey(id) }); have.add(id); }
+  for (const [id, m] of newMedia) {
+    const at = assets.findIndex((a) => a.id === id);
+    const entry = { ...(at >= 0 ? assets[at]! : {}), id, type: at >= 0 && assets[at]!.type !== 'application/octet-stream' ? assets[at]!.type : m.type, size: m.bytes.byteLength, path: assetStorageKey(id) } as StreamAsset;
+    if (at >= 0) assets[at] = entry; else { assets.push(entry); have.add(id); } // an entry that was external (no bytes) takes the bytes now supplied
+  }
   const allEntries = [...pages, ...snipPages];
   const known = allEntries.every((e) => Array.isArray(e.assets));
   const used = new Set<string>(merge.coverAssetId ? [merge.coverAssetId] : []);
@@ -125,7 +132,7 @@ export async function applyStreamPatch(
     for (const id of merge.textChanged) {
       const page: LessonPage | undefined = merge.write.get(id);
       const runs = page ? pageText(page) : [];
-      if (runs.length) next[id] = runs; else delete next[id];
+      if (runs.length) setOwn(next, id, runs); else delete next[id];
     }
     const before = JSON.stringify(current.text?.pages ?? {});
     if (JSON.stringify(next) !== before) {
@@ -147,5 +154,7 @@ export async function applyStreamPatch(
   });
   await assertContentNamedFiles(files);
   const indexBytes = json(index);
-  return { files, indexBytes, index, result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report } };
+  const kept = new Set(index.assets.map((a) => a.id));
+  const dropped = idx.assets.map((a) => a.id).filter((id) => !kept.has(id));
+  return { files, indexBytes, index, result: { version: `sha256:${await sha256hex(indexBytes)}`, pages: resultPages, report: merge.report, ...(dropped.length ? { dropped } : {}) } };
 }

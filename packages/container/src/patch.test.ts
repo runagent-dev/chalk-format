@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Lesson, LessonObject, LessonPage } from '@chalk-format/model';
 import { assetKey } from '@chalk-format/model';
-import { assertContentNamedFiles, createPatch, fileHash, mergeBook, pagesNeeded } from './index.js';
+import { assertContentNamedFiles, createPatch, fileHash, mergeBook, pagesNeeded, type BookPatch } from './index.js';
 
 import { text, page, lessonOf, Host } from './__fixtures__/patch-host.js';
 const ids = (l: LessonPage[]) => l.map((p) => p.id);
@@ -134,9 +134,9 @@ describe('mergeBook: the rules of the design table', () => {
   async function twoSides(base: Lesson, a: (l: Lesson) => Lesson, b: (l: Lesson) => Lesson) {
     const h = await Host.open(base);
     const e = await h.editor();
-    await h.save(createPatch(e, a(e.lesson)));
+    const firstSave = await h.save(createPatch(e, a(e.lesson)));
     const m = await h.save(createPatch(e, b(e.lesson)));
-    return { h, ...m, e };
+    return { h, ...m, e, firstSave };
   }
   const moveObj = (id: string, x: number) => (l: Lesson) => edit(l, 'a', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === id ? ({ ...o, x } as LessonObject) : o)) }));
   const setProp = (id: string, k: string, v: unknown) => (l: Lesson) => edit(l, 'a', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === id ? ({ ...o, [k]: v } as LessonObject) : o)) }));
@@ -244,7 +244,8 @@ describe('mergeBook: the rules of the design table', () => {
     expect((p.background as { assetId: string }).assetId).toBe('sha256:' + '1'.repeat(64));
     expect(p.objects.map((o) => o.id)).toEqual(['a1', 'a9']);
     expect(p.textLayer).toBeUndefined();
-    expect(r.merge.report.notes.map((n) => n.rule)).toContain('background-replaced-text-cleared');
+    // reported by the save that replaced the picture; the other save finds the layer already gone
+    expect(r.firstSave.merge.report.notes.map((n) => n.rule)).toContain('background-replaced-text-cleared');
     expect(r.h.text!.pages.a?.some((t) => t.text === 'old')).toBeFalsy();
   });
 
@@ -297,12 +298,14 @@ describe('mergeBook: the rules of the design table', () => {
     expect(pagesNeeded(patch, h.index)).toEqual(['a']);
   });
 
-  it('pagesNeeded asks only for pages the store changed since the editor opened', async () => {
+  it('pagesNeeded asks for every page the patch touches that the store has, whatever hash the patch claims', async () => {
     const h = await Host.open(base3());
     const e = await h.editor();
     await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, title: 'Theirs' }))));
     const patch = createPatch(e, edit(edit(e.lesson, 'a', (p) => ({ ...p, title: 'Mine' })), 'b', (p) => ({ ...p, title: 'Mine b' })));
-    expect(pagesNeeded(patch, h.index)).toEqual(['a']); // b is untouched in the store
+    expect(pagesNeeded(patch, h.index).sort()).toEqual(['a', 'b']);
+    const withNew = createPatch(e, { ...e.lesson, pages: [...e.lesson.pages, page('fresh')] });
+    expect(pagesNeeded(withNew, h.index)).toEqual([]); // a page the store does not have is not read
   });
 });
 
@@ -359,5 +362,109 @@ describe('applyStreamPatch: media and checks', () => {
       const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].slice(0, 4).map((b) => b.toString(16).padStart(2, '0')).join('');
       expect(fileHash(p.file)).toBe(hex);
     }
+  });
+});
+
+describe('review findings, round 1 (container)', () => {
+  const png = new Uint8Array([7, 7, 7, 7]);
+  const img = (id: string, assetId: string) => ({ id, type: 'image', x: 0, y: 0, width: 10, height: 10, assetId }) as LessonObject;
+
+  it('a picture replaced on a page the host has not touched clears the text layer at once, and replaying the patch is a no-op', async () => {
+    const old = 'sha256:' + '0'.repeat(64), fresh = 'sha256:' + '1'.repeat(64);
+    const h = await Host.open(lessonOf([page('a', [text('a1')], { textLayer: [{ text: 'old', x: 1, y: 2, width: 3, fontSize: 4 }], background: { type: 'image', assetId: old } })]));
+    const e = await h.editor();
+    const patch = createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, background: { type: 'image', assetId: fresh } as LessonPage['background'] }))); // the editor did not clear the layer
+    const first = await h.save(patch);
+    expect(h.page('a').textLayer).toBeUndefined();
+    expect(first.merge.report.notes.map((n) => n.rule)).toContain('background-replaced-text-cleared');
+    expect(h.text?.pages.a?.some((t) => t.text === 'old')).toBeFalsy();
+    const again = await h.save(patch); // replayed
+    expect(again.merge.noop).toBe(true);
+    expect(again.result.unchanged).toBe(true);
+  });
+
+  it('pages and objects whose ids are __proto__ or constructor keep their edits (own properties, not prototypes)', async () => {
+    const h = await Host.open(lessonOf([page('__proto__', [text('constructor', 'one'), text('o2')]), page('b', [text('b1')])]));
+    const e = await h.editor();
+    const mine = edit(e.lesson, '__proto__', (p) => ({ ...p, title: 'Edited', objects: p.objects.map((o) => (o.id === 'constructor' ? ({ ...o, text: 'two' } as LessonObject) : o)) }));
+    const patch = JSON.parse(JSON.stringify(createPatch(e, mine))) as BookPatch; // as it travels
+    expect(Object.keys(patch.mine.pages)).toEqual(['__proto__']);
+    expect(Object.keys(patch.base.pages)).toEqual(['__proto__']);
+    const m = await h.save(patch);
+    expect(h.page('__proto__').title).toBe('Edited');
+    expect(obj(h.page('__proto__'), 'constructor')!.text).toBe('two');
+    expect(Object.keys(m.result.pages)).toEqual(['__proto__']);
+    expect(({} as Record<string, unknown>).title).toBeUndefined(); // nothing leaked onto Object.prototype
+  });
+
+  it('a patch that claims the store\'s hash for a stale base does not overwrite what the store has', async () => {
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    const theirs = edit(e.lesson, 'a', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === 'a1' ? ({ ...o, x: 111 } as LessonObject) : o)) }));
+    await h.save(createPatch(e, theirs));
+    const stale = createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, objects: p.objects.map((o) => (o.id === 'a2' ? ({ ...o, x: 222 } as LessonObject) : o)) })));
+    stale.base.pages.a!.hash = h.index.pages.find((p) => p.id === 'a')!.file.match(/-([0-9a-f]{8})\.json$/)![1]!; // the lie: the store's current hash
+    await h.save(stale);
+    expect(obj(h.page('a'), 'a1')!.x).toBe(111); // the other person's edit survived
+    expect(obj(h.page('a'), 'a2')!.x).toBe(222);
+  });
+
+  it('two inserts before the first item: the earlier save comes first (pages and objects)', async () => {
+    const front = (id: string) => (l: Lesson) => ({ ...l, pages: [page(id, [text(`${id}1`)]), ...l.pages] });
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    await h.save(createPatch(e, front('x')(e.lesson)));
+    await h.save(createPatch(e, front('y')(e.lesson)));
+    expect(ids((await h.lesson()).pages)).toEqual(['x', 'y', 'a', 'b', 'c']);
+    const h2 = await Host.open(base3());
+    const e2 = await h2.editor();
+    const first = (id: string) => (l: Lesson) => edit(l, 'a', (p) => ({ ...p, objects: [text(id), ...p.objects] }));
+    await h2.save(createPatch(e2, first('ox')(e2.lesson)));
+    await h2.save(createPatch(e2, first('oy')(e2.lesson)));
+    expect(h2.page('a').objects.map((o) => o.id)).toEqual(['ox', 'oy', 'a1', 'a2']);
+  });
+
+  it('an insert after a page the host deleted stays where it was (before its next neighbour), not at the end', async () => {
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    await h.save(createPatch(e, { ...e.lesson, pages: e.lesson.pages.filter((p) => p.id !== 'a') })); // the host deletes a
+    await h.save(createPatch(e, { ...e.lesson, pages: [e.lesson.pages[0]!, page('x', [text('x1')]), e.lesson.pages[1]!, e.lesson.pages[2]!] })); // mine: a, x, b, c
+    expect(ids((await h.lesson()).pages)).toEqual(['x', 'b', 'c']);
+  });
+
+  it('bytes supplied for an asset the index lists as external make the entry a carried one', async () => {
+    const key = await assetKey(png);
+    const h = await Host.open(lessonOf([page('a', [img('i', key)])])); // no bytes: external
+    expect(h.index.assets.find((a) => a.id === key)!.path).toBeUndefined();
+    const e = await h.editor();
+    await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, title: 'T' })), [{ id: key, type: 'image/png' }]), new Map([[key, { type: 'image/png', bytes: png }]]));
+    const entry = h.index.assets.find((a) => a.id === key)!;
+    expect(entry).toMatchObject({ type: 'image/png', size: 4 });
+    expect(entry.path).toBe(`assets/${key.replace(':', '_')}`);
+    expect(h.files.get(entry.path!)).toEqual(png);
+  });
+
+  it('replaying a patch that carries media is a no-op too', async () => {
+    const key = await assetKey(png);
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    const patch = createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, objects: [...p.objects, img('i', key)] })), [{ id: key, type: 'image/png' }]);
+    const media = new Map([[key, { type: 'image/png', bytes: png }]]);
+    await h.save(patch, media);
+    const version = h.version, idx = h.index;
+    const again = await h.save(patch, media);
+    expect(again.result.unchanged).toBe(true);
+    expect(again.written).toEqual([]);
+    expect(h.version).toBe(version);
+    expect(h.index.updatedAt).toBe(idx.updatedAt);
+  });
+
+  it('says which assets it took out of the index, so the editor sends their bytes again if it uses them again', async () => {
+    const key = await assetKey(png);
+    const h = await Host.open(lessonOf([page('a', [img('i', key)])]), new Map([[key, { type: 'image/png', bytes: png }]]));
+    const e = await h.editor();
+    const m = await h.save(createPatch(e, edit(e.lesson, 'a', (p) => ({ ...p, objects: [] }))));
+    expect(m.result.dropped).toEqual([key]);
+    expect(h.index.assets.map((a) => a.id)).toEqual([]);
   });
 });

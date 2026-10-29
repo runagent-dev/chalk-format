@@ -1,6 +1,6 @@
 import type { LessonObject, LessonPage, StreamPage } from '@chalk-format/model';
 import { pageText } from './stream.js';
-import { fileHash, sameValue, type BookPatch, type MergeNote, type MergeReport, type TheirsState } from './patch.js';
+import { sameValue, setOwn, type BookPatch, type MergeNote, type MergeReport, type TheirsState } from './patch.js';
 
 /**
  * The three-way merge of the patch save. A PURE function over plain data (no store, no clock): `mergeBook(patch, theirs)` takes what the editor
@@ -54,7 +54,7 @@ function mergeRecord(b: Rec, m: Rec, t: Rec, path: string[], cx: Ctx, skip: Read
   for (const k of keys) {
     if (skip.has(k)) continue;
     const v = mergeValue(b[k], m[k], t[k], [...path, k], cx);
-    if (v !== undefined) out[k] = v;
+    if (v !== undefined) setOwn(out, k, v);
   }
   return out;
 }
@@ -103,13 +103,13 @@ function mergeOrder(base: readonly string[], mine: readonly string[], theirs: re
   for (let i = 0; i < mine.length; i++) {
     const id = mine[i]!;
     if (!reposition.has(id)) continue;
+    // where it was in the editor's list: after the nearest earlier item that is in the result, else before the nearest later one, else at the end
     let at = -1;
-    for (let j = i - 1; j >= 0; j--) { const k = out.indexOf(mine[j]!); if (k >= 0) { at = k; break; } }
-    if (at >= 0) {
-      at++;
-      // two inserts at the same spot: the one saved earlier (already there) comes first
-      while (at < out.length && !baseSet.has(out[at]!) && !mineSet.has(out[at]!)) at++;
-    } else at = i > 0 ? out.length : 0;
+    for (let j = i - 1; j >= 0; j--) { const k = out.indexOf(mine[j]!); if (k >= 0) { at = k + 1; break; } }
+    if (at < 0) for (let j = i + 1; j < mine.length; j++) { const k = out.indexOf(mine[j]!); if (k >= 0) { at = k; break; } }
+    if (at < 0) at = out.length;
+    // two inserts at the same spot: the one saved earlier (already there, and not known to the editor) comes first
+    while (at < out.length && !baseSet.has(out[at]!) && !mineSet.has(out[at]!)) at++;
     out.splice(at, 0, id);
   }
   return out;
@@ -145,13 +145,23 @@ function mergePage(base: LessonPage | undefined, mine: LessonPage, theirs: Lesso
   const cx: Ctx = { notes, page: id };
   const props = mergeRecord((base ?? {}) as unknown as Rec, mine as unknown as Rec, theirs as unknown as Rec, [], cx, new Set(['objects']));
   const objects = mergeObjects(base?.objects, mine.objects, theirs.objects, cx);
-  const page = { ...props, objects } as unknown as LessonPage;
-  // a new picture makes the text positions of the old one meaningless
-  if (base && !sameValue(page.background, base.background) && page.textLayer?.length) {
-    delete (page as { textLayer?: unknown }).textLayer;
-    notes.push({ page: id, rule: 'background-replaced-text-cleared', by: 'mine', detail: 'the page\'s picture was replaced: its text layer was cleared' });
-  }
-  return page;
+  return { ...props, objects } as unknown as LessonPage;
+}
+
+/** A new picture makes the text positions of the old one meaningless: the text layer of a page whose picture was replaced (against `base`) is cleared. */
+function clearStaleText(base: LessonPage | undefined, page: LessonPage, id: string, notes: MergeNote[]): LessonPage {
+  if (!base || sameValue(page.background, base.background) || !page.textLayer?.length) return page;
+  const { textLayer: _gone, ...rest } = page;
+  void _gone;
+  notes.push({ page: id, rule: 'background-replaced-text-cleared', by: 'mine', detail: 'the page\'s picture was replaced: its text layer was cleared' });
+  return rest as LessonPage;
+}
+
+/** Merges three versions of one page (a page's properties one by one, its objects by id) as the host does; for an editor that takes a merged page in while it has edited the page since. */
+export function mergeLessonPage(base: LessonPage | undefined, mine: LessonPage, theirs: LessonPage): { page: LessonPage; report: MergeReport } {
+  const notes: MergeNote[] = [];
+  const page = clearStaleText(base, mergePage(base, mine, theirs, mine.id, notes), mine.id, notes);
+  return { page, report: { notes } };
 }
 
 const textOf = (p: LessonPage | undefined, snip: boolean) => (p && !snip ? JSON.stringify(pageText(p)) : undefined);
@@ -181,15 +191,14 @@ export function mergeBook(patch: BookPatch, theirs: TheirsState): MergeResult {
     let stored: LessonPage | undefined;
     if (!e) {
       if (b) notes.push({ page: id, rule: 'deleted-vs-edited-kept', by: 'mine', detail: 'the page was deleted by someone else and edited here: the edit is kept' });
-      result = mineP;
+      result = clearStaleText(b?.page, mineP, id, notes);
       survivors.add(id);
-    } else if (b && fileHash(e.file) === b.hash) {
-      result = mineP; // the host has not touched it since the editor opened it
-      stored = b.page;
     } else {
       const t = theirs.pages.get(id);
-      if (!t) throw new Error(`page ${id} has changed in the store, but its current form was not supplied (see pagesNeeded)`);
-      result = mergePage(b?.page, mineP, t, id, notes);
+      if (!t) throw new Error(`page ${id} is in the store, but its current form was not supplied (see pagesNeeded)`);
+      // the store has not changed it since the editor opened it when it IS the editor's base copy (a claimed hash proves nothing: the patch is untrusted)
+      result = b && sameValue(t, b.page) ? mineP : mergePage(b?.page, mineP, t, id, notes);
+      result = clearStaleText(b?.page, result, id, notes);
       stored = t;
     }
     if (!stored || !sameValue(result, stored)) {
@@ -203,7 +212,9 @@ export function mergeBook(patch: BookPatch, theirs: TheirsState): MergeResult {
     const e = entry.get(id)?.e;
     const b = patch.base.pages[id];
     if (!e || !b) continue; // already gone, or no base to tell whether someone edited it since: it is kept
-    if (fileHash(e.file) === b.hash) { survivors.delete(id); remove.push(id); if (!isSnip(id)) textChanged.add(id); }
+    const t = theirs.pages.get(id);
+    if (!t) throw new Error(`page ${id} is in the store, but its current form was not supplied (see pagesNeeded)`);
+    if (sameValue(t, b.page)) { survivors.delete(id); remove.push(id); if (!isSnip(id)) textChanged.add(id); }
     else notes.push({ page: id, rule: 'deleted-vs-edited-kept', by: 'theirs', detail: 'the page was deleted here and edited by someone else: their edit is kept' });
   }
 

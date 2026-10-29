@@ -31,6 +31,7 @@ operations are not.**
 | After a merged save | The editor takes the merged page in and restarts its undo history there (older snapshots would undo the other work) |
 | Snip pages | Merged and ordered like pages (`snipOrder`); not in the search text |
 | Library items | Only unsent assets a changed page uses are fetched and sent |
+| Trust | A patch is untrusted: whether the host changed a page since the editor opened it is decided by comparing the page with the editor's base copy, never by a claimed hash; ids such as `__proto__` are ordinary keys |
 
 ## Still to do
 

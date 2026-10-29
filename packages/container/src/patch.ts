@@ -71,6 +71,8 @@ export type PatchResult = {
   report: MergeReport;
   /** The patch changed nothing the host had not already got. */
   unchanged?: boolean;
+  /** Assets the host took out of the index because no page uses them any more: the editor must send their bytes again if it uses them again. */
+  dropped?: string[];
 };
 
 /** The current state of the book in the store ("theirs"): its index, and the pages `pagesNeeded` asked for. */
@@ -79,18 +81,19 @@ export type TheirsState = { index: StreamIndex; pages: ReadonlyMap<string, Lesso
 /** The `hex8` in a page file name (`pages/12-1a2b3c4d.json`), or null. */
 export const fileHash = (file: string): string | null => /-([0-9a-f]{8})\.json$/.exec(file)?.[1] ?? null;
 
-/** The page ids a host must read from its store to merge `patch`: pages the patch changed or deleted that the store changed since (or never had). */
+/**
+ * The page ids a host must read from its store to merge `patch`: every page the patch changes or deletes that the store has. They are read,
+ * not skipped on the strength of `hash`: the merge decides whether the store changed a page since the editor opened it by comparing the page
+ * itself with the editor's base copy, because a patch is untrusted input and a claimed hash proves nothing. (A patch touches a few pages.)
+ */
 export function pagesNeeded(patch: BookPatch, index: StreamIndex): string[] {
-  const entries = new Map([...index.pages, ...(index.snipPages ?? [])].map((e) => [e.id, e]));
-  const touched = new Set([...Object.keys(patch.mine.pages), ...patch.mine.deleted]);
-  const out: string[] = [];
-  for (const id of touched) {
-    const e = entries.get(id);
-    if (!e) continue;
-    const b = patch.base.pages[id];
-    if (!b || fileHash(e.file) !== b.hash) out.push(id);
-  }
-  return out;
+  const have = new Set([...index.pages, ...(index.snipPages ?? [])].map((e) => e.id));
+  return [...new Set([...Object.keys(patch.mine.pages), ...patch.mine.deleted])].filter((id) => have.has(id));
+}
+
+/** `obj[key] = value` as an OWN property, also for the keys `__proto__` and `constructor` (a plain assignment of `__proto__` sets the prototype and the value is lost). */
+export function setOwn<T extends object>(obj: T, key: string, value: unknown): void {
+  Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
 }
 
 /** JSON with sorted keys: two values are equal when this is. */
@@ -116,13 +119,13 @@ export function createPatch(base: { version: string; lesson: Lesson; hashes: Rea
   const minePages: Record<string, LessonPage> = {};
   for (const [id, page] of now) {
     const b = was.get(id);
-    if (!b) { minePages[id] = page; continue; }
+    if (!b) { setOwn(minePages, id, page); continue; }
     if (page === b || sameValue(page, b)) continue;
-    minePages[id] = page;
-    basePages[id] = { hash: base.hashes.get(id) ?? '', page: b };
+    setOwn(minePages, id, page);
+    setOwn(basePages, id, { hash: base.hashes.get(id) ?? '', page: b });
   }
   const deleted = [...was.keys()].filter((id) => !now.has(id));
-  for (const id of deleted) basePages[id] = { hash: base.hashes.get(id) ?? '', page: was.get(id)! };
+  for (const id of deleted) setOwn(basePages, id, { hash: base.hashes.get(id) ?? '', page: was.get(id)! });
   const baseCover = base.lesson.coverAssetId ?? null, mineCover = mine.coverAssetId ?? null;
   return {
     base: {

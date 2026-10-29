@@ -36,9 +36,9 @@ const dockSave = (p) => p.locator('.chalk-dock-btn:has(.chalk-dock-save)').first
 const toast = async (p) => (await p.locator('.chalk-toast').first().textContent({ timeout: 4000 }).catch(() => '')) ?? '';
 const dirty = (p) => p.locator('.app-save').getAttribute('data-dirty');
 const patches = (p) => p.evaluate(() => window.__patches ?? []);
-const edit = async (p, text) => {
+const edit = async (p, text, down = 220) => {
   const s = await p.locator('.chalk-surface').first().boundingBox();
-  await p.keyboard.press('t'); await p.mouse.click(s.x + 220, s.y + 220);
+  await p.keyboard.press('t'); await p.mouse.click(s.x + 220, s.y + down);
   const f = p.locator('.chalk-surface textarea').first(); await f.waitFor({ timeout: 4000 }); await f.fill(text);
   await p.mouse.click(300, 700); await p.waitForTimeout(500);
 };
@@ -121,20 +121,23 @@ const savedAgain = (p) => p.waitForFunction(() => document.querySelector('.app-s
   await ctx.close();
 }
 
-// 6. a host that merged someone else's work into the page: said so, and the editor takes the merged page in
+// 6. a host that merged someone else's work into the page, while the user went on editing that page during the save
 {
   const { ctx, p, errs } = await open('patchmerge');
   await edit(p, 'merged edit');
   await dockSave(p).click();
-  await savedAgain(p);
+  await p.waitForTimeout(300);
+  await edit(p, 'typed during the save', 420);   // the host is still working: this edit is not in the patch
+  await p.waitForFunction(() => document.querySelector('.app-save')?.getAttribute('data-saving') === 'false', null, { timeout: 30000 });
   check('the merge is mentioned, briefly', /merged with someone else/i.test(await toast(p)), await toast(p));
-  check('the book is marked saved (the merged page is the saved one)', (await dirty(p)) === 'false');
-  await edit(p, 'after the merge');
+  check('the edit made during the save is still unsaved (not marked saved, not lost)', (await dirty(p)) === 'true');
   await dockSave(p).click();
-  await savedAgain(p);
+  await p.waitForFunction(() => (window.__patches ?? []).length === 2, null, { timeout: 30000 });
+  await p.waitForFunction(() => document.querySelector('.app-save')?.getAttribute('data-saving') === 'false', null, { timeout: 30000 });
   const ps = await patches(p);
   const baseTitle = Object.values(ps[1]?.baseTitles ?? {})[0] ?? '';
   check('the next patch starts from the merged page, so it cannot undo the other work', /\(merged\)/.test(baseTitle), baseTitle);
+  check('and still carries the edit made during the save, on top of the merged page', ps[1]?.mineObjects?.[0] === ps[1]?.baseObjects?.[0] + 1 && /\(merged\)/.test(ps[1]?.mineTitles?.[0] ?? ''), JSON.stringify({ base: ps[1]?.baseObjects, mine: ps[1]?.mineObjects, t: ps[1]?.mineTitles }));
   check('no page errors', errs.length === 0, errs.join(' | '));
   await ctx.close();
 }

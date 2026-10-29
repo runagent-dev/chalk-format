@@ -47,9 +47,9 @@ export function App() {
     const enc = new TextEncoder();
     (w.__patches ??= []).push({
       bytes: enc.encode(JSON.stringify(patch)).length, pages: Object.keys(patch.mine.pages), base: Object.keys(patch.base.pages), deleted: patch.mine.deleted,
-      version: patch.base.version, baseTitles: Object.fromEntries(Object.entries(patch.base.pages).map(([id, b]) => [id, b.page.title])), media: [...media.keys()], mediaBytes: [...media.values()].reduce((n, m) => n + m.bytes.length, 0), order: patch.mine.order.length,
+      version: patch.base.version, baseObjects: Object.values(patch.base.pages).map((b) => b.page.objects.length), mineObjects: Object.values(patch.mine.pages).map((q) => q.objects.length), mineTitles: Object.values(patch.mine.pages).map((q) => q.title), baseTitles: Object.fromEntries(Object.entries(patch.base.pages).map(([id, b]) => [id, b.page.title])), media: [...media.keys()], mediaBytes: [...media.values()].reduce((n, m) => n + m.bytes.length, 0), order: patch.mine.order.length,
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, demoSave === 'patchmerge' ? 1500 : 400)); // the merging host is slow, so the editor can be used while it works
     if (demoSave === 'patchfail') throw new Error('the host did not keep the patch');
     const hex8 = async (b: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', b as unknown as ArrayBuffer))].slice(0, 4).map((x) => x.toString(16).padStart(2, '0')).join('');
     const pages: PatchResult['pages'] = {};
