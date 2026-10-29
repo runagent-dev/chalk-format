@@ -50,6 +50,9 @@ export const labManifestSchema = z.looseObject({
   authors: z.array(z.string()).optional(),
 });
 
+/** The pieces other manifests (spec 1.7 questions) are built from: text in one or more languages, and a content key. */
+export { localized as localizedTextSchema, key as contentKeySchema };
+
 export type LabManifest = z.infer<typeof labManifestSchema>;
 export type LabParam = z.infer<typeof labParamSchema>;
 export type Localized = z.infer<typeof localized>;

@@ -1,0 +1,13 @@
+{
+  "format": "chalk.question", "manifestVersion": 1,
+  "id": "org.pathshalax.physics.motion.car-distance", "version": "1.0.0",
+  "kind": "numeric", "code": "EX-2-N1",
+  "stem": { "bn": "একটি গাড়ি $20\\ \\mathrm{m\\,s^{-1}}$ সমবেগে $5\\ \\mathrm{s}$ চলল। গাড়িটি কত দূরত্ব অতিক্রম করল?", "en": "A car moves at a constant $20\\ \\mathrm{m\\,s^{-1}}$ for $5\\ \\mathrm{s}$. How far does it go?" },
+  "answer": {
+    "detail": "full", "value": 100, "unit": "m",
+    "text": { "bn": "$s = vt = 20 \\times 5 = 100\\ \\mathrm{m}$", "en": "$s = vt = 20 \\times 5 = 100\\ \\mathrm{m}$" }
+  },
+  "marks": 2, "difficulty": 1, "level": "application",
+  "subject": "physics", "classes": ["9", "10"], "tags": ["motion", "uniform velocity"],
+  "license": "CC-BY-4.0", "authors": ["PathshalaX"]
+}

@@ -7,7 +7,7 @@ anything that changes the format, open an issue first.
 
 | Part | State |
 |---|---|
-| Format | Chalk 1.0 to 1.5 (`formatVersion` 7 to 11): pages, objects, overlays, labs and the Host API, asset stores, presentation, streamed books, lab libraries and lab manifests. Spec, JSON Schemas, migrations and conformance cases for each |
+| Format | Chalk 1.0 to 1.7 (`formatVersion` 7 to 11): pages, objects, overlays, labs and the Host API, asset stores, presentation, streamed books, lab libraries and lab manifests, the floating window (1.6), question manifests (1.7). Spec, JSON Schemas, migrations and conformance cases for each |
 | Reader | `@chalk-format/reader`: every object type, search, notes, presentation, streamed books, libraries, author mode. Checked in the browser with real input on desktop and phone |
 | Libraries | This device, folders and library servers, one interface. A library server (Postgres and S3-compatible storage) with a conformance check |
 | Converters | PDF → `.chalk` (CLI and Node) |
