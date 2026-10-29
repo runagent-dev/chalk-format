@@ -21,8 +21,15 @@ export function singleFlight<T>(): { run: (job: () => Promise<T>) => Promise<T>;
     busy: () => current !== null,
     run(job) {
       if (current) return current;
-      const p = job().finally(() => { if (current === p) current = null; });
+      // `current` is set before the job starts: a call made from inside it (a host's callback calling save() at once) joins, it does not start a second
+      let settle!: { ok: (v: T) => void; fail: (e: unknown) => void };
+      const p = new Promise<T>((ok, fail) => { settle = { ok, fail }; });
       current = p;
+      const clear = () => { if (current === p) current = null; };
+      p.then(clear, clear); // registered first, so the next call after this one settles already finds it free
+      let started: Promise<T>;
+      try { started = job(); } catch (e) { started = Promise.reject(e); }
+      started.then(settle.ok, settle.fail);
       return p;
     },
   };
@@ -59,3 +66,30 @@ export async function runSave<R extends { bytes: Uint8Array }>(o: {
   await o.hand(built);
   return built;
 }
+
+/** What a host can listen to while a save runs (the reader's `onSavingChange` and `onSaveProgress`). */
+export interface HostSaveEvents {
+  progress?: ((p: SaveProgress) => void) | undefined;
+  change?: ((saving: boolean) => void) | undefined;
+}
+
+/**
+ * Tells the host about a save, safely: a callback that throws is logged and never breaks the save; `saving` changes are balanced (a true is
+ * always followed by one false, also when the reader goes away mid-save: `dispose()` sends it, and afterwards nothing more is sent, so an old
+ * reader cannot clear the saving state of the one that replaced it).
+ */
+export function saveEvents(host: () => HostSaveEvents) {
+  let alive = true;
+  let saving = false;
+  const call = (fn: () => void) => { try { fn(); } catch (e) { console.error('chalk reader: a save callback threw', e); } };
+  return {
+    start() { if (alive && !saving) { saving = true; call(() => host().change?.(true)); } },
+    progress(p: SaveProgress) { if (alive) call(() => host().progress?.(p)); },
+    end() { if (alive && saving) { saving = false; call(() => host().change?.(false)); } },
+    dispose() { if (alive && saving) { saving = false; call(() => host().change?.(false)); } alive = false; },
+    get alive() { return alive; },
+  };
+}
+
+/** A button's action that does nothing while `busy()` says so (a button announced as disabled still gets clicks and Enter). */
+export const ignoreWhile = (busy: () => boolean, fn: () => void) => () => { if (!busy()) fn(); };

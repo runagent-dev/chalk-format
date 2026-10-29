@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { ignoreWhile } from './author/save-run.js';
 import {
   ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsInIcon, ArrowsOutIcon, BookOpenIcon, CaretLeftIcon, CaretRightIcon,
   DotsThreeIcon, DownloadSimpleIcon, EyeIcon, FloppyDiskIcon, FolderOpenIcon, PencilSimpleIcon, PlusCircleIcon, MagnifyingGlassIcon, MinusIcon, MoonIcon, PlusIcon, RowsIcon, SquaresFourIcon, SunIcon, TranslateIcon, FileIcon,
@@ -58,7 +59,7 @@ export function Dock(p: DockProps) {
 
   type Item = { id: string; node: ReactNode; label: string; run?: () => void; menuNode?: ReactNode };
   const btn = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, o: { pressed?: boolean; disabled?: boolean; primary?: string; busy?: boolean } = {}): Item | null =>
-    run ? { id, label, run, node: <DockButton key={id} label={label} icon={icon} onClick={run} pressed={o.pressed} disabled={o.disabled} primary={o.primary} busy={o.busy} /> } : null;
+    run ? (() => { const go = o.busy ? ignoreWhile(() => true, run) : run; return { id, label, run: go, node: <DockButton key={id} label={label} icon={icon} onClick={go} pressed={o.pressed} disabled={o.disabled} primary={o.primary} busy={o.busy} /> }; })() : null;
 
   const build = (it: DockItemId | CustomDockItem): Item | null => {
     if (typeof it === 'object') return { id: it.id, label: it.label, run: it.onClick, node: <DockButton key={it.id} label={it.label} icon={it.icon} onClick={it.onClick} pressed={it.active} /> };

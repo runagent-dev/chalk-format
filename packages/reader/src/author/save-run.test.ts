@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runSave, singleFlight, throttled, type SaveProgress } from './save-run.js';
+import { ignoreWhile, runSave, saveEvents, singleFlight, throttled, type SaveProgress } from './save-run.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -68,5 +68,57 @@ describe('throttling the counter', () => {
     await new Promise((r) => setTimeout(r, 60));
     await tick();
     expect(calls).toEqual([1, 2]);
+  });
+});
+
+describe('review findings, round 1', () => {
+  it('a call made from inside the job (a host callback calling save() at once) joins it, it does not start a second', async () => {
+    const f = singleFlight<boolean>();
+    let starts = 0;
+    let inner: Promise<boolean> | null = null;
+    const outer = f.run(async () => { starts++; inner = f.run(async () => { starts++; return false; }); return true; });
+    expect(inner).toBe(outer);
+    expect(await outer).toBe(true);
+    expect(await inner).toBe(true);
+    expect(starts).toBe(1);
+    expect(f.busy()).toBe(false);
+    // a job that throws before its first await, and one that rejects, both release it
+    await expect(f.run(() => { throw new Error('sync boom'); })).rejects.toThrow('sync boom');
+    expect(f.busy()).toBe(false);
+    await expect(f.run(() => Promise.reject(new Error('late boom')))).rejects.toThrow('late boom');
+    expect(f.busy()).toBe(false);
+    expect(await f.run(async () => true)).toBe(true);
+  });
+
+  it('a host callback that throws is logged and never breaks the save; the saving changes stay balanced', () => {
+    const log: string[] = [];
+    const err = console.error; console.error = () => log.push('logged');
+    try {
+      const ev = saveEvents(() => ({ change: (s) => { log.push(`change ${s}`); throw new Error('host bug'); }, progress: () => { throw new Error('host bug'); } }));
+      ev.start(); ev.start(); ev.progress({ phase: 'packing' }); ev.end(); ev.end();
+      expect(log.filter((l) => l.startsWith('change'))).toEqual(['change true', 'change false']); // once each, however often it is asked
+      expect(log.filter((l) => l === 'logged').length).toBe(3);
+    } finally { console.error = err; }
+  });
+
+  it('when the reader goes away mid-save the host hears false once, and the old reader is quiet afterwards', () => {
+    const heard: string[] = [];
+    const ev = saveEvents(() => ({ change: (s) => heard.push(`change ${s}`), progress: (p) => heard.push(`progress ${p.phase}`) }));
+    ev.start(); ev.progress({ phase: 'collecting', done: 1, total: 9 });
+    ev.dispose();
+    ev.progress({ phase: 'packing' }); ev.end(); ev.start(); ev.dispose();
+    expect(heard).toEqual(['change true', 'progress collecting', 'change false']);
+    expect(ev.alive).toBe(false);
+    // a reader that never saved says nothing when it goes away
+    const quiet: string[] = [];
+    saveEvents(() => ({ change: (s) => quiet.push(String(s)) })).dispose();
+    expect(quiet).toEqual([]);
+  });
+
+  it('a busy button ignores what it is asked to do', () => {
+    let busy = true; let n = 0;
+    const go = ignoreWhile(() => busy, () => n++);
+    go(); go(); expect(n).toBe(0);
+    busy = false; go(); expect(n).toBe(1);
   });
 });

@@ -15,7 +15,7 @@ const b = await chromium.launch();
 let failed = false;
 const check = (name, ok, detail = '') => { if (!ok) failed = true; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : detail ? ` (${detail})` : ''}`); };
 
-async function open(mode, { reduced = false } = {}) {
+async function open(mode, { reduced = false, callbacks = '' } = {}) {
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true, ...(reduced ? { reducedMotion: 'reduce' } : {}) });
   // the pictures of the streamed book come slowly, so what a save shows while it fetches them can be looked at
   await ctx.route('**/samples/long/assets/**', async (route) => { await sleep(400); await route.continue(); });
@@ -23,7 +23,7 @@ async function open(mode, { reduced = false } = {}) {
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/CORS|ERR_FAILED/.test(m.text())) errs.push(m.text().slice(0, 160)); });
-  await p.goto(`${URL}?save=${mode}`);
+  await p.goto(`${URL}?save=${mode}${callbacks ? `&callbacks=${callbacks}` : ''}`);
   await p.waitForSelector('.chalk-dock-page');
   await p.selectOption('.app-bar select', 'long');
   await p.waitForSelector('.chalk-dock-page');
@@ -120,7 +120,29 @@ const calls = (p) => p.evaluate(() => window.__saveCalls ?? 0);
   await ctx.close();
 }
 
-// 3. motion: the icon pulses, and does not when the reader is asked for no motion
+// 3. a host callback with a bug does not break the save; one that calls save() straight away does not start a second
+{
+  const { ctx, p, errs } = await open('slow', { callbacks: 'throw' });
+  await edit(p, 'x');
+  await dockSave(p).click();
+  await p.waitForFunction(() => document.querySelector('.app-save')?.textContent === 'Saved', null, { timeout: 40000 });
+  const after = await busy(p);
+  check('a throwing onSavingChange: the save still ends, saved, and the button is back to normal', !after.busy && !/is-busy/.test(after.cls) && (await calls(p)) === 1, JSON.stringify(after));
+  check('the host\'s bug is logged, nothing else went wrong', errs.every((e) => /a save callback threw|host callback bug/.test(e)), errs.join(' | '));
+  await ctx.close();
+}
+{
+  const { ctx, p, errs } = await open('slow', { callbacks: 'resave' });
+  await edit(p, 'y');
+  await dockSave(p).click();
+  await p.waitForFunction(() => document.querySelector('.app-save')?.textContent === 'Saved', null, { timeout: 40000 });
+  await sleep(1500);
+  check('a host calling save() from onSavingChange(true) joins: exactly one save reached the host', (await calls(p)) === 1, String(await calls(p)));
+  check('no page errors', errs.length === 0, errs.join(' | '));
+  await ctx.close();
+}
+
+// 4. motion: the icon pulses, and does not when the reader is asked for no motion
 for (const reduced of [false, true]) {
   const { ctx, p } = await open('slow', { reduced });
   await edit(p, 'm');

@@ -26,7 +26,7 @@ import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, video
 import type { LibraryItem } from '@chalk-format/store';
 import { AuthorRail, SHORTCUTS, type AuthorTool } from './author/AuthorRail.js';
 import { authorStrings } from './author/i18n.js';
-import { runSave, singleFlight, throttled, type SaveProgress } from './author/save-run.js';
+import { runSave, saveEvents, singleFlight, throttled, type SaveProgress } from './author/save-run.js';
 import { edit } from './annotate/state.js';
 import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
@@ -528,15 +528,25 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const savingRef = useRef(false);
   const hostSaveEvents = useRef({ progress: props.onSaveProgress, change: props.onSavingChange });
   hostSaveEvents.current = { progress: props.onSaveProgress, change: props.onSavingChange };
+  // what the host hears of a save; made when the reader mounts and ended when it goes away (a save still running then reports `false` once and goes quiet)
+  const saveHost = useRef<ReturnType<typeof saveEvents> | null>(null);
+  const activeShow = useRef<{ cancel: () => void } | null>(null);
+  useEffect(() => {
+    const ev = saveEvents(() => hostSaveEvents.current);
+    saveHost.current = ev;
+    return () => { ev.dispose(); activeShow.current?.cancel(); if (saveHost.current === ev) saveHost.current = null; };
+  }, []);
   const saveBook = useCallback((): Promise<boolean> => saveFlight.current.run(async () => {
     let saved: Lesson;
     const noteFor = (p: SaveProgress) => p.phase === 'collecting' && p.total
       ? at_.savingPictures.replace('{done}', num(authorLocale, p.done ?? 0)).replace('{total}', num(authorLocale, p.total))
       : p.phase === 'packing' ? at_.savingPacking : p.phase === 'handing-over' ? (props.onSave ? at_.savingUploading : at_.saving) : at_.saving;
-    const show = throttled((p: SaveProgress) => { setSaveNote(noteFor(p)); hostSaveEvents.current.progress?.(p); }, 100);
+    const ev = saveHost.current;
+    const show = throttled((p: SaveProgress) => { setSaveNote(noteFor(p)); ev?.progress(p); }, 100);
+    activeShow.current = show;
     // the counter is throttled; the first report, a change of phase and the last picture show at once
     const progress = (p: SaveProgress) => { show(p); if (p.phase !== 'collecting' || p.done === undefined || p.done === p.total) show.flush(); };
-    savingRef.current = true; setToast(null); setSaving(true); hostSaveEvents.current.change?.(true);   // a message from before gives way to the save's own
+    savingRef.current = true; setToast(null); setSaving(true); ev?.start();   // a message from before gives way to the save's own
     try {
       try {
         const built = await runSave({
@@ -562,7 +572,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       setToast(at_.saved);
       return true;
     } finally {
-      show.cancel(); savingRef.current = false; setSaving(false); setSaveNote(null); hostSaveEvents.current.change?.(false);
+      show.cancel(); if (activeShow.current === show) activeShow.current = null; savingRef.current = false; setSaving(false); setSaveNote(null); ev?.end();
     }
   }), [au, props.onSave, at_, authorLocale]);   // eslint-disable-line react-hooks/exhaustive-deps
   useImperativeHandle(props.handleRef, () => ({ goTo: (n) => goTo(n - 1), next, prev, zoomTo: (z) => viewer.current?.zoomTo(z), save: () => (authoringOn ? saveBook() : Promise.resolve(false)), book }), [goTo, next, prev, book, saveBook, authoringOn]);
