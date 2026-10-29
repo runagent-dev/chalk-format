@@ -32,6 +32,8 @@ anything that changes the format, open an issue first.
 - A settings form for a lab, made from its manifest's `params`.
 - Replacing a poster; editing text in place (today it is edited in the sidebar); a snip-region tool.
 - Pages: add, reorder, delete, and import pages from a PDF.
+- Concurrent editing: patch saves with a three-way merge, a quick start, and the page operations above; design in
+  [spec/design-history/2026-10-28-concurrent-section-editing-design.md](../spec/design-history/2026-10-28-concurrent-section-editing-design.md).
 - Linked saving: a book that keeps only keys, with a check that warns about media that lives only on this device.
 - Autosaved drafts.
 
