@@ -207,6 +207,18 @@ export function mergeBook(patch: BookPatch, theirs: TheirsState): MergeResult {
     else notes.push({ page: id, rule: 'deleted-vs-edited-kept', by: 'theirs', detail: 'the page was deleted here and edited by someone else: their edit is kept' });
   }
 
+  // a book is never empty: if the deletions would take its last reading page, the first of them stays
+  if (![...survivors].some((id) => !isSnip(id))) {
+    const first = remove.map((id) => idx.pages.findIndex((p) => p.id === id)).filter((i) => i >= 0).sort((a, b) => a - b)[0];
+    const keepId = first === undefined ? undefined : idx.pages[first]!.id;
+    if (keepId) {
+      survivors.add(keepId);
+      remove.splice(remove.indexOf(keepId), 1);
+      textChanged.delete(keepId);
+      notes.push({ page: keepId, rule: 'last-page-kept', by: 'theirs', detail: 'the merge would have left the book without a page: this one was kept' });
+    }
+  }
+
   const both = (id: string) => notes.push({ page: id, rule: 'order-both-moved', by: 'mine', detail: 'both moved this page: the last saver\'s place is kept' });
   const normal = new Set([...survivors].filter((id) => !isSnip(id)));
   const snips = new Set([...survivors].filter((id) => isSnip(id)));

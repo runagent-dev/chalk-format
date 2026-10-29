@@ -42,7 +42,8 @@ export type MergeRule =
   | 'same-property-last-saver'       // both changed one property, to different values: the last saver's value is kept, the other is in `loser`
   | 'deleted-vs-edited-kept'         // one side deleted an object or page the other edited: the edit is kept
   | 'order-both-moved'               // both moved the same page or object: the last saver's position is kept
-  | 'background-replaced-text-cleared'; // a page's picture was replaced: its text layer (positions on the old picture) was cleared
+  | 'background-replaced-text-cleared' // a page's picture was replaced: its text layer (positions on the old picture) was cleared
+  | 'last-page-kept';                 // the merge would have left the book without a page: the first deleted page was kept
 
 export type MergeNote = {
   /** The page this is about. */
