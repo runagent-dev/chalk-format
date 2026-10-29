@@ -4,3 +4,6 @@ export * from './unpack.js';
 export * from './overlay-pack.js';
 export * from './validate.js';
 export * from './stream.js';
+export * from './patch.js';
+export * from './merge.js';
+export * from './apply-patch.js';
