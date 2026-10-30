@@ -213,6 +213,22 @@ describe('adopting a file in place: a public disk library', () => {
     expect(text(await (await f(`${BASE}/v1/files/${rec.key}`)).arrayBuffer())).toBe(text(bytes));
   });
 
+  it('an uploaded key whose standard copy disappeared unnoticed is adopted at a book path: the copy is HEADed, marked gone, the path added', async () => {
+    const bytes = new TextEncoder().encode('uploaded, then lost quietly'), rec = await createRegistryClient(BASE, { token: 't-1', fetch: f }).add(bytes, { type: 'image/png' });
+    unlinkSync(join(dir, ...standardPath(rec.key).split('/')));
+    put('chalk-books/lost2/a.png', bytes);
+    const r = (await (await adopt({ key: rec.key, sha256: rec.sha256, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/lost2/a.png' })).json()) as Rec;
+    expect(r.locations!.map((l) => l.path).sort()).toEqual([standardPath(rec.key), 'chalk-books/lost2/a.png']);
+    expect(await db.query('SELECT missing FROM locations WHERE key = $1 AND path = $2', [rec.key, standardPath(rec.key)])).toEqual([{ missing: true }]);
+    expect(text(await (await f(`${BASE}/v1/files/${rec.key}`)).arrayBuffer())).toBe(text(bytes));
+    // with the standard copy present, adopting reads nothing and adds nothing (as before)
+    const kept = await createRegistryClient(BASE, { token: 't-1', fetch: f }).add(new TextEncoder().encode('kept'), { type: 'image/png' });
+    put('chalk-books/kept/a.png', new TextEncoder().encode('kept'));
+    reads.length = 0;
+    expect(((await (await adopt({ key: kept.key, sha256: kept.sha256, type: 'image/png', size: 4, path: 'chalk-books/kept/a.png' })).json()) as Rec).locations).toEqual([{ store: 'library', path: standardPath(kept.key) }]);
+    expect(reads).toEqual([]);
+  });
+
   it('a pending upload is completed by adopting; a path adopted after the first copy was deleted is added', async () => {
     const bytes = new TextEncoder().encode('started as an upload'), k = await assetKeyAndSha256(bytes);
     const up = await f(`${BASE}/v1/uploads`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify({ ...k, type: 'image/png', size: bytes.byteLength }) });

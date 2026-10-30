@@ -132,12 +132,14 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
     // A path adopted before is HEADed (not read): its owner may have deleted it since.
     const std = locs.find((l) => l.path === standardPath(a.key) && l.verified_at != null && !l.missing);   // a copy found gone is no reason to skip
     const same = locs.find((l) => l.path === a.path && l.verified_at != null);
-    let keep = row?.status === 'available' && Boolean(std);
-    if (row?.status === 'available' && !keep && same) {
-      const head = await storage.head(a.path);
-      keep = head !== null && head.size === a.size;
-      await db.query("UPDATE locations SET checked_at = $3, missing = $4 WHERE key = $1 AND store = 'library' AND path = $2", [a.key, a.path, new Date(), head === null]);
-    }
+    // the copy relied on is HEADed (one per adopt; nothing is read): one found gone is marked missing, and this path is verified and added
+    const present = async (path: string) => {
+      const head = await storage.head(path);
+      await db.query("UPDATE locations SET checked_at = $3, missing = $4 WHERE key = $1 AND store = 'library' AND path = $2", [a.key, path, new Date(), head === null]);
+      return head !== null && head.size === a.size;
+    };
+    let keep = row?.status === 'available' && Boolean(std) && (await present(std!.path));
+    if (row?.status === 'available' && !keep && same) keep = await present(a.path);
     if (!keep) {
       const head = await storage.head(a.path);
       if (!head) return fail(c, 409, 'conflict', `there is no object at ${a.path}`);
