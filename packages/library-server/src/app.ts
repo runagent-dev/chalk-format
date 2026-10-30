@@ -6,15 +6,20 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { C1_KEY_PATTERN, c1FromSha256, isC1Key, type StoreDescriptor } from '@chalk-format/model';
 import { checkRequestSchema, registerRequestSchema, uploadRequestSchema, standardPath, matchesType } from '@chalk-format/store';
+import { authenticate, requireRole, type AuthVariables } from './auth/guard.js';
+import type { Caller } from './auth/roles.js';
+import { mountAuthRoutes, type AuthRouteOptions } from './auth/routes.js';
+import { createAuth, type AuthOptions } from './auth/service.js';
 import type { Db } from './db.js';
-import type { DiskStorage, Storage } from './storage.js';
+import { registerDelivery } from './delivery.js';
+import { servedType, type DiskStorage, type Storage } from './storage.js';
 
 /**
  * The registry API (spec/1.2/registry-api.md): what authoring tools talk to. Readers never do; they fetch bytes from
  * the delivery store this library names (`GET v1/stores`), a CDN in front of the bucket.
  */
 
-export type Caller = { user: string; admin: boolean };
+export type { Caller } from './auth/roles.js';
 
 export type LibraryOptions = {
   db: Db;
@@ -22,10 +27,14 @@ export type LibraryOptions = {
   /** Where readers fetch the bytes: the bucket's public address or a CDN in front of it (R2: a custom domain). */
   publicUrl: string;
   name?: string;
-  /** Who may do what: a bearer token → the caller. */
+  /** Bootstrap callers (TOKENS): a bearer token → the caller, tried before the library's own users and API keys. */
   callers: (token: string) => Caller | null | Promise<Caller | null>;
   /** Searching and reading records without a token (default true: a public library). Writing always needs one. */
   publicRead?: boolean;
+  /** This server's public base URL, the `iss` of its access tokens. Default: the address each request came to. */
+  issuer?: string;
+  /** The library's own users and API keys (spec/1.2/registry-api.md §10): lifetimes, rate limits, proxies. */
+  auth?: Omit<AuthOptions, 'db'> & Omit<AuthRouteOptions, 'issuer'>;
   /** Largest object accepted. Default 512 MiB. */
   maxBytes?: number;
   /** Accepted media type patterns. Default: images, video, audio, glTF models, PDF, lab files and manifests. */
@@ -40,8 +49,6 @@ const UPLOAD_SECONDS = 15 * 60;
 /** The set of keys a book uses: larger than a check, since a textbook uses thousands (spec 1.8 §6.3). */
 const bookAssetsSchema = z.object({ keys: z.array(z.string().regex(C1_KEY_PATTERN)).max(20_000).optional() });
 
-/** Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page. */
-const storedType = (type: string) => (/^(text\/html|text\/javascript|application\/javascript)/i.test(type) ? 'application/octet-stream' : type);
 
 type Row = {
   key: string; sha256: string; type: string; size: string | number; width: number | null; height: number | null; duration: number | null; pages: number | null;
@@ -55,17 +62,16 @@ export function createLibraryApp(o: LibraryOptions) {
   const types = o.types ?? DEFAULT_TYPES;
   const disk = 'ticket' in storage ? (storage as DiskStorage) : null;
   const delivery: StoreDescriptor = { id: 'library', kind: 'derived', template: `${o.publicUrl.replace(/\/?$/, '/')}c1/{h0}/{h1}/{h}` };
-  const app = new Hono<{ Variables: { caller: Caller | null } }>();
+  const app = new Hono<{ Variables: AuthVariables }>();
+  const auth = createAuth({ db, ...o.auth });
+  const issuer = (c: Context) => (o.issuer ?? new URL(c.req.url).origin).replace(/\/+$/, '');
 
   const fail = (c: Context, status: number, code: string, message: string) => c.json({ error: { code, message } }, status as never);
-  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET', 'POST', 'PUT', 'OPTIONS'], maxAge: 86400 }));
-  app.use('/v1/*', async (c, next) => {
-    const h = c.req.header('authorization');
-    c.set('caller', h?.startsWith('Bearer ') ? await o.callers(h.slice(7)) : null);
-    await next();
-  });
-  const reader = (c: Context) => (o.publicRead === false && !c.get('caller') ? fail(c, 401, 'unauthorized', 'a token is needed') : null);
-  const writer = (c: Context) => (c.get('caller') ? null : fail(c, 401, 'unauthorized', 'a token is needed'));
+  // Range: a reader with a token asks /v1/files for part of a file (a suffix range is not a CORS-safelisted header)
+  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type', 'Range'], exposeHeaders: ['Content-Length', 'Content-Range'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
+  // every route asks requireRole(c, 'reader' | 'author' | 'admin'); the caller is a bootstrap token, an API key or a user
+  app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)) }));
+  mountAuthRoutes(app, auth, { issuer, ...o.auth });
   const body = async <T>(c: Context, schema: { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { issues: { message: string; path: PropertyKey[] }[] } } }) => {
     const r = schema.safeParse(await c.req.json().catch(() => null));
     return r.success ? { ok: true as const, data: r.data } : { ok: false as const, res: fail(c, 400, 'invalid', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')) };
@@ -91,22 +97,24 @@ export function createLibraryApp(o: LibraryOptions) {
   // what this address is, for someone who opens it in a browser
   app.get('/', (c) => c.json({
     name: o.name ?? 'Chalk library', api: 'Chalk registry API v1 (spec/1.2/registry-api.md)',
-    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /healthz'],
+    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'POST /v1/auth/token',
+      'GET /.well-known/openid-configuration', 'GET /healthz'],
   }));
 
+  registerDelivery(app, o); // file bytes for signed-in readers (§7.1); registered first: a private library's /v1/stores and /files/* are its own
   // ---- §7 stores for readers: public, cacheable ----
   app.get('/v1/stores', (c) => { c.header('Cache-Control', 'public, max-age=300'); return c.json({ items: [delivery] }); });
 
   // ---- §3 adding ----
   app.post('/v1/assets/check', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
     const b = await body(c, checkRequestSchema); if (!b.ok) return b.res;
     const have = new Set((await db.query<{ key: string }>("SELECT key FROM assets WHERE key = ANY($1) AND status = 'available'", [b.data.keys])).map((r) => r.key));
     return c.json({ present: b.data.keys.filter((k) => have.has(k)), missing: b.data.keys.filter((k) => !have.has(k)) });
   });
 
   app.post('/v1/uploads', async (c) => {
-    const denied = writer(c); if (denied) return denied;
+    const denied = requireRole(c, 'author'); if (denied) return denied;
     const b = await body(c, uploadRequestSchema); if (!b.ok) return b.res;
     const { key, sha256, type, size } = b.data;
     if (c1FromSha256(`sha256:${sha256}`) !== key) return fail(c, 400, 'invalid', 'key is not the c1 key of sha256');
@@ -117,7 +125,7 @@ export function createLibraryApp(o: LibraryOptions) {
     if (existing?.status === 'available') return c.json({ exists: true, asset: await record(existing, true) });
     await ensureStore();
     if (!existing) await db.query("INSERT INTO assets (key, sha256, type, size, filename, status, uploaded_by) VALUES ($1, $2, $3, $4, $5, 'pending', $6) ON CONFLICT (key) DO NOTHING", [key, sha256, type, size, b.data.filename ?? null, c.get('caller')!.user]);
-    const up = await storage.presignPut(standardPath(key), storedType(type), size, UPLOAD_SECONDS);
+    const up = await storage.presignPut(standardPath(key), servedType(type), size, UPLOAD_SECONDS);
     return c.json({ upload: { url: up.url, method: 'PUT', headers: up.headers, expiresAt: new Date(Date.now() + UPLOAD_SECONDS * 1000).toISOString() }, store: 'library' });
   });
 
@@ -132,7 +140,7 @@ export function createLibraryApp(o: LibraryOptions) {
   });
 
   app.post('/v1/assets', async (c) => {
-    const denied = writer(c); if (denied) return denied;
+    const denied = requireRole(c, 'author'); if (denied) return denied;
     const b = await body(c, registerRequestSchema); if (!b.ok) return b.res;
     const d = b.data, path = standardPath(d.key);
     if (c1FromSha256(`sha256:${d.sha256}`) !== d.key) return fail(c, 400, 'invalid', 'key is not the c1 key of sha256');
@@ -166,12 +174,12 @@ export function createLibraryApp(o: LibraryOptions) {
 
   // ---- §4 reading ----
   app.get('/v1/assets/:key', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
     const row = await rowOf(c.req.param('key'));
     return row && row.status !== 'pending' ? c.json(await record(row, Boolean(c.get('caller')))) : fail(c, 404, 'not_found', 'no such asset');
   });
   app.post('/v1/assets/batch', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
     const b = await body(c, checkRequestSchema); if (!b.ok) return b.res;
     const rows = await db.query<Row>("SELECT * FROM assets WHERE key = ANY($1) AND status <> 'pending'", [b.data.keys]);
     return c.json({ items: await Promise.all(rows.map((r) => record(r, Boolean(c.get('caller'))))) });
@@ -179,7 +187,7 @@ export function createLibraryApp(o: LibraryOptions) {
 
   // ---- §5 search: trigram similarity, any script; newest first without words ----
   app.get('/v1/search', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
     const q = c.req.query('q')?.trim(), limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 30) || 30)), offset = Number(c.req.query('cursor') ?? 0) || 0;
     const where = ["status = 'available'"], params: unknown[] = [];
     const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -201,7 +209,7 @@ export function createLibraryApp(o: LibraryOptions) {
 
   // ---- §6 books ----
   app.put('/v1/books/:book/assets', async (c) => {
-    const denied = writer(c); if (denied) return denied;
+    const denied = requireRole(c, 'author'); if (denied) return denied;
     const b = await body(c, bookAssetsSchema); if (!b.ok) return b.res;
     const book = c.req.param('book'), keys = [...new Set((b.data.keys ?? []).filter(isC1Key))];
     // one statement, so one transaction: the set is replaced whole or not at all. A delete that committed before its insert
@@ -214,14 +222,14 @@ export function createLibraryApp(o: LibraryOptions) {
     return c.json({ book, keys: row?.n ?? 0 });
   });
   app.get('/v1/assets/:key/books', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
     const rows = await db.query<{ book_id: string; updated_at: string | Date }>('SELECT book_id, updated_at FROM book_assets WHERE key = $1 ORDER BY updated_at DESC', [c.req.param('key')]);
     return c.json({ items: rows.map((r) => ({ bookId: r.book_id, updatedAt: new Date(r.updated_at).toISOString() })) });
   });
 
   // ---- §8 withdrawing ----
   app.post('/v1/assets/:key/withdraw', async (c) => {
-    if (!c.get('caller')?.admin) return fail(c, 403, 'forbidden', 'only an administrator can withdraw');
+    const denied = requireRole(c, 'admin'); if (denied) return denied;
     const key = c.req.param('key'), row = await rowOf(key);
     if (!row) return fail(c, 404, 'not_found', 'no such asset');
     const used = await db.query('SELECT 1 FROM book_assets WHERE key = $1 LIMIT 1', [key]);
@@ -241,7 +249,7 @@ export function createLibraryApp(o: LibraryOptions) {
     if (!file) return c.body(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
     const size = statSync(file).size, range = /bytes=(\d*)-(\d*)/.exec(c.req.header('range') ?? '');
     const headers: Record<string, string> = {
-      'Content-Type': storedType(row!.type), 'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes',
+      'Content-Type': servedType(row!.type), 'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes',
       'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': 'sandbox',
     };
     if (range && (range[1] || range[2])) {

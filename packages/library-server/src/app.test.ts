@@ -34,6 +34,14 @@ describe('the reference library (disk + PGlite)', () => {
     expect(r.headers.get('cache-control')).toContain('immutable');
     expect(r.headers.get('content-type')).toBe('application/octet-stream');
     expect(r.headers.get('content-security-policy')).toBe('sandbox');
+    // a type that is HTML once normalised is not served as HTML either
+    const { assetKeyAndSha256 } = await import('@chalk-format/model');
+    const oddBytes = new TextEncoder().encode('<script>1</script>'), odd = await assetKeyAndSha256(oddBytes);
+    const api = (path: string, body: object) => fetchApp(`${BASE}${path}`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const { upload } = (await (await api('/v1/uploads', { ...odd, type: 'image/png', size: oddBytes.byteLength })).json()) as { upload: { url: string; headers?: Record<string, string> } };
+    await fetchApp(upload.url, { method: 'PUT', headers: upload.headers ?? {}, body: oddBytes });
+    expect((await api('/v1/assets', { ...odd, type: ' TEXT/HTML; charset=utf-8', size: oddBytes.byteLength })).status).toBe(200);
+    expect((await fetchApp((await lib.url(odd.key))!)).headers.get('content-type')).toBe('application/octet-stream');
     const part = await fetchApp(url, { headers: { Range: 'bytes=2-8' } });
     expect(part.status).toBe(206);
     expect(await part.text()).toBe('doctype');
