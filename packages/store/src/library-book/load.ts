@@ -306,14 +306,14 @@ export async function loadBookLinks(book: OpenedLibraryBook, init?: { signal?: A
 async function manifestByKey(book: OpenedLibraryBook, key: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
   const st = stateOf(book);
   const kept = st.manifests.get(key);
-  if (kept) return kept;
+  if (kept) return structuredClone(kept);
   const r = questionManifestSchema.safeParse(JSON.parse(dec.decode(await book.fetchItem(key, { ...init, type: QUESTION_MANIFEST_TYPE }))));
   if (!r.success) throw new Error(`${key} is not a question manifest (${QUESTION_MANIFEST_TYPE}): ${issues(r.error)}`);
   learn(book, [[key, QUESTION_MANIFEST_TYPE]]);
   // spec 1.7 §4: a question's picture is checked against its key before it is shown, even one the book's pages also use
   learn(book, [...(r.data.assets ?? []), ...questionAssetKeys(r.data)].map((k) => [k, 'image/*'] as const), true);
   st.manifests.set(key, r.data);
-  return r.data;
+  return structuredClone(r.data);
 }
 
 /** One question as `resolveQuestions` answers it. */
@@ -325,6 +325,8 @@ export type ResolvedQuestion = {
   manifest: QuestionManifest;
   /** `current`: the library's current version of the id. `link`: the key a link of the book names (the library had no answer for the id, or could not be asked). */
   source: 'current' | 'link';
+  /** For `source: 'link'` after the library named a current version that could not be used (its bytes are not its key, it is not a question manifest, a store failed): why. */
+  currentError?: Error;
 };
 
 /** How many ids go in one `POST v1/assets/current` (the most the endpoint takes). */
@@ -344,24 +346,28 @@ export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly st
   Promise<{ resolved: Map<string, ResolvedQuestion>; failed: Map<string, Error> }> {
   const st = stateOf(book);
   const signal = init?.signal;
+  signal?.throwIfAborted();
   const want = [...new Set(ids.map((x) => x.toLowerCase()))];
+  const given = Object.fromEntries(Object.entries(init?.fallback ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
   const currentKey = new Map<string, string>();
   if (!st.noCurrentEndpoint) {
     for (let i = 0; i < want.length; i += CURRENT_BATCH) {
       const batch = want.slice(i, i + CURRENT_BATCH);
       try {
-        const r = await st.client.current(batch.map((id) => `question:${id}`), { type: QUESTION_MANIFEST_TYPE });
+        const r = await st.client.current(batch.map((id) => `question:${id}`), { type: QUESTION_MANIFEST_TYPE, ...(signal ? { signal } : {}) });
         for (const id of batch) { const rec = r.items[`question:${id}`]; if (rec) currentKey.set(id, rec.key); }
       } catch (e) {
         if (signal?.aborted) throw e;
-        // an older server: remember it. Any other failure (offline, 5xx): this call falls back, the next one asks again
+        // an older server: remember it. A refusal (401/403: the token) is an error to show, not a reason to read stale questions.
+        // Any other failure (offline, 5xx): this call falls back, the next one asks again
         if (e instanceof RegistryError && (e.status === 404 || e.status === 405)) { st.noCurrentEndpoint = true; break; }
+        if (e instanceof RegistryError && (e.status === 401 || e.status === 403)) throw e;
       }
     }
   }
   const resolved = new Map<string, ResolvedQuestion>(), failed = new Map<string, Error>();
   const one = async (id: string) => {
-    const linkKey = init?.fallback?.[id] ?? st.fallback.get(id);
+    const linkKey = given[id] ?? st.fallback.get(id);
     let first: unknown;
     const cur = currentKey.get(id);
     if (cur) {
@@ -369,7 +375,7 @@ export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly st
       catch (e) { if (signal?.aborted) throw e; first = e; }
     }
     if (linkKey) {
-      try { resolved.set(id, { id, key: linkKey, manifest: await manifestByKey(book, linkKey, signal ? { signal } : undefined), source: 'link' }); return; }
+      try { resolved.set(id, { id, key: linkKey, manifest: await manifestByKey(book, linkKey, signal ? { signal } : undefined), source: 'link', ...(first instanceof Error ? { currentError: first } : {}) }); return; }
       catch (e) { if (signal?.aborted) throw e; first ??= e; }
     }
     failed.set(id, first instanceof Error ? first : new Error(`no question with id ${id}: the library has no current version and no link names a key`));

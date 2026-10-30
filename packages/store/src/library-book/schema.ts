@@ -80,7 +80,7 @@ export const LINK_ROLES = ['answers_from', 'tests_concept', 'formula_source', 'u
 export type LinkRole = (typeof LINK_ROLES)[number];
 
 /** A UUID in its textual form (any version). */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export const linksLinkSchema = z.looseObject({
   sentence: z.string().min(1).max(200),

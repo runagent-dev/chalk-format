@@ -358,6 +358,7 @@ describe('questions by lasting id (spec 1.8 §3.4)', () => {
     await loadBookLinks(book);
     const { resolved } = await resolveQuestions(book, [ID]);
     expect(resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
+    expect(resolved.get(ID)!.currentError?.message).toMatch(/not /);
     const lone = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([t.p.book, t.p.linksItem, t.v1]).fetch });
     await loadBookLinks(lone);
     expect((await resolveQuestions(lone, [ID])).resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
@@ -413,5 +414,25 @@ describe('questions by lasting id (spec 1.8 §3.4)', () => {
     // no tagged links item: the one the book item names
     const plain = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items).fetch });
     expect(plain.links).toBe(t.p.linksItem.key);
+  });
+
+  it('a refused token is an error, not a reason to read stale questions; an aborted call stops; fallback ids may be upper case', async () => {
+    const t = await setup();
+    const lib = fakeLibrary(t.items);
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    await loadBookLinks(book);
+    const denied = (async (url: string, init?: RequestInit) => (String(url).endsWith('/v1/assets/current') ? new Response(JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }), { status: 401 }) : lib.fetch(url, init))) as typeof fetch;
+    const b2 = await openLibraryBook({ library: LIB, slug: 'demo', fetch: denied });
+    await loadBookLinks(b2);
+    await expect(resolveQuestions(b2, [ID])).rejects.toMatchObject({ status: 401 });
+    const stop = new AbortController(); stop.abort();
+    await expect(resolveQuestions(book, [ID], { signal: stop.signal })).rejects.toThrow();
+    // an older server and a caller-supplied fallback with an upper-case id
+    const old = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items, { current: 'off' }).fetch });
+    const r = await resolveQuestions(old, [ID], { fallback: { [ID.toUpperCase()]: t.v1.key } });
+    expect(r.resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
+    // what a caller does to a manifest does not reach the next load
+    const m = await loadQuestion(book, ID); m.stem = 'changed';
+    expect((await loadQuestion(book, ID)).stem).toBe('new stem');
   });
 });

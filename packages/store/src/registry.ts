@@ -102,7 +102,8 @@ export function createRegistryClient(base: string, o: {
       return call(`v1/search?${p}`, searchResponseSchema);
     },
     /** The newest available item of each tag (`state:current` too, unless `require` says otherwise); null for a tag with none. Answers 404/405 from a library without the endpoint (RegistryError). */
-    current: (tags: string[], o: { require?: string[]; type?: string } = {}) => post('v1/assets/current', currentResponseSchema, currentRequestSchema.parse({ tags, ...o })),
+    current: (tags: string[], { signal, ...o }: { require?: string[]; type?: string; signal?: AbortSignal } = {}) =>
+      call('v1/assets/current', currentResponseSchema, { method: 'POST', body: JSON.stringify(currentRequestSchema.parse({ tags, ...o })), ...(signal ? { signal } : {}) }),
     stores: () => call('v1/stores', storesResponseSchema),
     setBookAssets: (bookId: string, keys: string[]) => call(`v1/books/${encodeURIComponent(bookId)}/assets`, z.unknown(), { method: 'PUT', body: JSON.stringify({ keys }) }),
     /** Hash, check, upload if missing, register: the record of the asset (new or existing). */
