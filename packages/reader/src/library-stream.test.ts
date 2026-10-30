@@ -155,4 +155,18 @@ describe('books in a library, in the reader', () => {
     const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo', token: 'sesame' }, { fetch: lib.fetch });
     expect(b.lesson.title).toBe('A book in a library');
   });
+
+  it('takes the token as a function (a sign-in): asked for each request, and again after a 401', async () => {
+    const lib = await library({ token: 'sesame', bearerStore: true });
+    const asked: (string | undefined)[] = [];
+    // the first token it gives has gone stale at the library; asked again (`rejected`), it gives the right one
+    const token = async (r?: { rejected?: string }) => { asked.push(r?.rejected); return r?.rejected ? 'sesame' : asked.length > 3 ? 'sesame' : 'stale'; };
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo', token }, { fetch: lib.fetch });
+    expect(b.lesson.title).toBe('A book in a library');
+    expect(asked).toContain('stale');
+    const url = await b.assetUrl(pictureKey);
+    expect(url?.startsWith('blob:')).toBe(true);
+    expect(new Uint8Array(await (await fetch(url!)).arrayBuffer())).toEqual(picture);
+    b.dispose();
+  });
 });

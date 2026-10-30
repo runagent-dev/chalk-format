@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type LibrarySource, type LibraryBookLinks, type ReaderConfig, type ReaderHandle, type SaveProgress, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/reader';
+import { useEffect, useRef, useState } from 'react';
+import { ChalkReader, DEFAULT_CONFIG, LibrarySignIn, libraryAuth, useLibraryAuth, useSavedLibraries, webStorage, type BookSource, type LibrarySource, type LibraryBookLinks, type ReaderConfig, type ReaderHandle, type SaveProgress, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
 // pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -28,6 +28,9 @@ const query = new URLSearchParams(location.search);
 const FROM_LIBRARY: LibrarySource | null = query.get('library') && query.get('book')
   ? { library: query.get('library')!, slug: query.get('book')!, ...(query.get('token') ? { token: query.get('token')! } : {}) }
   : null;
+// without `&token=`, the reader can sign in to that library (username and password; kept in this browser until signing out): the form comes
+// first when the library keeps its books private, and from "Sign in" in the bar when anyone may read it
+const AUTH = FROM_LIBRARY && !FROM_LIBRARY.token ? libraryAuth({ library: FROM_LIBRARY.library, storage: webStorage(localStorage) }) : null;
 // what the reader hands a host about a library book's questions, kept where a test (or the console) can see it
 const onBookLinks = (links: LibraryBookLinks | null) => { (window as unknown as { __bookLinks?: LibraryBookLinks | null }).__bookLinks = links; };
 
@@ -74,6 +77,18 @@ export function App() {
   // the libraries connected in this browser (This device, folders, library servers), kept for next time;
   // a library server named in .env.local is connected for you (see .env.example)
   const [libraries, setLibraries] = useSavedLibraries({ preset: PRESET });
+  // the library book: the sign-in form first (or "continue without", for a library anyone may read), then the book with the sign-in's token
+  const { user, ready } = useLibraryAuth(AUTH);
+  // whether to show the form while signed out: null until the library has said whether it lets anyone read
+  const [form, setForm] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!AUTH) return;
+    const root = AUTH.library.endsWith('/') ? AUTH.library : `${AUTH.library}/`;
+    fetch(`${root}v1/search?limit=1`).then((r) => { void r.body?.cancel(); setForm((f) => f ?? (r.status === 401 || r.status === 403)); }, () => setForm((f) => f ?? true));
+  }, []);
+  const fromLibrary = AUTH !== null && source.src === FROM_LIBRARY;
+  const gate = fromLibrary && (!ready || (!user && form !== false));
+  const src = fromLibrary && user ? { ...FROM_LIBRARY, token: AUTH.token } : source.src;
   return (
     <div className="app">
       <header className="app-bar">
@@ -97,13 +112,15 @@ export function App() {
             {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
           </button>
         )}
+        {fromLibrary && user && <button type="button" className="app-btn app-signout" title={`Signed in as ${user.name}`} onClick={() => { setForm(true); void AUTH.signOut(); }}>Sign out {user.name}</button>}
+        {fromLibrary && ready && !user && form === false && <button type="button" className="app-btn app-signin" onClick={() => setForm(true)}>Sign in</button>}
         <button type="button" className="app-btn" onClick={() => file.current?.click()}>Open a book</button>
         <button type="button" className="app-btn" aria-pressed={configuring} onClick={() => setConfiguring((c) => !c)}>Configure</button>
         <input ref={file} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} {...(onSavePatch ? { onSavePatch } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} onBookLinks={onBookLinks} />
+        {gate ? (ready && form && <LibrarySignIn auth={AUTH} config={config} onSkip={() => setForm(false)} />) : <ChalkReader ref={reader} key={`${source.key}${fromLibrary && user ? ` ${user.sub}` : ''}`} source={src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} {...(onSavePatch ? { onSavePatch } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} onBookLinks={onBookLinks} />}
         {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>

@@ -1,6 +1,6 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
 import { resolutionKey, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
-import { openLibraryBook, type OpenedLibraryBook } from '@chalk-format/store';
+import { openLibraryBook, type OpenedLibraryBook, type TokenSource } from '@chalk-format/store';
 import type { AssetResolver, Book } from './book.js';
 
 /**
@@ -67,8 +67,11 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   }, { ...o, fetch: doFetch });
 }
 
-/** Where a book in a library is (spec 1.8, "Books in a library"): the library server, the book's slug, and a token if the library needs one. */
-export type LibrarySource = { library: string; slug: string; token?: string | undefined };
+/**
+ * Where a book in a library is (spec 1.8, "Books in a library"): the library server, the book's slug, and a token if the library needs one:
+ * a fixed token, or a function giving the current one (a sign-in: `libraryAuth(...).token`), asked again once after a 401.
+ */
+export type LibrarySource = { library: string; slug: string; token?: TokenSource | undefined };
 export const isLibrarySource = (s: unknown): s is LibrarySource =>
   typeof s === 'object' && s !== null && !(s instanceof URL) && typeof (s as LibrarySource).library === 'string' && typeof (s as LibrarySource).slug === 'string';
 
@@ -93,7 +96,7 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       const type = lib.typeOf(id);
       const store = resolutionKey(id) ? lib.storeFor(type) : null;
       if (!store) return null;
-      if (!Object.keys(lib.headersFor(type)).length && store.verify !== 'always') return lib.urlOf(id, type);
+      if (store.auth !== 'bearer' && store.verify !== 'always') return lib.urlOf(id, type);
       return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     async assetBytes(id, signal) {

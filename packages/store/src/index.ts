@@ -5,6 +5,7 @@ export * from './library.js';
 export * from './device.js';
 export * from './folder.js';
 export * from './registry-library.js';
+export * from './auth/index.js';
 export * from './library-book/schema.js';
 export * from './library-book/tags.js';
 export { openLibraryBook, loadBookLinks, findCurrentBookItem, type OpenedLibraryBook, type OpenLibraryBookOptions } from './library-book/load.js';
