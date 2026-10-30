@@ -94,6 +94,10 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
 
   // ---- a private disk library: /files/ serves signed links only ----
   // a signed link's URL is its credential, so it is cached by URL; it is used from any page (an <img>, a fetch)
+  // a range a browser does not safelist (bytes=-N) is preflighted: allowed from any page, as the link itself is
+  app.options('/files/*', (c, next) => (publicRead || !disk ? next() : c.body(null, 204, {
+    'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, HEAD', 'Access-Control-Allow-Headers': 'Range', 'Access-Control-Max-Age': '86400',
+  })));
   app.get('/files/*', async (c, next) => {
     if (publicRead || !disk) return next();
     let path: string;

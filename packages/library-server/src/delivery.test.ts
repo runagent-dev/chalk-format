@@ -111,6 +111,8 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
     expect(maxAge).toBeLessThanOrEqual(15 * 60);
     expect(await r.text()).toBe(LAB);
     const part = await get(priv, l.url, { Range: 'bytes=2-8' });
+    const pre = await priv.fetch(new Request(l.url, { method: 'OPTIONS', headers: { Origin: 'https://reader.example.org', 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'range' } }));
+    expect([pre.status, pre.headers.get('access-control-allow-origin'), pre.headers.get('access-control-allow-headers')]).toEqual([204, '*', 'Range']);
     expect(part.status).toBe(206);
     expect(await part.text()).toBe('doctype');
   });
