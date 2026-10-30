@@ -160,7 +160,7 @@ const learn = (book: OpenedLibraryBook, types: Iterable<readonly [string, string
 /** What the question functions remember about an opened book: the client, the keys links name for an id, the manifests already fetched. */
 type BookState = {
   client: RegistryClient;
-  /** question id -> the `question` key of a link that names it (set by `loadBookLinks`): where to fall back to. */
+  /** question id (lower case: ids are asked as written, but looked up here without case) -> the `question` key of a link that names it (set by `loadBookLinks`): where to fall back to. */
   fallback: Map<string, string>;
   /** the other way round: a link's `question` key -> its id. */
   idOfKey: Map<string, string>;
@@ -298,13 +298,14 @@ export async function loadBookLinks(book: OpenedLibraryBook, init?: { signal?: A
   const linked = new Set(links.map((l) => l.sentence));
   learn(book, links.map((l) => [l.question, QUESTION_MANIFEST_TYPE] as const));
   const st = stateOf(book);
-  for (const l of links) if (l.questionId) { const id = l.questionId; if (!st.fallback.has(id)) st.fallback.set(id, l.question); st.idOfKey.set(l.question, id); }
+  for (const l of links) if (l.questionId) { const id = l.questionId, lower = id.toLowerCase(); if (!st.fallback.has(lower)) st.fallback.set(lower, l.question); st.idOfKey.set(l.question, id); }
   return { ...r.data, sentences: r.data.sentences.filter((s) => linked.has(s.id)), links };
 }
 
 /** A question manifest by its key, fetched, checked against the key and `questionManifestSchema`; the pictures it lists are learned (must be checked). Kept for the life of the book. */
 async function manifestByKey(book: OpenedLibraryBook, key: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
   const st = stateOf(book);
+  init?.signal?.throwIfAborted();
   const kept = st.manifests.get(key);
   if (kept) return structuredClone(kept);
   const r = questionManifestSchema.safeParse(JSON.parse(dec.decode(await book.fetchItem(key, { ...init, type: QUESTION_MANIFEST_TYPE }))));
@@ -367,7 +368,7 @@ export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly st
   }
   const resolved = new Map<string, ResolvedQuestion>(), failed = new Map<string, Error>();
   const one = async (id: string) => {
-    const linkKey = given[id] ?? st.fallback.get(id);
+    const linkKey = given[id] ?? st.fallback.get(id.toLowerCase());
     let first: unknown;
     const cur = currentKey.get(id);
     if (cur) {

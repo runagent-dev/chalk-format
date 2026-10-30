@@ -449,5 +449,11 @@ describe('questions by lasting id (spec 1.8 §3.4)', () => {
     const spy = (async (u: string, i?: RequestInit) => { if (String(u).endsWith('/v1/assets/current')) asked.push(...JSON.parse(String(i!.body)).tags); return lib.fetch(u, i); }) as typeof fetch;
     await resolveQuestions(await openLibraryBook({ library: LIB, slug: 'demo', fetch: spy }), [upper]);
     expect(asked).toEqual([`question:${upper}`]);
+    // an upper-case id still finds the lower-case link's key when the endpoint is missing; a cached manifest honours an aborted signal
+    const off = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items, { current: 'off' }).fetch });
+    await loadBookLinks(off);
+    expect((await resolveQuestions(off, [upper])).resolved.get(upper)).toMatchObject({ key: t.v1.key, source: 'link' });
+    const gone = new AbortController(); gone.abort();
+    await expect(loadQuestion(off, t.v1.key, { signal: gone.signal })).rejects.toThrow();
   });
 });
