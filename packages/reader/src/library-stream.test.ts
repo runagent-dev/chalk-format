@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { publishStreamed } from '@chalk-format/container';
 import { assetKeyAndSha256, type Lesson } from '@chalk-format/model';
-import { loadBookLinks } from '@chalk-format/store';
+import { loadBookLinks, loadQuestion } from '@chalk-format/store';
 import { isLibrarySource, isStreamSource, openLibraryStreamedBook, windowAround } from './stream.js';
 
 const enc = new TextEncoder();
@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -24,7 +24,7 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
   const pageKey = new Map<string, string>();
   for (const p of index.pages) pageKey.set(p.id, await put(files.get(p.file)!, 'application/vnd.chalk.page+json', ['kind:page']));
   const textKey = await put(files.get(index.text!.file)!, 'application/vnd.chalk.text+json', ['kind:text']);
-  const links = await put(enc.encode(JSON.stringify({ format: 'chalk-links', version: 1, book: 'demo', bookRevision: 3, sentences: [{ id: 's', page: 4, pageId: 'p3', rects: [[0.1, 0.2, 0.3, 0.04]], text: 'word3' }], links: [{ sentence: 's', question: pictureKey, role: 'answers_from' }] })), 'application/vnd.chalk.links+json', ['kind:links']);
+  const links = await put(enc.encode(JSON.stringify({ format: 'chalk-links', version: 1, book: 'demo', bookRevision: 3, sentences: [{ id: 's', page: 4, pageId: 'p3', rects: [[0.1, 0.2, 0.3, 0.04]], text: 'word3' }], links: [{ sentence: 's', question: o.question ? await put(enc.encode(o.question), 'application/vnd.chalk.question+json') : pictureKey, role: 'answers_from' }] })), 'application/vnd.chalk.links+json', ['kind:links']);
   const book = {
     ...index,
     pages: index.pages.map(({ file: _file, ...p }) => ({ ...p, key: pageKey.get(p.id)! })),
@@ -40,7 +40,7 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
     if (u.host === 'lib.example') {
       if (o.token && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-      if (u.pathname === '/v1/stores') return json({ items: [{ ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) }] });
+      if (u.pathname === '/v1/stores') return json({ items: [...(o.firstStore ? [o.firstStore] : []), { ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) }] });
       const tags = u.searchParams.getAll('tag');
       const hits = [...items].filter(([, i]) => tags.every((t) => i.tags.includes(t)));
       return json({ items: hits.map(([key, i]) => ({ key, sha256: '0'.repeat(64), type: i.type, size: i.bytes.byteLength, tags: i.tags, status: 'available', createdAt: '2026-10-30T00:00:00Z' })) });
@@ -51,7 +51,7 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
     if (hit && hit[0] === o.tamper) return new Response(enc.encode('not the picture') as unknown as BodyInit, { status: 200 });
     return hit ? new Response(hit[1].bytes as unknown as BodyInit, { status: 200, headers: { 'content-type': hit[1].type } }) : new Response(null, { status: 404 });
   }) as unknown as typeof globalThis.fetch;
-  return { fetch, asked, pageKey, bookKey };
+  return { fetch, asked, pageKey, bookKey, put };
 }
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
@@ -108,6 +108,21 @@ describe('books in a library, in the reader', () => {
     b.dispose();
     const bad = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: (await library({ storeMedia: ['application/*'], tamper: pictureKey })).fetch });
     expect(await bad.assetUrl(pictureKey)).toBeNull();
+  });
+
+  it("draws a question's picture (its format not known) from whichever image store of the library has it, not the first one's URL", async () => {
+    const qpic = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 4, 4]);
+    const { key: qpicKey } = await assetKeyAndSha256(qpic);
+    const question = JSON.stringify({ format: 'chalk.question', manifestVersion: 1, id: 'q1', version: '1', kind: 'short_answer', stem: `![](${qpicKey})`, assets: [qpicKey] });
+    const lib = await library({ question, firstStore: { id: 'webp', kind: 'derived', template: 'https://webp.example/{h}', media: ['image/webp'] } });
+    await lib.put(qpic, 'image/png');
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    const links = await loadBookLinks(b.library!);
+    await loadQuestion(b.library!, links!.links[0]!.question);
+    const url = await b.assetUrl(qpicKey);
+    expect(url?.startsWith('blob:')).toBe(true);
+    expect(new Uint8Array(await (await fetch(url!)).arrayBuffer())).toEqual(qpic);
+    b.dispose();
   });
 
   it('hands out the bytes of a rendition with the type the book declares for it', async () => {

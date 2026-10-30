@@ -91,13 +91,15 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     at: (path) => new URL(path, lib.library.endsWith('/') ? lib.library : `${lib.library}/`).href,
     // drawn by URL, so the browser and the CDN cache it, as any streamed book's media (spec 1.2 §6: what a URL draws is not hashed). A store that
     // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
-    // media are fetched, checked against their id, and drawn from a blob
+    // media are fetched, checked against their id, and drawn from a blob. So is a picture whose format is not known (`image/*`, a question's):
+    // which of the library's image stores has it is found by asking each in turn, which a URL cannot do
     async assetUrl(id, signal) {
       const type = lib.typeOf(id);
       const store = resolutionKey(id) ? lib.storeFor(type) : null;
       if (!store) return null;
-      if (store.auth !== 'bearer' && store.verify !== 'always') return lib.urlOf(id, type);
-      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
+      const unknownFormat = type.endsWith('/*');
+      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat) return lib.urlOf(id, type);
+      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], unknownFormat ? {} : { type });
     },
     async assetBytes(id, signal) {
       // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does). One it has a store for is

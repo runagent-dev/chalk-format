@@ -59,7 +59,10 @@ export type OpenedLibraryBook = {
    * `application/octet-stream` otherwise.
    */
   typeOf(id: string): string;
-  /** Where the library's store delivers an item or a media file, or null for an id the library cannot name. */
+  /**
+   * Where the library's store delivers an item or a media file, or null for an id the library cannot name. For a type whose format is not
+   * known (`image/*`) it is the first store that may have it: `fetchItem` asks each of them.
+   */
   urlOf(id: string, type?: string): string | null;
   /**
    * The library's store for a type: the first of `GET /v1/stores` (derived or api) whose `media` take it. Items and media come from these first;
