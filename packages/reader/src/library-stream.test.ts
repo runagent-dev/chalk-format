@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; tamper?: string } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -40,13 +40,15 @@ async function library(o: { token?: string } = {}) {
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
     if (u.host === 'lib.example') {
       if (o.token && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-      if (u.pathname === '/v1/stores') return json({ items: [book.assetSources[0]] });
+      if (u.pathname === '/v1/stores') return json({ items: [{ ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}) }] });
       const tags = u.searchParams.getAll('tag');
       const hits = [...items].filter(([, i]) => tags.every((t) => i.tags.includes(t)));
       return json({ items: hits.map(([key, i]) => ({ key, sha256: '0'.repeat(64), type: i.type, size: i.bytes.byteLength, tags: i.tags, status: 'available', createdAt: '2026-10-30T00:00:00Z' })) });
     }
+    if (o.bearerStore && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}`) return new Response(null, { status: 401 });
     const hit = [...items].find(([key]) => at(key) === u.href);
     asked.push(hit ? (hit[0] === bookKey ? 'book' : hit[1].type.split('/')[1]!.replace('vnd.chalk.', '').replace('+json', '')) : u.href);
+    if (hit && hit[0] === o.tamper) return new Response(enc.encode('not the picture') as unknown as BodyInit, { status: 200 });
     return hit ? new Response(hit[1].bytes as unknown as BodyInit, { status: 200, headers: { 'content-type': hit[1].type } }) : new Response(null, { status: 404 });
   }) as unknown as typeof globalThis.fetch;
   return { fetch, asked, pageKey, bookKey };
@@ -86,6 +88,22 @@ describe('books in a library, in the reader', () => {
     // an id the library cannot name goes to the host's resolver
     const withHost = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch, resolveAsset: (id) => `https://host.example/${id}` });
     expect(await withHost.assetUrl('img-1')).toBe('https://host.example/img-1');
+  });
+
+  it('never hands out media bytes that fail their key check (no unchecked second try)', async () => {
+    const lib = await library({ tamper: pictureKey });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    expect(await b.assetBytes(pictureKey)).toBeNull();
+    expect(lib.asked.filter((a) => a === 'png')).toHaveLength(1);
+  });
+
+  it('draws media of a store that needs the token from checked bytes (an <img> sends no header)', async () => {
+    const lib = await library({ token: 'sesame', bearerStore: true });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo', token: 'sesame' }, { fetch: lib.fetch });
+    const url = await b.assetUrl(pictureKey);
+    expect(url?.startsWith('blob:')).toBe(true);
+    expect(new Uint8Array(await (await fetch(url!)).arrayBuffer())).toEqual(picture);
+    b.dispose();
   });
 
   it('searches through the text item, and gives the links item', async () => {

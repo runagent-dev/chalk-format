@@ -86,10 +86,16 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     version: await sha256Id(lib.bytes),
     json: async (path, signal) => JSON.parse(dec.decode(await lib.read(path, { signal }))) as unknown,
     at: (path) => new URL(path, lib.library.endsWith('/') ? lib.library : `${lib.library}/`).href,
-    assetUrl: (id) => lib.urlOf(id),
+    // a store that needs the token cannot be named by a bare URL (an <img> sends no header): its media are fetched, checked, and drawn from a blob
+    async assetUrl(id, signal) {
+      const key = resolutionKey(id);
+      if (!key) return null;
+      if (!Object.keys(lib.headers).length) return lib.urlOf(key);
+      return new Blob([(await lib.fetchItem(key, { signal })) as BlobPart], { type: lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream' });
+    },
     async assetBytes(id, signal) {
       const key = resolutionKey(id);
-      return key ? (await lib.fetchItem(key, { signal })).slice().buffer as ArrayBuffer : null;
+      return key ? (await lib.fetchItem(key, { signal })).slice().buffer as ArrayBuffer : undefined;
     },
     library: lib,
   }, o);
@@ -105,10 +111,10 @@ type StreamFiles = {
   json(path: string, signal: AbortSignal): Promise<unknown>;
   /** The URL of a file of the book (its own media). */
   at(path: string): string;
-  /** External media the source can name itself (a library's store), before the host's resolver. */
-  assetUrl?(id: string): string | null;
-  /** External media's bytes, fetched and checked by the source. */
-  assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | null>;
+  /** External media the source can name itself (a library's store), before the host's resolver: a URL, or the bytes as a Blob. */
+  assetUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
+  /** External media's bytes, fetched and checked by the source; undefined for an id it cannot name. */
+  assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | undefined>;
   library?: LibraryBook;
 };
 
@@ -164,10 +170,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
   const resolveUrl = async (id: string): Promise<string | null> => {
     const p = assetPath.get(id);
     if (p) return at(p);
-    const own = src.assetUrl?.(id);
-    if (own) return own;
-    if (!o.resolveAsset) return null;
-    const r = await o.resolveAsset(id);
+    const own = await src.assetUrl?.(id, abort.signal);
+    const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null);
     if (r == null) return null;
     if (typeof r === 'string') return r;
     const u = URL.createObjectURL(r); owned.push(u); return u;
@@ -186,8 +190,9 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
     peekUrl(id) { const p = assetPath.get(id); return p ? at(p) : settled.get(id); },
     async assetBytes(id) {
       if (src.assetBytes && !assetPath.has(id)) {
+        // the source's answer is final for an id it can name: bytes that failed their key check are not fetched again unchecked
         const bytes = await src.assetBytes(id, abort.signal).catch(() => null);
-        if (bytes) return { type: assetType.get(id) ?? 'application/octet-stream', bytes };
+        if (bytes !== undefined) return bytes && { type: assetType.get(id) ?? 'application/octet-stream', bytes };
       }
       const url = await book.assetUrl(id);
       if (!url) return null;
