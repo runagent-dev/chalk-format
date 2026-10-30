@@ -55,7 +55,7 @@ export type LibraryAuthOptions = {
 };
 
 export class LibraryAuthError extends Error {
-  /** `code`: the library's OAuth error (`invalid_grant`, `invalid_request`, `unsupported_grant_type`), `rate_limited` (429) or `failed`. */
+  /** `code`: the library's OAuth error (`invalid_grant`, `invalid_request`, `unsupported_grant_type`), `rate_limited` (429), `cancelled` (signed out while signing in) or `failed`. */
   constructor(readonly code: string, readonly status: number, message: string) { super(message); this.name = 'LibraryAuthError'; }
 }
 
@@ -118,16 +118,25 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
   let refreshing: Promise<string | undefined> | null = null;
   const listeners = new Set<(u: LibraryUser | null) => void>();
 
-  const set = async (s: Session | null) => {
+  /** Storage writes, one after another in the order the session changed (an async storage could finish them out of order). */
+  let writes: Promise<void> = Promise.resolve();
+  /** The session changes here at once (and listeners hear of it); the write to storage is queued behind the ones before it. */
+  const set = (s: Session | null): Promise<void> => {
     session = s;
-    try { if (s) await storage.set(key, JSON.stringify(s)); else await storage.remove(key); } catch { /* kept in memory only */ }
+    const value = s ? JSON.stringify(s) : null;
+    writes = writes.then(async () => {
+      try { if (value) await storage.set(key, value); else await storage.remove(key); } catch { /* kept in memory only */ }
+    });
     const u = s ? userOf(s.access) : null;
-    if (sameUser(u, current)) return;
-    current = u;
-    for (const l of [...listeners]) { try { l(u); } catch { /* a listener's failure is its own */ } }
+    if (!sameUser(u, current)) {
+      current = u;
+      for (const l of [...listeners]) { try { l(u); } catch { /* a listener's failure is its own */ } }
+    }
+    return writes;
   };
 
-  const read = async () => { try { return parseSession(await storage.get(key)); } catch { return null; } };
+  /** What storage holds once the writes queued so far have landed. */
+  const read = async () => { await writes; try { return parseSession(await storage.get(key)); } catch { return null; } };
 
   const ready = (async () => {
     const s = await read();
@@ -195,7 +204,10 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
     ready,
     async signIn(username, password) {
       await ready;
+      const gen = generation;
       const s = await grant({ grant_type: 'password', username, password });
+      // signed out (or in again) while this was on its way: that came later and wins; this sign-in's refresh token belongs to nobody
+      if (gen !== generation) { void revoke(s.refresh); throw new LibraryAuthError('cancelled', 0, 'the sign-in was cancelled'); }
       const old = session;
       generation++;
       refreshing = null;

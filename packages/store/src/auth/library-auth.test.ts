@@ -186,6 +186,50 @@ describe('libraryAuth: refreshing', () => {
 });
 
 describe('libraryAuth: signing out and storage', () => {
+  it('signing out while a sign-in is on its way: the sign-in is not applied, and its refresh token is revoked', async () => {
+    const s = server();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const f = (async (i: string | URL | Request, init?: RequestInit) => { if (String(init?.body ?? '').includes('"grant_type":"password"')) await gate; return s.fetch(i, init); }) as typeof fetch;
+    const auth = libraryAuth({ library: BASE, fetch: f, now });
+    const pending = auth.signIn('rahim', 'correct horse battery').catch((e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 0));
+    await auth.signOut();
+    release();
+    expect(await pending).toMatchObject({ code: 'cancelled' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(auth.user()).toBeNull();
+    expect(await auth.token()).toBeUndefined();
+    expect(s.liveRefreshTokens()).toEqual([]);
+  });
+
+  it('an async storage that finishes writes out of order still ends with the last change (no sign-in restored after signing out)', async () => {
+    const s = server();
+    const m = new Map<string, string>();
+    // a slow write, a fast remove: unqueued, the refresh's write would land after the sign-out's remove
+    const storage: AuthStorage = {
+      get: async (k) => m.get(k) ?? null,
+      set: async (k, v) => { await new Promise((r) => setTimeout(r, 30)); m.set(k, v); },
+      remove: async (k) => { m.delete(k); },
+    };
+    const auth = libraryAuth({ library: BASE, fetch: s.fetch, now, storage });
+    await auth.signIn('rahim', 'correct horse battery');
+    const changes: unknown[] = [];
+    auth.onChange((u) => changes.push(u?.name ?? null));
+    clock += 890 * 1000;
+    const refreshing = auth.token();
+    await new Promise((r) => setTimeout(r, 5));
+    await auth.signOut();
+    await refreshing;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(m.size).toBe(0);
+    expect(auth.user()).toBeNull();
+    expect(changes.at(-1)).toBeNull();
+    const reloaded = libraryAuth({ library: BASE, fetch: s.fetch, now, storage });
+    await reloaded.ready;
+    expect(reloaded.user()).toBeNull();
+  });
+
   it('signs out: revokes the refresh token at the library, forgets it here, and says so', async () => {
     const s = server();
     const area = fakeArea();
