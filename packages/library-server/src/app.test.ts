@@ -118,6 +118,9 @@ describe('the reference library (disk + PGlite)', () => {
     // every kind is found by its tag; the record of use replaces the book's set
     for (const kind of ['page', 'text', 'links'] as const) expect((await client.search({ tag: [`book:${slug}`, `kind:${kind}`, 'book-revision:2'] })).items).toHaveLength(1);
     expect((await client.search({ tag: [`book:${slug}`, 'kind:text'] })).items).toHaveLength(1);
+    // a textbook's set is thousands of keys (spec 1.8 §6.3); keys the library does not have are left out
+    const many = Array.from({ length: 5000 }, (_, i) => `c1:${i.toString(32).padStart(25, 'a').replace(/[0-1]/g, 'a').replace(/[8-9]/g, 'b')}a`);
+    expect(await client.setBookAssets(slug, [...two.keys, ...many])).toEqual({ book: slug, keys: two.keys.length });
     await client.setBookAssets(slug, two.keys);
     expect((await client.search({ book: slug })).items.map((i) => i.key).sort()).toEqual([...two.keys].sort());
     // and the bytes come back through the delivery store as they went in

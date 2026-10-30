@@ -52,14 +52,27 @@ export function readBookTags(tags: readonly string[]): { origin?: string; slug?:
 
 type Candidate = { key: string; type: string; tags?: readonly string[] | undefined; createdAt: string; status?: string | undefined };
 
+const time = (i: Candidate) => { const t = Date.parse(i.createdAt); return Number.isNaN(t) ? -Infinity : t; };
+/** §5's order: later `createdAt` first; the same time, the larger key. */
+const newer = (a: Candidate, b: Candidate) => time(a) > time(b) || (time(a) === time(b) && a.key > b.key);
+const currentBooks = <T extends Candidate>(items: readonly T[], slug?: string) => {
+  const want = ['state:current', ...(slug === undefined ? [] : [`book:${slug}`, 'kind:book'])];
+  return items.filter((i) => i.type === LIBRARY_BOOK_TYPE && (i.status ?? 'available') === 'available' && want.every((t) => i.tags?.includes(t)));
+};
+
 /**
  * The current book item among search results (spec 1.8 §5): of the available items with the book's media type and `state:current`
  * (and, when `slug` is given, `book:<slug>` and `kind:book`), the one created last. Two with the same time: the larger key, so that
  * every reader picks the same one. `undefined`: the library has no current book item.
  */
 export function pickCurrentBook<T extends Candidate>(items: readonly T[], slug?: string): T | undefined {
-  const want = ['state:current', ...(slug === undefined ? [] : [`book:${slug}`, 'kind:book'])];
-  const ok = items.filter((i) => i.type === LIBRARY_BOOK_TYPE && (i.status ?? 'available') === 'available' && want.every((t) => i.tags?.includes(t)));
-  const time = (i: T) => { const t = Date.parse(i.createdAt); return Number.isNaN(t) ? -Infinity : t; };
-  return ok.reduce<T | undefined>((best, i) => (!best || time(i) > time(best) || (time(i) === time(best) && i.key > best.key) ? i : best), undefined);
+  return currentBooks(items, slug).reduce<T | undefined>((best, i) => (!best || newer(i, best) ? i : best), undefined);
+}
+
+/**
+ * The current book items a publisher supersedes after adding `added` (spec 1.8 §6.2): those older than it. A newer one was
+ * published by another run and is left alone, so two runs that overlap never leave a book with no current item.
+ */
+export function booksToSupersede<T extends Candidate>(items: readonly T[], added: Candidate, slug?: string): T[] {
+  return currentBooks(items, slug).filter((i) => i.key !== added.key && newer(added, i));
 }

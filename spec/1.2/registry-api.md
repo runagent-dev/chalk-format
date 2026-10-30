@@ -89,7 +89,7 @@ record carries its `poster` key so the tool can show thumbnails through the stor
 
 ## 6. Which books use what
 
-- **`PUT v1/books/{bookId}/assets`** `{ "keys": […] }` replaces the set of assets the book uses. Authoring tools
+- **`PUT v1/books/{bookId}/assets`** `{ "keys": […] }` (up to 20,000) replaces the set of assets the book uses. Authoring tools
   call it when a book is saved or published.
 - **`GET v1/assets/{key}/books`** → `{ "items": [{ "bookId", "updatedAt" }], "next"? }`.
 

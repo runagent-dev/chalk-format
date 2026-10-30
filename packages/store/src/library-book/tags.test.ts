@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LIBRARY_BOOK_TYPE } from './schema.js';
-import { bookTags, currentBookQuery, pickCurrentBook, readBookTags, withBookState } from './tags.js';
+import { bookTags, booksToSupersede, currentBookQuery, pickCurrentBook, readBookTags, withBookState } from './tags.js';
 
 describe('the tags of a book in a library (spec 1.8 §4)', () => {
   it('names the origin, the book, the revision, the kind and the state', () => {
@@ -68,5 +68,15 @@ describe('newest current wins (spec 1.8 §5)', () => {
   it('none current: undefined', () => {
     expect(pickCurrentBook([item('c1:a', '2026-10-01T00:00:00Z', 'superseded')])).toBeUndefined();
     expect(pickCurrentBook([])).toBeUndefined();
+  });
+
+  it('supersedes only current book items older than the one added, so overlapping runs leave the newer one current', () => {
+    const a = item('c1:a', '2026-10-01T00:00:00Z'), b = item('c1:b', '2026-10-02T00:00:00Z'), c = item('c1:c', '2026-10-03T00:00:00Z');
+    const old = item('c1:o', '2026-09-01T00:00:00Z', 'superseded');
+    expect(booksToSupersede([a, b, c, old], b, 'b').map((i) => i.key)).toEqual(['c1:a']);
+    expect(booksToSupersede([a, b, c], c, 'b').map((i) => i.key)).toEqual(['c1:a', 'c1:b']);
+    // run B supersedes what is older than b, run C what is older than c: c stays current
+    const left = [a, b, c].filter((i) => ![...booksToSupersede([a, b, c], b), ...booksToSupersede([a, b, c], c)].includes(i));
+    expect(left.map((i) => i.key)).toEqual(['c1:c']);
   });
 });

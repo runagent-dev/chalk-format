@@ -175,30 +175,42 @@ for ever (1.2 §6.5), and SHOULD remember the last current book item's key, to o
 
 ### 6.1 Order: the book item is the commit point
 
-A reader that finds a book item MUST find everything it names. So a publisher:
+A reader that finds a book item MUST find everything it names, and a library MUST NOT lose what a current book uses. So a
+publisher:
 
 1. adds the media items the book uses that the library does not have yet (registry API §3: `check`, `uploads`, `assets`);
 2. adds the page items, the text item and the links item, tagged `state:current`;
-3. adds the **book item**, tagged `state:current`. From this moment readers open the new revision;
-4. supersedes the old book item (§6.2);
-5. records the book's use (§6.3).
+3. records the use (§6.3) of **both** revisions: the keys the library already records for the book and those of steps 1 and 2;
+4. adds the **book item**, tagged `state:current`. From this moment readers open the new revision;
+5. supersedes the old book item (§6.2);
+6. records the use of the new revision alone (§6.3), the book item included.
 
-A publisher MUST NOT do step 3 before 1 and 2 have succeeded. If it stops before step 3, nothing a reader sees has changed:
-the new items are there and unused, and the next run reuses them (their keys are the same). If it stops after step 3, the
-book is published: steps 4 and 5 are repeated by the next run.
+A publisher MUST NOT do step 4 before 1 to 3 have succeeded. If it stops before step 4, nothing a reader sees has changed:
+the new items are there, recorded, and the next run reuses them (their keys are the same). If it stops after step 4, the
+book is published, and every item it names except the book item itself is already recorded; the next run repeats steps 5
+and 6. The book item is unrecorded only for that time, and a library deletes only items that no book has used for a period
+(registry API §6), which a book item just added has not reached.
+
+**One publisher at a time.** Publishing a book is not atomic: a publisher MUST NOT publish a book while another run is
+publishing the same book (the publishing side holds a lock per slug, or runs one job at a time). Even so, §6.2 never
+supersedes a book item newer than the one being published, so two runs that overlap leave the newer book current, never
+none.
 
 ### 6.2 Superseding
 
-After step 3 the publisher registers again (registry API §3, step 4) each book item of the same book that is still
-`state:current`, other than the new one, with its tags and `state:superseded` instead of `state:current`.
+After step 4 the publisher registers again (registry API §3, step 4) each book item of the same book that is still
+`state:current` and **older** than the new one (by §5's order: an earlier `createdAt`, or the same and a smaller key), with
+its tags and `state:superseded` instead of `state:current`. A newer current book item is left alone: another run published
+it, and readers take it.
 
 It SHOULD do the same for page, text and links items of the book that are tagged `state:current` and that the new book
 item does not name. It MUST NOT supersede an item the new book item names: an unchanged page is the same item in both
 revisions, and is registered again with the new revision's tags in step 2.
 
 A book item whose key the library already has (a publisher brings back an earlier revision, byte for byte) keeps its
-original `createdAt`. The publisher registers it as current, then supersedes every other current book item: the switch
-happens then, not at step 3.
+original `createdAt`, so it is older than the book items after it. Bringing it back is the one case where a publisher
+supersedes newer book items: it registers it as current, then supersedes every other current book item, and the switch
+happens then, not at step 4. It MUST hold the book's lock to do so.
 
 Superseded items are not withdrawn: a reader that opened the old revision keeps reading it, from its cache or from the
 library.
@@ -209,10 +221,16 @@ library.
 PUT v1/books/<slug>/assets   { "keys": ["c1:…", …] }
 ```
 
-(registry API §6). The keys are those of the new revision: the book item, its page items, its text and links items, every
-asset in `assets`, and the question manifests the links name. The call replaces the book's set, so the old revision's
-items that the new one does not use leave it. A library MUST NOT delete the bytes of an item a book uses; it MAY delete
-items no book has used for a while (registry API §6), so a publisher records the use on every publish.
+(registry API §6). The keys of a revision are: the book item, its page items, its text and links items, every asset in
+`assets` with the keys of its `renditions` (1.2 §4.3) and its `poster`, and the question manifests the links name with the
+assets they list. The call replaces the book's set, so it always carries everything that must stay: in step 3 both
+revisions, in step 6 the new one, after which the old revision's items that the new one does not use leave the set. The
+keys the library records for the book now are found with `GET v1/search?book=<slug>` (registry API §5), or the publisher
+keeps its own list.
+
+A library MUST NOT delete the bytes of an item a book uses; it MAY delete items no book has used for a while (registry
+API §6), so a publisher records the use on every publish. A book's set can be large (a 300-page textbook with its
+pictures and questions has thousands of keys): a library MUST accept at least 20,000 keys in one call.
 
 ## 7. Reading
 
