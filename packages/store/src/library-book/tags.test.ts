@@ -78,5 +78,8 @@ describe('newest current wins (spec 1.8 §5)', () => {
     // run B supersedes what is older than b, run C what is older than c: c stays current
     const left = [a, b, c].filter((i) => ![...booksToSupersede([a, b, c], b), ...booksToSupersede([a, b, c], c)].includes(i));
     expect(left.map((i) => i.key)).toEqual(['c1:c']);
+    // the same time: the item just added wins, whatever the keys
+    const z = item('c1:z', '2026-10-01T00:00:00Z');
+    expect(booksToSupersede([a, z], a, 'b').map((i) => i.key)).toEqual(['c1:z']);
   });
 });

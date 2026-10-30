@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { C1_KEY_PATTERN, storeDescriptorSchema, streamAssetSchema, streamIndexSchema, streamPageSchema } from '@chalk-format/model';
+import { C1_KEY_PATTERN, renditionSchema, storeDescriptorSchema, streamAssetSchema, streamIndexSchema, streamPageSchema } from '@chalk-format/model';
 
 /**
  * Books in a library (spec 1.8): a streamed book (spec 1.4) kept as items of a library (spec 1.2, the registry API), so
@@ -28,7 +28,7 @@ const noPath = z.never().optional();
 export const libraryBookPageSchema = streamPageSchema.omit({ file: true }).extend({ key: c1, file: noPath });
 
 /** Every asset is external: found through the stores (spec 1.2 §6), never at a path in the book. */
-export const libraryBookAssetSchema = streamAssetSchema.extend({ id: c1, path: noPath });
+export const libraryBookAssetSchema = streamAssetSchema.extend({ id: c1, path: noPath, renditions: z.array(renditionSchema.extend({ id: c1 })).optional() });
 
 export const libraryBookSchema = streamIndexSchema.extend({
   pages: z.array(libraryBookPageSchema).min(1),

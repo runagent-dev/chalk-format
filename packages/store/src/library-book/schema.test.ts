@@ -24,6 +24,8 @@ describe('the book item (spec 1.8 §3.1)', () => {
     expect(ok({ ...b, pages: [{ ...b.pages[0], key: 'sha256:' + '0'.repeat(64) }] })).toBe(false);
     expect(ok({ ...b, assets: [{ ...b.assets[0], path: 'assets/x' }] })).toBe(false);
     expect(ok({ ...b, assets: [{ ...b.assets[0], id: 'img-1' }] })).toBe(false);
+    expect(ok({ ...b, assets: [{ ...b.assets[0], renditions: [{ id: 'local-video', type: 'video/mp4' }] }] })).toBe(false);
+    expect(ok({ ...b, assets: [{ ...b.assets[0], renditions: [{ id: K('r'), type: 'image/avif' }] }] })).toBe(true);
     expect(ok({ ...b, text: { file: 'text.json', key: b.text!.key } })).toBe(false);
     expect(ok({ ...b, text: { bytes: 3 } })).toBe(false);
     expect(ok({ ...b, links: 'links.json' })).toBe(false);

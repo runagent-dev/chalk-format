@@ -200,7 +200,8 @@
               "type": "object",
               "properties": {
                 "id": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^c1:[a-z2-7]{25}[aeimquy4]$"
                 },
                 "type": {
                   "type": "string"

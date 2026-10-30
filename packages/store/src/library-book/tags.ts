@@ -70,9 +70,10 @@ export function pickCurrentBook<T extends Candidate>(items: readonly T[], slug?:
 }
 
 /**
- * The current book items a publisher supersedes after adding `added` (spec 1.8 §6.2): those older than it. A newer one was
- * published by another run and is left alone, so two runs that overlap never leave a book with no current item.
+ * The current book items a publisher supersedes after adding `added` (spec 1.8 §6.2): those created before it, or at the same
+ * time (the run that just added its item wins a tie; runs of one book do not overlap). One created later was published by
+ * another run and is left alone, so two runs that overlap never leave a book with no current item.
  */
 export function booksToSupersede<T extends Candidate>(items: readonly T[], added: Candidate, slug?: string): T[] {
-  return currentBooks(items, slug).filter((i) => i.key !== added.key && newer(added, i));
+  return currentBooks(items, slug).filter((i) => i.key !== added.key && time(i) <= time(added));
 }

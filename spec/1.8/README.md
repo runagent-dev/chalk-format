@@ -73,7 +73,7 @@ Everything not listed below is as in 1.4 §3.
 |---|---|---|
 | `pages[].key` | required | The key of the page item. Replaces `file`, which MUST be absent |
 | `snipPages[].key` | required | The same, for snip pages |
-| `assets[]` | | Every asset is external: `id` is a c1 key, and `path` MUST be absent. The asset is found through stores (1.2 §6) |
+| `assets[]` | | Every asset is external: `id` is a c1 key, and `path` MUST be absent. The asset is found through stores (1.2 §6). The `id` of each of its `renditions` is a c1 key too |
 | `text` | | `{ "key": "c1:…", "bytes": n }`: the key of the text item and its size. Replaces `text.file`, which MUST be absent |
 | `links` | | The key of the links item (§3.4), when the book has links |
 | `assetSources` | required | At least one store descriptor (1.2 §5.1): the library's delivery store, as `GET v1/stores` gives it (registry API §7), and any other store the publisher suggests. As in 1.2 §4.4 they MUST NOT need a token (`auth` absent or `"none"`) |
@@ -183,7 +183,8 @@ publisher:
 3. records the use (§6.3) of **both** revisions: the keys the library already records for the book and those of steps 1 and 2;
 4. adds the **book item**, tagged `state:current`. From this moment readers open the new revision;
 5. supersedes the old book item (§6.2);
-6. records the use of the new revision alone (§6.3), the book item included.
+6. checks that its book item is now the current one (§6.2), then records the use of the new revision alone (§6.3), the book
+   item included.
 
 A publisher MUST NOT do step 4 before 1 to 3 have succeeded. If it stops before step 4, nothing a reader sees has changed:
 the new items are there, recorded, and the next run reuses them (their keys are the same). If it stops after step 4, the
@@ -193,15 +194,20 @@ and 6. The book item is unrecorded only for that time, and a library deletes onl
 
 **One publisher at a time.** Publishing a book is not atomic: a publisher MUST NOT publish a book while another run is
 publishing the same book (the publishing side holds a lock per slug, or runs one job at a time). Even so, §6.2 never
-supersedes a book item newer than the one being published, so two runs that overlap leave the newer book current, never
+supersedes a book item created after the one being published, so two runs that overlap leave the later book current, never
 none.
 
 ### 6.2 Superseding
 
 After step 4 the publisher registers again (registry API §3, step 4) each book item of the same book that is still
-`state:current` and **older** than the new one (by §5's order: an earlier `createdAt`, or the same and a smaller key), with
-its tags and `state:superseded` instead of `state:current`. A newer current book item is left alone: another run published
-it, and readers take it.
+`state:current` and was created **before** the new one or at the same time (`createdAt`), with its tags and
+`state:superseded` instead of `state:current`. A tie goes to the item just added: runs of one book do not overlap, so an
+item with the same time is an earlier run's. A book item created later is left alone: another run published it, and readers
+take it.
+
+Before step 6 the publisher searches again (§5) and checks that the book item it added is the one readers pick. If it is
+not (a later run's item is current), it MUST NOT do step 6: the use of both revisions stays recorded, and it reports that
+another run published the book.
 
 It SHOULD do the same for page, text and links items of the book that are tagged `state:current` and that the new book
 item does not name. It MUST NOT supersede an item the new book item names: an unchanged page is the same item in both
@@ -222,7 +228,7 @@ PUT v1/books/<slug>/assets   { "keys": ["c1:…", …] }
 ```
 
 (registry API §6). The keys of a revision are: the book item, its page items, its text and links items, every asset in
-`assets` with the keys of its `renditions` (1.2 §4.3) and its `poster`, and the question manifests the links name with the
+`assets` with the keys of its `renditions` (1.2 §4.3; in a book item their `id`s are c1 keys too) and its `poster`, and the question manifests the links name with the
 assets they list. The call replaces the book's set, so it always carries everything that must stay: in step 3 both
 revisions, in step 6 the new one, after which the old revision's items that the new one does not use leave the set. The
 keys the library records for the book now are found with `GET v1/search?book=<slug>` (registry API §5), or the publisher
