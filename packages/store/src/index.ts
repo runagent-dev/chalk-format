@@ -5,3 +5,5 @@ export * from './library.js';
 export * from './device.js';
 export * from './folder.js';
 export * from './registry-library.js';
+export * from './library-book/schema.js';
+export * from './library-book/tags.js';

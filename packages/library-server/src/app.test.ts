@@ -76,12 +76,70 @@ describe('the reference library (disk + PGlite)', () => {
     expect(got.headers.get('content-security-policy')).toBe('sandbox');
   });
 
+  it('keeps books (spec 1.8): the four item types, found by their tags, the newest current book item, the record of use', async () => {
+    const { createRegistryClient, bookTags, currentBookQuery, pickCurrentBook, withBookState, libraryBookSchema, LIBRARY_BOOK_TYPE, LIBRARY_PAGE_TYPE, LIBRARY_TEXT_TYPE, LIBRARY_LINKS_TYPE } = await import('@chalk-format/store');
+    const client = createRegistryClient(BASE, { token: 't-1', fetch: fetchApp });
+    const enc = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));
+    const slug = 'test-book-1-8';
+    const tags = (revision: number, kind: 'book' | 'page' | 'text' | 'links') => bookTags({ slug, revision, kind, state: 'current' });
+    const [stores] = (await client.stores()).items;
+    // revision 1, in the commit-point order: media, then page, text and links items, then the book item
+    // registering a key again replaces its tags; `add` of bytes the library already has does not register, so a publisher does
+    const register = (r: { key: string; sha256: string; type: string; size: number }, t: string[]) => fetchApp(`${BASE}/v1/assets`, {
+      method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify({ key: r.key, sha256: r.sha256, type: r.type, size: r.size, tags: t }),
+    }).then(async (res) => { expect(res.status).toBe(200); return res.json() as Promise<{ key: string; tags: string[] }>; });
+    const putItem = async (x: unknown, type: string, t: string[]) => register(await client.add(enc(x), { type, tags: t }), t);
+    const publish = async (revision: number, pageText: string) => {
+      const picture = await client.add(enc({ picture: pageText }), { type: 'image/webp', title: 'a picture' });
+      const page = await putItem({ id: 'p1', title: pageText, objects: [] }, LIBRARY_PAGE_TYPE, tags(revision, 'page'));
+      // the same text in both revisions: one item, re-tagged with the new revision
+      const text = await putItem({ v: 1, pages: { p1: [] } }, LIBRARY_TEXT_TYPE, tags(revision, 'text'));
+      const links = await putItem({ format: 'chalk-links', version: 1, book: slug, bookRevision: revision, sentences: [], links: [] }, LIBRARY_LINKS_TYPE, tags(revision, 'links'));
+      const item = libraryBookSchema.parse({
+        format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: slug, title: 'Test', locale: 'en', createdAt: 'x', updatedAt: 'x',
+        pages: [{ id: 'p1', key: page.key, assets: [picture.key] }], assets: [{ id: picture.key, type: 'image/webp' }],
+        text: { key: text.key }, links: links.key, assetSources: [stores],
+      });
+      const book = await client.add(enc(item), { type: LIBRARY_BOOK_TYPE, title: `Test, revision ${revision}`, tags: tags(revision, 'book') });
+      return { book, keys: [book.key, page.key, text.key, links.key, picture.key] };
+    };
+    const one = await publish(1, 'one');
+    const find = async () => pickCurrentBook((await client.search(currentBookQuery(slug))).items, slug)?.key;
+    expect(await find()).toBe(one.book.key);
+    // revision 2: until the old book item is superseded both are current, and the newer one wins
+    await new Promise((r) => setTimeout(r, 5));
+    const two = await publish(2, 'two');
+    expect((await client.search(currentBookQuery(slug))).items.map((i) => i.key).sort()).toEqual([one.book.key, two.book.key].sort());
+    expect(await find()).toBe(two.book.key);
+    // superseding: register the old key again with its state changed (tags are replaced)
+    await register(one.book, withBookState(one.book.tags ?? [], 'superseded'));
+    expect((await client.search(currentBookQuery(slug))).items.map((i) => i.key)).toEqual([two.book.key]);
+    expect((await client.get(one.book.key)).tags).toContain('state:superseded');
+    // every kind is found by its tag; the record of use replaces the book's set
+    for (const kind of ['page', 'text', 'links'] as const) expect((await client.search({ tag: [`book:${slug}`, `kind:${kind}`, 'book-revision:2'] })).items).toHaveLength(1);
+    expect((await client.search({ tag: [`book:${slug}`, 'kind:text'] })).items).toHaveLength(1);
+    // a textbook's set is thousands of keys (spec 1.8 §6.3); keys the library does not have are left out
+    const many = Array.from({ length: 5000 }, (_, i) => `c1:${i.toString(32).padStart(25, 'a').replace(/[0-1]/g, 'a').replace(/[8-9]/g, 'b')}a`);
+    expect(await client.setBookAssets(slug, [...two.keys, ...many])).toEqual({ book: slug, keys: two.keys.length });
+    await client.setBookAssets(slug, two.keys);
+    expect((await client.search({ book: slug })).items.map((i) => i.key).sort()).toEqual([...two.keys].sort());
+    // and the bytes come back through the delivery store as they went in
+    const { registryLibrary } = await import('@chalk-format/store');
+    const got = await fetchApp((await registryLibrary({ url: BASE, token: 't-1', fetch: fetchApp }).url(two.book.key))!);
+    expect(libraryBookSchema.parse(await got.json()).pages[0]!.key).toBe(two.keys[1]);
+  });
+
   it('a private library: reading needs a token too', async () => {
     const priv = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1'), publicRead: false });
     expect((await priv.fetch(new Request(`${BASE}/v1/search?q=x`))).status).toBe(401);
     expect((await priv.fetch(new Request(`${BASE}/v1/search?q=x`, { headers: { Authorization: 'Bearer t-1' } }))).status).toBe(200);
     // readers' list of stores stays public: books must be readable
     expect((await priv.fetch(new Request(`${BASE}/v1/stores`))).status).toBe(200);
+    // a book in a library (spec 1.8 §7): its book item is found with the token, and only with it
+    const find = `${BASE}/v1/search?tag=book:test-book-1-8&tag=kind:book&tag=state:current`;
+    expect((await priv.fetch(new Request(find))).status).toBe(401);
+    const found = await (await priv.fetch(new Request(find, { headers: { Authorization: 'Bearer t-1' } }))).json() as { items: { type: string }[] };
+    expect(found.items.map((i) => i.type)).toEqual(['application/vnd.chalk.book+json']);
   });
 
   it('scans a bucket that already has media: adopted once, found by its file name', async () => {
