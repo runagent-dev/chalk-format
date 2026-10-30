@@ -14,5 +14,9 @@ export { DEFAULT_WINDOW, type WindowConfig, type WindowLayout, type WindowAspect
 export type { IconName, Presentation, ResolvedPresentation } from '@chalk-format/model';
 export { ICON_NAMES } from '@chalk-format/model';
 export { openStreamedBook, isStreamed, windowAround, type StreamedBook } from './stream.js';
+export { openLibraryStreamedBook, isLibrarySource, type LibrarySource } from './stream.js';
+export { loadBookLinks, loadQuestion, type OpenedLibraryBook, type LibraryBookLinks } from '@chalk-format/store';
 export { useSavedLibraries } from './saved-libraries.js';
+export { LibrarySignIn, useLibraryAuth, type LibrarySignInProps } from './LibrarySignIn.js';
+export { libraryAuth, webStorage, memoryStorage, LibraryAuthError, type LibraryAuth, type LibraryUser, type AuthStorage, type TokenSource } from '@chalk-format/store';
 export type { Library, LibraryItem, LibraryConnection } from '@chalk-format/store';

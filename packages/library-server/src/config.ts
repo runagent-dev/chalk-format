@@ -1,7 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.js';
 import { diskStorage, s3Storage, type Storage } from './storage.js';
-import type { Caller, LibraryOptions } from './app.js';
+import { checkKeySetup } from './auth/service.js';
+import type { LibraryOptions } from './app.js';
+import type { Caller } from './auth/roles.js';
+import type { DeliveryOptions } from './delivery.js';
 
 /**
  * A library from environment variables (Docker, Coolify):
@@ -13,18 +16,31 @@ import type { Caller, LibraryOptions } from './app.js';
  *   S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION (R2: auto), S3_VIRTUAL_HOSTED (true for AWS)
  *   DISK_DIR         ./library                       (STORAGE=disk)
  *   PUBLIC_URL       where readers fetch bytes: the bucket's public domain or CDN (disk: <this server>/files/)
- *   SERVER_URL       this server's own address (disk uploads come here)
- *   TOKENS           name:token,name:token           (callers; a name ending in ! is an administrator)
+ *   SERVER_URL       this server's own address (disk uploads and file links come here; a private library's store names it)
+ *   TOKENS           name:token,name:token           (bootstrap callers: author; a name ending in ! is an administrator)
  *   PUBLIC_READ      true | false                    (search and read without a token; default true)
+ *   ACCESS_TOKEN_TTL 900                             (seconds an access token lasts)
+ *   REFRESH_TOKEN_TTL 2592000                        (seconds a refresh token lasts: 30 days)
+ *   REFRESH_TOKEN_GRACE 30                           (seconds a used refresh token still gives the same successor; 0 to 60, 0: never)
+ *   AUTH_KEY_SECRET  at least 32 characters          (encrypts the token signing keys; needed once there are users or PUBLIC_READ=false)
+ *   AUTH_RATE_LIMIT  10                              (token requests per minute and username; per process)
+ *   AUTH_RATE_LIMIT_IP 60                            (token requests per minute and address; per process)
+ *   TRUST_PROXY      false                           (true: the caller's address is the last X-Forwarded-For entry)
  *   ORIGINS          https://app.example.org,…       (browsers allowed to call; default any)
  *   MAX_BYTES        536870912
  *   PORT             8080
  *   NAME             what tools show for this library (default "Chalk library")
  *   UPLOAD_SECRET    signs disk upload tickets (STORAGE=disk; default: random, so tickets end with a restart)
+ *   FILE_LINK_SECRET signs disk file links (STORAGE=disk, PUBLIC_READ=false; default: derived from UPLOAD_SECRET,
+ *                    so random at start when neither is set and links end with a restart)
  */
-export async function libraryFromEnv(env: Record<string, string | undefined> = process.env): Promise<LibraryOptions & { port: number }> {
+export async function libraryFromEnv(env: Record<string, string | undefined> = process.env): Promise<LibraryOptions & DeliveryOptions & { port: number }> {
   const need = (k: string) => { const v = env[k]; if (!v) throw new Error(`${k} is not set`); return v; };
   const port = Number(env.PORT ?? 8080);
+  const positive = (k: string) => { const n = Number(env[k]); if (!Number.isInteger(n) || n <= 0) throw new Error(`${k} must be a whole number above 0`); return n; };
+  // spec §10.2: a grace window of at most 60 seconds
+  const grace = () => { const n = Number(env.REFRESH_TOKEN_GRACE); if (!Number.isInteger(n) || n < 0 || n > 60) throw new Error('REFRESH_TOKEN_GRACE must be a whole number from 0 to 60'); return n; };
+  const refreshGrace = env.REFRESH_TOKEN_GRACE ? grace() : undefined;
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
   const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   let storage: Storage;
@@ -34,25 +50,42 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       region: env.S3_REGION ?? 'auto', virtualHosted: env.S3_VIRTUAL_HOSTED === 'true',
     });
   } else {
-    storage = diskStorage(env.DISK_DIR ?? './library', { uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}) });
+    storage = diskStorage(env.DISK_DIR ?? './library', {
+      uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}), ...(env.FILE_LINK_SECRET ? { linkSecret: env.FILE_LINK_SECRET } : {}),
+    });
   }
+  const publicRead = env.PUBLIC_READ !== 'false';
+  const keySecret = env.AUTH_KEY_SECRET || undefined;
+  try { await checkKeySetup(db, { publicRead, ...(keySecret ? { keySecret } : {}) }); } catch (e) { await db.close(); throw e; }
   return {
     db, storage, port,
     publicUrl: env.PUBLIC_URL ?? `${serverUrl.replace(/\/$/, '')}/files/`,
     callers: tokenCallers(env.TOKENS ?? ''),
-    publicRead: env.PUBLIC_READ !== 'false',
+    publicRead,
+    issuer: serverUrl.replace(/\/+$/, ''),
+    auth: {
+      ...(env.ACCESS_TOKEN_TTL ? { accessTtl: positive('ACCESS_TOKEN_TTL') } : {}),
+      ...(env.REFRESH_TOKEN_TTL ? { refreshTtl: positive('REFRESH_TOKEN_TTL') } : {}),
+      ...(refreshGrace !== undefined ? { refreshGrace } : {}),
+      ...(keySecret ? { keySecret } : {}),
+      rateLimit: { ...(env.AUTH_RATE_LIMIT ? { perUser: positive('AUTH_RATE_LIMIT') } : {}), ...(env.AUTH_RATE_LIMIT_IP ? { perAddress: positive('AUTH_RATE_LIMIT_IP') } : {}) },
+      trustProxy: env.TRUST_PROXY === 'true',
+    },
     ...(env.MAX_BYTES ? { maxBytes: Number(env.MAX_BYTES) } : {}),
     ...(env.ORIGINS ? { origins: env.ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
     ...(env.NAME ? { name: env.NAME } : {}),
+    // only when set: the default (localhost) would be wrong in a private library's store; the request's address is used instead
+    ...(env.SERVER_URL ? { serverUrl: env.SERVER_URL } : {}),
   };
 }
 
-/** `name:token,…`; a name ending in `!` is an administrator. Compared in constant time. */
+/** `name:token,…` (bootstrap tokens): a name ending in `!` is an administrator, any other an author. Compared in constant time. */
 export function tokenCallers(spec: string): (token: string) => Caller | null {
   const digest = (s: string) => createHash('sha256').update(s).digest();
   const list = spec.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
     const i = s.indexOf(':'), name = s.slice(0, i), token = s.slice(i + 1);
-    return { user: name.replace(/!$/, ''), admin: name.endsWith('!'), d: digest(token) };
+    const admin = name.endsWith('!'), user = name.replace(/!$/, '');
+    return { d: digest(token), caller: { user, sub: user, admin, roles: admin ? ['reader', 'author', 'admin'] : ['reader', 'author'], kind: 'bootstrap' } satisfies Caller };
   });
-  return (token) => { const d = digest(token); return list.find((c) => timingSafeEqual(c.d, d)) ?? null; };
+  return (token) => { const d = digest(token); return list.find((c) => timingSafeEqual(c.d, d))?.caller ?? null; };
 }

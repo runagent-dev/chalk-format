@@ -170,8 +170,11 @@ for (const pkg of PACKAGES) {
   // every bare import must be a Node builtin or a declared dependency
   const allowed = new Set([...Object.keys(deps), ...Object.keys(peers)]);
   for (const file of walk(dist).filter((f) => /\.(js|mjs)$/.test(f))) {
-    for (const m of readFileSync(file, 'utf8').matchAll(/(?:from\s*|import\s*\(\s*|import\s+)(['"])([^'"]+)\1/g)) {
-      const spec = m[2];
+    // a static import or re-export starts a line or follows a `;` (`import … from '…'`, `export*from"…"`, `import '…'`);
+    // a dynamic import is `import('…')` anywhere. Matching `from '…'` anywhere read words in comments and strings as imports.
+    const IMPORTS = /(?:^|;)[ \t]*(?:import|export)\b[^;'"`]*?\bfrom\s*(['"])([^'"\n]+)\1|(?:^|;)[ \t]*import[ \t]*(['"])([^'"\n]+)\3|\bimport\s*\(\s*(['"])([^'"\n]+)\5/gm;
+    for (const m of readFileSync(file, 'utf8').matchAll(IMPORTS)) {
+      const spec = m[2] ?? m[4] ?? m[6];
       if (spec.startsWith('.') || spec.startsWith('node:') || builtinModules.includes(spec.split('/')[0])) continue;
       const name = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
       if (!allowed.has(name)) { problems++; console.error(`${NPM_NAMES[pkg.name]}: ${path.relative(dir, file)} imports ${spec}, not a dependency`); }

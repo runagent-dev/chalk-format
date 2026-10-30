@@ -81,3 +81,7 @@ write('stream-text.schema.json', { ...header('stream-text.schema.json', 'Chalk s
 // ---- 1.5: lab manifests ----
 write('lab-manifest.schema.json', { ...header('lab-manifest.schema.json', 'Chalk lab manifest, what a store keeps about a lab (spec 1.5 §4)'), ...z.toJSONSchema(labManifestSchema, { target: 'draft-2020-12', io: 'input' }) });
 write('question-manifest.schema.json', { ...header('question-manifest.schema.json', 'Chalk question manifest, what a store keeps about a question (spec 1.7)'), ...z.toJSONSchema(questionManifestSchema, { target: 'draft-2020-12', io: 'input' }) });
+
+// ---- 1.8: books in a library ----
+write('library-book.schema.json', { ...header('library-book.schema.json', 'Chalk book item, a streamed book index kept in a library (spec 1.8 §3.1)'), ...z.toJSONSchema(registry.libraryBookSchema, { target: 'draft-2020-12', io: 'input' }) });
+write('library-links.schema.json', { ...header('library-links.schema.json', 'Chalk links item, sentences of a book linked to questions (spec 1.8 §3.4)'), ...z.toJSONSchema(registry.libraryLinksSchema, { target: 'draft-2020-12', io: 'input' }) });

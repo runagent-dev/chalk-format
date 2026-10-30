@@ -559,3 +559,14 @@ describe('review findings, round 3 (container)', () => {
     expect(h.files.get(`assets/${key.replace(':', '_')}`)).toEqual(png);
   });
 });
+
+describe('mergeBook: a patch that does not describe a valid page', () => {
+  it('names the page and the text object when a text object has lost its text, instead of failing with a TypeError', async () => {
+    const h = await Host.open(base3());
+    const e = await h.editor();
+    const broken = edit(e.lesson, 'b', (p) => ({ ...p, objects: p.objects.map((o) => { const { text: _gone, ...rest } = o as Record<string, unknown>; return rest as unknown as LessonObject; }) }));
+    const patch = createPatch(e, broken);
+    await expect(h.save(patch)).rejects.toThrow(/page b: the merged text object .* has no text/);
+    await expect(h.save(patch)).rejects.not.toThrow(TypeError);
+  });
+});
