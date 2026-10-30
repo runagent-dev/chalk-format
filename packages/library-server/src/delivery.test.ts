@@ -83,6 +83,10 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
     const tail = await get(priv, `/v1/files/${h}`, { ...bearer(), Range: 'bytes=-8' });
     expect(await tail.text()).toBe('a lab</p>'.slice(-8));
     expect((await get(priv, `/v1/files/${h}`, { ...bearer(), Range: 'bytes=9999-' })).status).toBe(416);
+    // a browser on another origin may send Range (a suffix range needs a preflight) and read Content-Range
+    const pre = await priv.fetch(new Request(`${BASE}/v1/files/${h}`, { method: 'OPTIONS', headers: { Origin: 'https://reader.example.org', 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization, range' } }));
+    expect(pre.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('range');
+    expect((await get(priv, `/v1/files/${h}`, { ...bearer(), Origin: 'https://reader.example.org', Range: 'bytes=-8' })).headers.get('access-control-expose-headers')).toContain('Content-Range');
     expect((await get(priv, `/v1/files/${'a'.repeat(25)}a`, bearer())).status).toBe(404);
     expect((await get(priv, '/v1/files/not-a-key', bearer())).status).toBe(404);
   });

@@ -67,7 +67,8 @@ export function createLibraryApp(o: LibraryOptions) {
   const issuer = (c: Context) => (o.issuer ?? new URL(c.req.url).origin).replace(/\/+$/, '');
 
   const fail = (c: Context, status: number, code: string, message: string) => c.json({ error: { code, message } }, status as never);
-  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
+  // Range: a reader with a token asks /v1/files for part of a file (a suffix range is not a CORS-safelisted header)
+  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type', 'Range'], exposeHeaders: ['Content-Length', 'Content-Range'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
   // every route asks requireRole(c, 'reader' | 'author' | 'admin'); the caller is a bootstrap token, an API key or a user
   app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)) }));
   mountAuthRoutes(app, auth, { issuer, ...o.auth });
