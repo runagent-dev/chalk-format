@@ -84,12 +84,18 @@ adopts from (reference server: `ADOPT_PREFIXES`); without any, adopting is off.
   the object.
 - A registry whose storage is public MUST NOT adopt an object it would serve as a page (stored as HTML, JavaScript
   or an XML document type, §7.1), answering `forbidden`: the storage serves it with the type it was written with.
-- Idempotent: adopting a key that is already available updates the descriptive fields like registering again
-  (§3), and does not read the bytes again while the location the registry verified still holds them (an uploaded
-  key stays at its standard path). A location whose object is gone is replaced by the new path, verified. A
-  withdrawn key is `gone`.
+- A key may have several locations in one store: two books that hold the same file each have their own copy, and
+  adopting the second path **adds** it (verified once). Idempotent per path: adopting a key at a path it was already
+  verified at updates the descriptive fields like registering again (§3) and does not read the bytes again (the
+  reference server HEADs the path to see it is still there). A key with a copy at the standard path (uploaded) stays
+  there, with nothing read. A withdrawn key is `gone`.
+- Each owner may delete its own copy. The registry serves a location whose object is still there: the reference
+  server serves the best one while it is fresh (its own copy, else the most recently verified) and checks it again
+  with a HEAD once it is older than five minutes (on disk: every time), moving to the next one when it is gone. So
+  readers move to another book's copy within that time, and a bucket sees at most one HEAD per location per five
+  minutes.
 
-The owner of an adopted path keeps the object there and never changes its bytes; readers verify what they get
+The owner of an adopted path never changes the bytes at it; readers verify what they get
 (1.2 §6.4), so a changed object is refused, not served as the key.
 
 Every way the registry gives out bytes (§7, §7.1) finds them at the asset's location, not only at the standard

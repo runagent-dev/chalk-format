@@ -54,7 +54,7 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
     const key = keyOf(raw), row = key ? await assetOf(key) : null;
     if (row?.status === 'withdrawn') return { res: fail(c, 410, 'gone', 'this asset was withdrawn') };
     if (!key || row?.status !== 'available') return { res: fail(c, 404, 'not_found', 'no such asset') };
-    return { key, path: await locate(o.db, key), type: row.type }; // where the bytes are: the standard path, or where they were adopted
+    return { key, path: await locate(o.db, o.storage, key), type: row.type }; // where the bytes are: the standard path, or where they were adopted
   };
   const base = (c: Context) => baseOf(c, o.serverUrl);
 

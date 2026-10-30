@@ -167,7 +167,7 @@ export function createLibraryApp(o: LibraryOptions) {
       await ensureStore();
       await db.query(`INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
         ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size`, [d.key, d.sha256, d.type, d.size, c.get('caller')!.user]);
-      await db.query('INSERT INTO locations (key, store, path, verified_at) VALUES ($1, $2, $3, now()) ON CONFLICT (key, store) DO UPDATE SET verified_at = now()', [d.key, 'library', path]);
+      await db.query('INSERT INTO locations (key, store, path, verified_at) VALUES ($1, $2, $3, now()) ON CONFLICT (key, store, path) DO UPDATE SET verified_at = now(), missing = false', [d.key, 'library', path]);
     }
     await describe(d);
     row = await rowOf(d.key);

@@ -160,9 +160,13 @@ the asset with that path as its location. Nothing is copied.
 - **Withdrawing** an adopted key marks it withdrawn and takes it out of the index, and `/v1/files` answers `410`,
   but the object itself is **never deleted**: it belongs to the tool that wrote it. Only a copy at the standard
   path (if there is one) is removed. To make the bytes unreachable at the CDN, the owner deletes the object.
-- **The owner keeps the object where it is.** If it is moved or deleted, readers of the index get a 404 (they
-  verify what they get, so another file at that path is refused). Adopting the key again at a new path replaces a
-  location whose object is gone; an adopted key whose object still exists keeps its first location.
+- **Several books, several copies.** When two books hold the same file, each adopts its own path and the key has
+  both as locations. If one book deletes its copy (pruning a draft), the library moves to the other: it serves the
+  most recently verified copy while that is fresh, and HEADs it again once it is older than five minutes (on disk,
+  every time), so readers, the index included, switch within about five minutes (plus the shard's one-minute
+  cache). If every copy is gone, readers get a 404 (they verify what they get, so other bytes at a path are
+  refused). Adopting a path again HEADs it and reads nothing. The schema step that allows this (step 4: `locations`
+  keyed by key, store and path, with `checked_at` and `missing`) runs by itself on the first start.
 - A key the library already has (uploaded, or adopted elsewhere) stays where it is; adopting it again only updates
   its title, tags and the other descriptive fields, and reads nothing.
 

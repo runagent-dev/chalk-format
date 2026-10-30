@@ -28,10 +28,41 @@ export function adoptPrefixes(spec: string | readonly string[] | undefined): str
   return list;
 }
 
-/** Where the library keeps a key's bytes: its location in the library's store, else the standard path. */
-export async function locate(db: Db, key: string): Promise<string> {
-  const [l] = await db.query<{ path: string }>("SELECT path FROM locations WHERE key = $1 AND store = 'library'", [key]);
-  return l?.path ?? standardPath(key);
+/**
+ * How long a location is trusted after it was last seen (verified on adopting, or checked by a HEAD). A bucket
+ * (S3/R2) answers a HEAD over the network, so a location is checked at most once in this time, not on every request;
+ * a folder answers from the file system, so it is checked every time (and no row is written unless it changed).
+ */
+export const LOCATION_CHECK_SECONDS = 300;
+const checkSeconds = (storage: Storage) => ('ticket' in storage ? 0 : LOCATION_CHECK_SECONDS);
+
+type LocationRow = { path: string; verified_at: string | Date | null; checked_at: string | Date | null; missing: boolean };
+/** A key's locations in the library's store, best first: the library's own copy, then present ones, newest verified first. */
+const locationsOf = (db: Db, key: string) => db.query<LocationRow>(`SELECT path, verified_at, checked_at, missing FROM locations WHERE key = $1 AND store = 'library'
+  ORDER BY (path LIKE 'c1/%') DESC, missing, verified_at DESC NULLS LAST, path`, [key]);
+
+/**
+ * Where the library keeps a key's bytes (registry-api §3.1): a location whose object is there, else the standard
+ * path. A key adopted from several books has a location per book, each its owner's copy, and an owner may delete
+ * its copy (pruning a draft). The best location is used while it is fresh; once it is not, it is HEADed: present, it
+ * is used (and fresh again); gone, it is marked missing and the next one is tried. So a bucket sees at most one HEAD
+ * per location per LOCATION_CHECK_SECONDS, and readers move to another book's copy within that time.
+ */
+export async function locate(db: Db, storage: Storage, key: string): Promise<string> {
+  const rows = await locationsOf(db, key);
+  if (!rows.length) return standardPath(key);
+  if (rows.length === 1) return rows[0]!.path;   // nowhere else to go: no need to look
+  const ttl = checkSeconds(storage) * 1000, now = Date.now();
+  for (const r of rows) {
+    const seen = r.checked_at ?? r.verified_at;
+    if (ttl > 0 && seen && now - new Date(seen).getTime() < ttl) { if (!r.missing) return r.path; continue; }
+    const missing = (await storage.head(r.path)) === null;
+    if (ttl > 0 || missing !== r.missing) {
+      await db.query("UPDATE locations SET checked_at = $3, missing = $4 WHERE key = $1 AND store = 'library' AND path = $2", [key, r.path, new Date(now), missing]);
+    }
+    if (!missing) return r.path;
+  }
+  return rows[0]!.path;   // all gone: the reader gets the store's 404
 }
 
 /**
@@ -40,7 +71,7 @@ export async function locate(db: Db, key: string): Promise<string> {
  */
 export async function assetAt(db: Db, path: string): Promise<{ key: string; type: string; status: string } | null> {
   const [row] = await db.query<{ key: string; type: string; status: string }>(`SELECT a.key, a.type, a.status FROM locations l JOIN assets a ON a.key = l.key
-    WHERE l.store = 'library' AND l.path = $1 ORDER BY l.verified_at DESC NULLS LAST LIMIT 1`, [path]);
+    WHERE l.store = 'library' AND l.path = $1 ORDER BY l.missing, l.verified_at DESC NULLS LAST LIMIT 1`, [path]);
   if (row) return row;
   const m = /^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/([a-z2-7]{25}[aeimquy4])$/.exec(path);
   if (!m) return null;
@@ -94,10 +125,19 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
     if (a.size > d.maxBytes) return fail(c, 413, 'too_large', `at most ${d.maxBytes} bytes`);
     const [row] = await db.query<{ status: string }>('SELECT status FROM assets WHERE key = $1', [a.key]);
     if (row?.status === 'withdrawn') return fail(c, 410, 'gone', 'this asset was withdrawn');
-    const [loc] = await db.query<{ path: string; verified_at: unknown }>("SELECT path, verified_at FROM locations WHERE key = $1 AND store = 'library'", [a.key]);
-    // already available where the library verified it (adopted here before, or uploaded): nothing is read again. A
-    // location whose object is gone (its owner deleted it) is replaced by this one.
-    const keep = row?.status === 'available' && loc?.verified_at != null && (loc.path === a.path || (await storage.head(loc.path)) !== null);
+    const locs = await locationsOf(db, a.key);
+    // each path is adopted once: already verified at this path (and not found gone since), or the library has its own
+    // copy at the standard path (uploaded; no one else deletes it), so nothing is read again. Another book's path is
+    // ADDED as one more location, so the key outlives either book's copy.
+    // A path adopted before is HEADed (not read): its owner may have deleted it since.
+    const std = locs.find((l) => l.path === standardPath(a.key) && l.verified_at != null);
+    const same = locs.find((l) => l.path === a.path && l.verified_at != null);
+    let keep = row?.status === 'available' && Boolean(std);
+    if (row?.status === 'available' && !keep && same) {
+      const head = await storage.head(a.path);
+      keep = head !== null && head.size === a.size;
+      await db.query("UPDATE locations SET checked_at = $3, missing = $4 WHERE key = $1 AND store = 'library' AND path = $2", [a.key, a.path, new Date(), head === null]);
+    }
     if (!keep) {
       const head = await storage.head(a.path);
       if (!head) return fail(c, 409, 'conflict', `there is no object at ${a.path}`);
@@ -115,14 +155,14 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
       await db.query(`WITH asset AS (INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
           ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size WHERE assets.status = 'pending')
         INSERT INTO locations (key, store, path, verified_at) SELECT $1, 'library', $6, now() WHERE NOT EXISTS (SELECT 1 FROM assets WHERE key = $1 AND status = 'withdrawn')
-        ON CONFLICT (key, store) DO UPDATE SET path = EXCLUDED.path, verified_at = now()`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user, a.path]);
+        ON CONFLICT (key, store, path) DO UPDATE SET verified_at = now(), checked_at = NULL, missing = false`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user, a.path]);
       // withdrawn while its bytes were being read: nothing more is done for it
       const [now] = await db.query<{ status: string }>('SELECT status FROM assets WHERE key = $1', [a.key]);
       if (now?.status === 'withdrawn') return fail(c, 410, 'gone', 'this asset was withdrawn');
       // an upload that was started (pending) may have left unverified bytes at the standard path, the library's own
       // copy: removed, so the derived store 404s and readers find the key where it was adopted
-      // (unless a register of that upload just made the standard path its location)
-      if (row?.status === 'pending' && (await locate(db, a.key)) === a.path) await storage.remove(standardPath(a.key));
+      // (unless a register of that upload just made the standard path one of its locations)
+      if (row?.status === 'pending' && !(await locationsOf(db, a.key)).some((l) => l.path === standardPath(a.key))) await storage.remove(standardPath(a.key));
     }
     await d.describe(a);
     return c.json(await d.recordOf(a.key));
@@ -134,12 +174,18 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
     const h0 = /^([a-z2-7]{2})\.json$/.exec(c.req.param('shard'))?.[1];
     // a private library names no index (its readers' store redirects through the location); a shard is not served either
     if (!h0 || !d.publicRead) return c.text('not found', 404, { 'Access-Control-Allow-Origin': '*' });
-    const rows = await db.query<{ key: string; size: string | number; type: string; path: string }>(`SELECT a.key, a.size, a.type, l.path FROM locations l JOIN assets a ON a.key = l.key
-      WHERE l.store = 'library' AND l.path NOT LIKE 'c1/%' AND a.status = 'available' AND substr(a.key, 4, 2) = $1 ORDER BY a.key`, [h0]);
+    // keys with no copy at the standard path (the derived store has those), each with its location's paths, best first
+    const rows = await db.query<{ key: string; size: string | number; type: string; paths: string[] }>(`SELECT a.key, a.size, a.type,
+        array_agg(l.path ORDER BY l.missing, l.verified_at DESC NULLS LAST, l.path) AS paths
+      FROM locations l JOIN assets a ON a.key = l.key
+      WHERE l.store = 'library' AND a.status = 'available' AND substr(a.key, 4, 2) = $1
+      GROUP BY a.key, a.size, a.type HAVING bool_and(l.path NOT LIKE 'c1/%') ORDER BY a.key`, [h0]);
     const entries: Record<string, { p: string; s: number; t: string }> = {};
     for (const r of rows) {
-      if (!isC1Key(r.key) || r.path === standardPath(r.key)) continue;
-      entries[r.key.slice(3)] = { p: filesBase + r.path.split('/').map(encodeURIComponent).join('/'), s: Number(r.size), t: r.type };
+      if (!isC1Key(r.key)) continue;
+      // a key in several books: the copy that is still there (checked as locate does, at most once in a while)
+      const path = r.paths.length > 1 ? await locate(db, storage, r.key) : r.paths[0]!;
+      entries[r.key.slice(3)] = { p: filesBase + path.split('/').map(encodeURIComponent).join('/'), s: Number(r.size), t: r.type };
     }
     const headers = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' };
     if (!Object.keys(entries).length) return c.text('not found', 404, headers);

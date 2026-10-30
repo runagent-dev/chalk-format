@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { serve, type ServerType } from '@hono/node-server';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { assetKeyAndSha256, storeDescriptorSchema, type StoreDescriptor } from '@chalk-format/model';
 import { createRegistryClient, createResolver, registryLibrary, standardPath } from '@chalk-format/store';
 import { adoptPrefixes, checkLibrary, createLibraryApp, diskStorage, libraryFromEnv, openDb, s3Storage, tokenCallers, type Db, type Storage } from './index.js';
@@ -158,7 +158,7 @@ describe('adopting a file in place: a public disk library', () => {
     expect(reads).toEqual([]);
   });
 
-  it('a pending upload is completed by adopting; a location whose object its owner deleted is replaced', async () => {
+  it('a pending upload is completed by adopting; a path adopted after the first copy was deleted is added', async () => {
     const bytes = new TextEncoder().encode('started as an upload'), k = await assetKeyAndSha256(bytes);
     const up = await f(`${BASE}/v1/uploads`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify({ ...k, type: 'image/png', size: bytes.byteLength }) });
     expect(up.status).toBe(200);
@@ -173,7 +173,41 @@ describe('adopting a file in place: a public disk library', () => {
     expect(text((await registryLibrary({ url: BASE, fetch: f }).get(k.key))!.bytes)).toBe(text(bytes));
     unlinkSync(join(dir, 'chalk-books', 'b2', 'assets', 'a.png'));
     put('chalk-books/b3/assets/a.png', bytes);
-    expect(await (await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/b3/assets/a.png' })).json()).toMatchObject({ locations: [{ path: 'chalk-books/b3/assets/a.png' }] });
+    const rec = (await (await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/b3/assets/a.png' })).json()) as Rec;
+    expect(rec.locations!.map((l) => l.path).sort()).toEqual(['chalk-books/b2/assets/a.png', 'chalk-books/b3/assets/a.png']);
+    expect(text(await (await f(`${BASE}/v1/files/${k.key}`)).arrayBuffer())).toBe(text(bytes));
+  });
+
+  it('two books share a file: each path is a location; when A deletes its copy, B\'s path serves it everywhere', async () => {
+    const bytes = new TextEncoder().encode('a figure two books use'), k = await assetKeyAndSha256(bytes);
+    const A = 'chalk-books/book-a/assets/fig.png', B = 'chalk-books/book-b/assets/fig.png';
+    put(A, bytes); put(B, bytes);
+    expect((await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: A })).status).toBe(200);
+    reads.length = 0;
+    const rec = (await (await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: B })).json()) as Rec;
+    expect(reads).toEqual([B]);   // B's copy verified once
+    expect(rec.locations!.map((l) => l.path).sort()).toEqual([A, B]);
+    reads.length = 0;
+    expect((await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: A })).status).toBe(200);
+    expect(reads).toEqual([]);   // idempotent per path
+    // A's draft drops the file, and A prunes it
+    unlinkSync(join(dir, ...A.split('/')));
+    expect(text(await (await f(`${BASE}/v1/files/${k.key}`)).arrayBuffer())).toBe(text(bytes));
+    const { url } = (await (await f(`${BASE}/v1/assets/${k.key}/link`)).json()) as { url: string };
+    expect(url.startsWith(`${BASE}/files/${B}?`)).toBe(true);
+    const shard = (await (await f(`${BASE}/index/${k.key.slice(3, 5)}.json`)).json()) as { entries: Record<string, { p: string }> };
+    expect(shard.entries[k.key.slice(3)]!.p).toBe(`${BASE}/files/${B}`);
+    const { items } = (await (await f(`${BASE}/v1/stores`)).json()) as { items: StoreDescriptor[] };
+    expect(text((await createResolver({ hostStores: items, fetch: f }).resolve(k.key, 'image/png'))!.bytes)).toBe(text(bytes));
+    expect((await f(`${BASE}/files/${A}`)).status).toBe(404);
+    // adopting A's path again while it is gone: there is nothing there
+    expect((await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: A })).status).toBe(409);
+    // A publishes it again: its path is checked (a HEAD, no read) and is a present location once more
+    put(A, bytes);
+    reads.length = 0;
+    expect((await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: A })).status).toBe(200);
+    expect(reads).toEqual([]);
+    unlinkSync(join(dir, ...B.split('/')));
     expect(text(await (await f(`${BASE}/v1/files/${k.key}`)).arrayBuffer())).toBe(text(bytes));
   });
 
@@ -258,6 +292,27 @@ describe('adopting: off by default, and a private library', () => {
     expect(await db.query('SELECT path FROM locations WHERE key = $1', [k.key])).toEqual([]);
   });
 
+  it('step 4 migrates a library whose locations allow one path per key and store', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'chalk-adopt-db-'));
+    try {
+      let old = await openDb(`pglite:${data}`);
+      // as a library before this change left it: the reference primary key, no step 4
+      await old.query('ALTER TABLE locations DROP CONSTRAINT locations_pkey');
+      await old.query('ALTER TABLE locations DROP COLUMN checked_at');
+      await old.query('ALTER TABLE locations DROP COLUMN missing');
+      await old.query('ALTER TABLE locations ADD PRIMARY KEY (key, store)');
+      await old.query('DELETE FROM chalk_library_schema WHERE version = 4');
+      await old.query("INSERT INTO stores (id, kind, template) VALUES ('library', 'derived', 'x')");
+      await old.query("INSERT INTO assets (key, sha256, type, size, status) VALUES ('c1:aaaaaaaaaaaaaaaaaaaaaaaaaa', $1, 'image/png', 1, 'available')", ['a'.repeat(64)]);
+      await old.query("INSERT INTO locations (key, store, path) VALUES ('c1:aaaaaaaaaaaaaaaaaaaaaaaaaa', 'library', 'chalk-books/a/x')");
+      await old.close();
+      old = await openDb(`pglite:${data}`);
+      await old.query("INSERT INTO locations (key, store, path) VALUES ('c1:aaaaaaaaaaaaaaaaaaaaaaaaaa', 'library', 'chalk-books/b/x')");
+      expect((await old.query<{ path: string; missing: boolean }>('SELECT path, missing FROM locations ORDER BY path'))).toEqual([{ path: 'chalk-books/a/x', missing: false }, { path: 'chalk-books/b/x', missing: false }]);
+      await old.close();
+    } finally { rmSync(data, { recursive: true, force: true }); }
+  }, 60_000);
+
   it('ADOPT_PREFIXES: each made a folder, never the library\'s own layout or a path outside the bucket', async () => {
     expect(adoptPrefixes(' chalk-books , media/old/ ')).toEqual(['chalk-books/', 'media/old/']);
     expect(adoptPrefixes(undefined)).toEqual([]);
@@ -270,6 +325,7 @@ describe('adopting: off by default, and a private library', () => {
 
 // ---- an S3 bucket (a stub that checks a request is signed, like a private bucket) and a CDN in front of it ----
 describe('adopting on S3: a public library behind a CDN, and a private one', () => {
+  afterEach(() => { vi.useRealTimers(); });
   const CREDS = { accessKeyId: 'AKIDTESTADOPT', secretAccessKey: 'adopt-secret' };
   const objects = new Map<string, Uint8Array>(), types = new Map<string, string>(), log: string[] = [];
   let db: Db, s3: ServerType, cdn: ServerType, lib: ServerType, priv: ServerType, S3: string, CDN: string, LIB: string, PRIV: string;
@@ -355,6 +411,37 @@ describe('adopting on S3: a public library behind a CDN, and a private one', () 
     expect((await fetch(`${PRIV}/index/${k.key.slice(3, 5)}.json`)).status).toBe(404);
     const reader = createResolver({ hostStores: items, token: () => 't-1' });
     expect(text((await reader.resolve(k.key, 'image/png'))!.bytes)).toBe(text(IMG));
+  });
+
+  it('two books share a file on S3: the most recently verified copy is served; once A\'s is deleted, a check after LOCATION_CHECK_SECONDS switches to B', async () => {
+    const bytes = new TextEncoder().encode('shared on S3'), s = await assetKeyAndSha256(bytes);
+    const A = 'chalk-books/a/assets/s.png', B = 'chalk-books/b/assets/s.png';
+    objects.set(A, bytes); types.set(A, 'image/png');
+    expect((await createRegistryClient(LIB, { token: 't-1' }).adopt({ ...s, type: 'image/png', size: bytes.byteLength, path: A })).status).toBe('available');
+    // B adopts a little later: the newest verified copy is the one served
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 2000);
+    objects.set(B, bytes); types.set(B, 'image/png');
+    await createRegistryClient(LIB, { token: 't-1' }).adopt({ ...s, type: 'image/png', size: bytes.byteLength, path: B });
+    const at = async () => new URL((await fetch(`${LIB}/v1/files/${s.key}`, { redirect: 'manual' })).headers.get('location')!).pathname;
+    const entry = async () => ((await (await fetch(`${LIB}/index/${s.key.slice(3, 5)}.json`)).json()) as { entries: Record<string, { p: string }> }).entries[s.key.slice(3)]!.p;
+    // B is pruned first this time; within the check interval nothing is HEADed and B is still named
+    objects.delete(B);
+    log.length = 0;
+    expect(await at()).toBe(`/books/${B}`);
+    expect(await entry()).toBe(`${CDN}/${B}`);
+    expect(log).toEqual([]);
+    // after it, one HEAD finds B gone and A is used; the next requests HEAD nothing
+    vi.setSystemTime(Date.now() + 301_000);
+    expect(await at()).toBe(`/books/${A}`);
+    expect(log.filter((l) => l.startsWith('HEAD'))).toEqual([`HEAD ${B}`, `HEAD ${A}`]);
+    log.length = 0;
+    expect(await entry()).toBe(`${CDN}/${A}`);
+    expect(await at()).toBe(`/books/${A}`);
+    expect(log).toEqual([]);
+    const reader = createResolver({ hostStores: ((await (await fetch(`${LIB}/v1/stores`)).json()) as { items: StoreDescriptor[] }).items });
+    expect(text((await reader.resolve(s.key, 'image/png'))!.bytes)).toBe(text(bytes));
+    vi.useRealTimers();
   });
 
   it('withdrawing deletes only the standard path, never the adopted object', async () => {
