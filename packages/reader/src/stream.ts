@@ -86,16 +86,16 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     version: await sha256Id(lib.bytes),
     json: async (path, signal) => JSON.parse(dec.decode(await lib.read(path, { signal }))) as unknown,
     at: (path) => new URL(path, lib.library.endsWith('/') ? lib.library : `${lib.library}/`).href,
-    // a store that needs the token cannot be named by a bare URL (an <img> sends no header): its media are fetched, checked, and drawn from a blob
+    // drawn by URL, so the browser and the CDN cache it, as any streamed book's media (spec 1.2 §6: what a URL draws is not hashed). A store that
+    // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
+    // media are fetched, checked against their id, and drawn from a blob
     async assetUrl(id, signal) {
-      const key = resolutionKey(id);
-      if (!key) return null;
-      if (!Object.keys(lib.headers).length) return lib.urlOf(key);
-      return new Blob([(await lib.fetchItem(key, { signal })) as BlobPart], { type: lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream' });
+      if (!resolutionKey(id)) return null;
+      if (!Object.keys(lib.headers).length && lib.store.verify !== 'always') return lib.urlOf(id);
+      return new Blob([(await lib.fetchItem(id, { signal })) as BlobPart], { type: lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream' });
     },
     async assetBytes(id, signal) {
-      const key = resolutionKey(id);
-      return key ? (await lib.fetchItem(key, { signal })).slice().buffer as ArrayBuffer : undefined;
+      return resolutionKey(id) ? (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer : undefined;
     },
     library: lib,
   }, o);
@@ -174,6 +174,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
     const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null);
     if (r == null) return null;
     if (typeof r === 'string') return r;
+    // disposed while the bytes were on their way: no URL that nothing would revoke
+    if (abort.signal.aborted) return null;
     const u = URL.createObjectURL(r); owned.push(u); return u;
   };
   let text: Promise<StreamText | null> | null = null;

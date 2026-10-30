@@ -111,6 +111,15 @@ describe('openLibraryBook (books in a library)', () => {
     await expect(book.read('pages/1-0000.json')).rejects.toThrow(/not a file/);
   });
 
+  it('checks a sha256: id against its whole digest, not only the part its c1 key keeps', async () => {
+    const p = await publish();
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book, p.picture]).fetch });
+    expect(await book.fetchItem(`sha256:${p.picture.sha256}`)).toEqual(p.picture.bytes);
+    // the same c1 key (the first 130 bits), another digest: fetched from the same place, refused
+    const last = p.picture.sha256.at(-1) === '0' ? '1' : '0';
+    await expect(book.fetchItem(`sha256:${p.picture.sha256.slice(0, -1)}${last}`)).rejects.toThrow(/not sha256:/);
+  });
+
   it('sends the token to a library that needs one (PUBLIC_READ=false)', async () => {
     const p = await publish();
     const items = [p.book, p.pageItem, p.textItem, p.linksItem, p.picture];

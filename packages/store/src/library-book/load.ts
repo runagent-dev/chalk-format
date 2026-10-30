@@ -42,8 +42,8 @@ export type LibraryBook = {
   keyOf(path: string): string | undefined;
   /** A file of `index` (or `book.json`: `index` itself), fetched and checked against its key. */
   read(path: string, init?: { signal?: AbortSignal }): Promise<Uint8Array>;
-  /** Any item of the library by key, fetched from the store and checked against the key. */
-  fetchItem(key: string, init?: { signal?: AbortSignal }): Promise<Uint8Array>;
+  /** Any item of the library by its content id (a c1 key, or a `sha256:` id, fetched by its c1 key), checked against that id in full. */
+  fetchItem(id: string, init?: { signal?: AbortSignal }): Promise<Uint8Array>;
   /** Where the store delivers an item or a media file (a content key: c1, or sha256 named by its c1 key), or null for an id the library cannot name. */
   urlOf(id: string): string | null;
   /** Headers a fetch from the store needs (a bearer token for a store with `auth: 'bearer'`). */
@@ -98,11 +98,14 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Librar
   const store = pickStore(stores);
   if (!store) throw new Error('the library names no store to read from');
   const headers: Record<string, string> = store.auth === 'bearer' && o.token ? { Authorization: `Bearer ${o.token}` } : {};
-  const get = async (key: string, signal?: AbortSignal): Promise<Uint8Array> => {
+  // a `sha256:` id is fetched by its c1 key but checked against the whole digest it names
+  const get = async (id: string, signal?: AbortSignal): Promise<Uint8Array> => {
+    const key = resolutionKey(id);
+    if (!key) throw new Error(`${id} is not a content key`);
     const r = await doFetch(storeUrl(store, key), { headers, ...(signal ? { signal } : {}) });
-    if (!r.ok) throw new Error(`could not fetch ${key} from the library (${r.status})`);
+    if (!r.ok) throw new Error(`could not fetch ${id} from the library (${r.status})`);
     const bytes = new Uint8Array(await r.arrayBuffer());
-    if (!(await verifyAssetBytes(key, bytes))) throw new Error(`the library sent bytes that are not ${key}`);
+    if (!(await verifyAssetBytes(id, bytes))) throw new Error(`the library sent bytes that are not ${id}`);
     return bytes;
   };
 
