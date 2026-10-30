@@ -116,6 +116,10 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
           ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size WHERE assets.status = 'pending')
         INSERT INTO locations (key, store, path, verified_at) VALUES ($1, 'library', $6, now())
         ON CONFLICT (key, store) DO UPDATE SET path = EXCLUDED.path, verified_at = now()`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user, a.path]);
+      // an upload that was started (pending) may have left unverified bytes at the standard path, the library's own
+      // copy: removed, so the derived store 404s and readers find the key where it was adopted
+      // (unless a register of that upload just made the standard path its location)
+      if (row?.status === 'pending' && (await locate(db, a.key)) === a.path) await storage.remove(standardPath(a.key));
     }
     await d.describe(a);
     return c.json(await d.recordOf(a.key));

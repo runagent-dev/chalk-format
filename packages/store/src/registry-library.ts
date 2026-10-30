@@ -68,8 +68,9 @@ export function registryLibrary(o: {
       const pub = await deliveryStore();
       const s = pub ?? (o.token ? await tokenStore() : null);
       if (!s) return null;
-      let r = pub ? await doFetch(at(s, key)) : await fetchWithToken(doFetch, o.token, at(s, key));
-      if (r.status === 404 && pub) { const u = await indexed(key); if (u) r = await doFetch(u); }
+      // an adopted key: where the index says, before the derived path (which may hold an unverified upload's bytes)
+      const u = pub ? (await indexed(key)) ?? at(s, key) : null;
+      const r = u ? await doFetch(u) : await fetchWithToken(doFetch, o.token, at(s, key));
       if (!r.ok) return null;
       return { bytes: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') ?? 'application/octet-stream' };
     },

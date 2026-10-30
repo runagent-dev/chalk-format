@@ -156,8 +156,15 @@ describe('adopting a file in place: a public disk library', () => {
     const bytes = new TextEncoder().encode('started as an upload'), k = await assetKeyAndSha256(bytes);
     const up = await f(`${BASE}/v1/uploads`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify({ ...k, type: 'image/png', size: bytes.byteLength }) });
     expect(up.status).toBe(200);
+    // the uploader PUT other bytes and never registered them: the library's own copy, unverified, at the standard path
+    const { upload } = (await up.json()) as { upload: { url: string; headers?: Record<string, string> } };
+    expect((await f(upload.url, { method: 'PUT', headers: upload.headers ?? {}, body: new TextEncoder().encode('started as an uplaod') })).status).toBe(200);
+    expect(existsSync(join(dir, ...standardPath(k.key).split('/')))).toBe(true);
     put('chalk-books/b2/assets/a.png', bytes);
     expect(await (await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/b2/assets/a.png' })).json()).toMatchObject({ status: 'available', locations: [{ path: 'chalk-books/b2/assets/a.png' }] });
+    // adopting removed it, so the derived store 404s; registryLibrary looks at the index first anyway
+    expect(existsSync(join(dir, ...standardPath(k.key).split('/')))).toBe(false);
+    expect(text((await registryLibrary({ url: BASE, fetch: f }).get(k.key))!.bytes)).toBe(text(bytes));
     unlinkSync(join(dir, 'chalk-books', 'b2', 'assets', 'a.png'));
     put('chalk-books/b3/assets/a.png', bytes);
     expect(await (await adopt({ ...k, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/b3/assets/a.png' })).json()).toMatchObject({ locations: [{ path: 'chalk-books/b3/assets/a.png' }] });
