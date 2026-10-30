@@ -115,6 +115,29 @@ describe('openLibraryBook (books in a library)', () => {
     await book.read(book.index.pages[0]!.file);
   });
 
+  it('gives renditions the type the book declares for them, so a store that takes only that type serves them', async () => {
+    const p = await publish();
+    const webp = await item(new Uint8Array([0x52, 0x49, 0x46, 0x46, 9, 9]), 'image/webp');
+    const raw = JSON.parse(new TextDecoder().decode(p.book.bytes)) as { assets: { renditions?: unknown[] }[] };
+    raw.assets[0]!.renditions = [{ id: webp.key, type: 'image/webp' }];
+    const bookItem = await item(raw, p.book.type, p.book.tags);
+    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/*'] };
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bookItem, webp], { stores: [images, STORE] }).fetch });
+    expect(book.typeOf(webp.key)).toBe('image/webp');
+    expect(book.urlOf(webp.key)).toBe(`https://img.example/${hashPart(webp.key)}`);
+  });
+
+  it('a book that names no store gets every store of the library it can read, not only the one for books', async () => {
+    const p = await publish();
+    const raw = JSON.parse(new TextDecoder().decode(p.book.bytes)) as Record<string, unknown>;
+    delete raw.assetSources;
+    const bookItem = await item(raw, p.book.type, p.book.tags);
+    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/*'] };
+    const indexed = { id: 'idx', kind: 'indexed', base: 'https://idx.example/' };
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bookItem], { stores: [images, indexed, STORE] }).fetch });
+    expect(book.index.assetSources?.map((s) => s.id)).toEqual(['pictures', 'library']);
+  });
+
   it('a superseded or other book is not opened', async () => {
     const p = await publish();
     const superseded = { ...p.book, tags: p.book.tags.map((t) => (t === 'state:current' ? 'state:superseded' : t)) };

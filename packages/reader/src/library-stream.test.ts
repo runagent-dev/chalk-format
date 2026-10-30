@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[] } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -40,7 +40,7 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
     if (u.host === 'lib.example') {
       if (o.token && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-      if (u.pathname === '/v1/stores') return json({ items: [{ ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}) }] });
+      if (u.pathname === '/v1/stores') return json({ items: [{ ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) }] });
       const tags = u.searchParams.getAll('tag');
       const hits = [...items].filter(([, i]) => tags.every((t) => i.tags.includes(t)));
       return json({ items: hits.map(([key, i]) => ({ key, sha256: '0'.repeat(64), type: i.type, size: i.bytes.byteLength, tags: i.tags, status: 'available', createdAt: '2026-10-30T00:00:00Z' })) });
@@ -88,6 +88,14 @@ describe('books in a library, in the reader', () => {
     // an id the library cannot name goes to the host's resolver
     const withHost = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch, resolveAsset: (id) => `https://host.example/${id}` });
     expect(await withHost.assetUrl('img-1')).toBe('https://host.example/img-1');
+  });
+
+  it('leaves media the library has no store for to the host, for their bytes as for their URL', async () => {
+    const lib = await library({ storeMedia: ['application/*'] });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch, resolveAsset: (id) => at(id) });
+    expect(await b.assetUrl(pictureKey)).toBe(at(pictureKey));
+    const bytes = await b.assetBytes(pictureKey);
+    expect(new Uint8Array(bytes!.bytes)).toEqual(picture);
   });
 
   it('never hands out media bytes that fail their key check (no unchecked second try)', async () => {

@@ -90,14 +90,16 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
     // media are fetched, checked against their id, and drawn from a blob
     async assetUrl(id, signal) {
-      const type = lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream';
+      const type = lib.typeOf(id);
       const store = resolutionKey(id) ? lib.storeFor(type) : null;
       if (!store) return null;
       if (!Object.keys(lib.headersFor(type)).length && store.verify !== 'always') return lib.urlOf(id, type);
       return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     async assetBytes(id, signal) {
-      return resolutionKey(id) ? (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer : undefined;
+      // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does)
+      if (!resolutionKey(id) || !lib.storeFor(lib.typeOf(id))) return undefined;
+      return (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer;
     },
     library: lib,
   }, o);

@@ -45,6 +45,8 @@ export type OpenedLibraryBook = {
    * picks the store (default: the type the book gives the id).
    */
   fetchItem(id: string, init?: { signal?: AbortSignal; type?: string }): Promise<Uint8Array>;
+  /** The media type the book gives an id (an asset, one of its renditions, or the links item); `application/octet-stream` otherwise. */
+  typeOf(id: string): string;
   /** Where the library's store delivers an item or a media file, or null for an id the library cannot name. */
   urlOf(id: string, type?: string): string | null;
   /** The library's store for a type: the first of `GET /v1/stores` (derived or api) whose `media` take it. Items and media come from these. */
@@ -137,10 +139,11 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     ...(textItem ? { text: { file: `items/${hashPart(textItem.key)}.json`, ...(textItem.bytes !== undefined ? { bytes: textItem.bytes } : {}) } } : {}),
     // every asset is external in a library book: a `path` would name nothing
     assets: item.assets.map(({ path: _path, ...a }) => a),
-    assetSources: item.assetSources?.length ? item.assetSources : [store],
+    // a book that names no store: the library's own, every one this loader can read, so media in an image-only store are found too
+    assetSources: item.assetSources?.length ? item.assetSources : stores.filter((d) => d.kind === 'derived' || d.kind === 'api'),
   });
   const indexBytes = enc.encode(JSON.stringify(index));
-  const assetTypes = new Map(index.assets.map((a) => [a.id, a.type]));
+  const assetTypes = new Map(index.assets.flatMap((a) => [[a.id, a.type] as const, ...(a.renditions ?? []).map((x) => [x.id, x.type] as const)]));
   const typeOf = (id: string) => (id === links ? LIBRARY_LINKS_TYPE : assetTypes.get(id) ?? 'application/octet-stream');
 
   const book: OpenedLibraryBook = {
@@ -154,6 +157,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
       if (!f) throw new Error(`${path} is not a file of this book`);
       return get(f.key, f.type, init?.signal);
     },
+    typeOf,
     fetchItem: (id, init) => get(id, init?.type ?? typeOf(id), init?.signal),
     urlOf(id, type) { const k = resolutionKey(id), s = storeFor(type ?? typeOf(id)); return k && s ? storeUrl(s, k) : null; },
     storeFor: (type) => storeFor(type),
