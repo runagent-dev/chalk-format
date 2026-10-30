@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, statSync, unlinkSync, copyFileSync, readdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, realpathSync, statSync, unlinkSync, copyFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -177,6 +177,12 @@ export function diskStorage(dir: string, o: { uploadBase: string; secret?: strin
     return p;
   };
   const sign = (s: string) => createHmac('sha256', secret).update(s).digest('base64url');
+  /** An existing file to read, inside the folder once links are followed (a symlink under an adopted prefix must not reach outside). */
+  const existing = (path: string) => {
+    const real = realpathSync(at(path)), root = realpathSync(dir);
+    if (!real.startsWith(root + sep) || !statSync(real).isFile()) throw new Error('not a file inside the library');
+    return real;
+  };
   return {
     id: `disk:${dir}`,
     async presignPut(path, type, size, expiresSeconds) {
@@ -213,8 +219,8 @@ export function diskStorage(dir: string, o: { uploadBase: string; secret?: strin
       await pipeline(limited, createWriteStream(p));
       return n;
     },
-    async head(path) { try { return { size: statSync(at(path)).size }; } catch { return null; } },
-    async read(path) { try { statSync(at(path)); return Readable.toWeb(createReadStream(at(path))) as ReadableStream<Uint8Array>; } catch { return null; } },
+    async head(path) { try { return { size: statSync(existing(path)).size }; } catch { return null; } },
+    async read(path) { try { return Readable.toWeb(createReadStream(existing(path))) as ReadableStream<Uint8Array>; } catch { return null; } },
     async *list(prefix = '') {
       const walk = function* (d: string): Generator<string> {
         for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) yield* walk(p); else yield p; }
@@ -223,6 +229,6 @@ export function diskStorage(dir: string, o: { uploadBase: string; secret?: strin
     },
     async copy(from, to) { const t = at(to); mkdirSync(dirname(t), { recursive: true }); copyFileSync(at(from), t); },
     async remove(path) { try { unlinkSync(at(path)); } catch { /* gone already */ } },
-    file(path) { try { const p = at(path); statSync(p); return p; } catch { return null; } },
+    file(path) { try { return existing(path); } catch { return null; } },
   };
 }

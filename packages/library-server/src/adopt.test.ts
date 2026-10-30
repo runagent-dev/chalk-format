@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -58,6 +58,12 @@ describe('adopting a file in place: a public disk library', () => {
     expect((await adopt({ ...page, type: 'application/x-msdownload', size, path: PAGE_PATH })).status).toBe(415);
     const anon = await f(`${BASE}/v1/assets/adopt`, { method: 'POST', headers: json, body: JSON.stringify({ ...page, type, size, path: PAGE_PATH }) });
     expect(anon.status).toBe(401);
+    // a link under the prefix that leads out of the library's folder is not a file in it
+    const outside = mkdtempSync(join(tmpdir(), 'chalk-outside-')), secret = new TextEncoder().encode('not the library\'s');
+    writeFileSync(join(outside, 'secret'), secret); mkdirSync(join(dir, 'chalk-books', 'links'), { recursive: true });
+    symlinkSync(join(outside, 'secret'), join(dir, 'chalk-books', 'links', 'secret'));
+    expect((await adopt({ ...(await assetKeyAndSha256(secret)), type: 'image/png', size: secret.byteLength, path: 'chalk-books/links/secret' })).status).toBe(409);
+    rmSync(outside, { recursive: true, force: true });
     // nothing recorded, and the owner's file is where it was
     expect((await (await f(`${BASE}/v1/assets/check`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify({ keys: [page.key, other.key] }) })).json())).toMatchObject({ missing: [page.key, other.key] });
     expect(existsSync(join(dir, ...PAGE_PATH.split('/')))).toBe(true);
