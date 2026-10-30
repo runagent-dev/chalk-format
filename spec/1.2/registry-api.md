@@ -94,7 +94,7 @@ record carries its `poster` key so the tool can show thumbnails through the stor
 - **`GET v1/assets/{key}/books`** → `{ "items": [{ "bookId", "updatedAt" }], "next"? }`.
 
 A registry MAY delete the bytes of assets that no book has used for a period it chooses, unless they are
-pinned. It MUST NOT delete an asset any book uses.
+pinned. It MUST NOT delete an asset any book uses, nor a current book item (spec 1.8 §6.3).
 
 ## 7. Stores for readers
 
