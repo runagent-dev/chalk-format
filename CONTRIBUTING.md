@@ -49,6 +49,7 @@ node tools/reader-media-e2e.mjs [url]                # real clicks and taps: 3D,
 npx tsx tools/reader-author-e2e.mjs [url] [shots]    # author mode: select, properties, undo, move, resize, add, save, reopen
 npx tsx tools/reader-library-e2e.mjs [url] [shots]   # libraries: gallery, upload, search, reload, missing media
 node tools/reader-stream-e2e.mjs [url] [shots]       # a streamed 60-page book: what is fetched, and when
+npx tsx tools/reader-library-book-e2e.ts <library> <token> [url] [--read-token t]   # a book published into a (test) library, opened from it
 node tools/reader-insert-menu-e2e.mjs [url]          # author mode's right-click menu: what is added lands where you clicked
 node tools/reader-save-e2e.mjs [url]                 # author mode's Save: the filled button, Ctrl+S, onDirtyChange, the ref's save()
 node tools/reader-window-e2e.mjs [url] [shots]       # the floating window (open: window): author UI, the window, side panel, sheet, host chrome

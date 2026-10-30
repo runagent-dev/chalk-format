@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type ReaderConfig, type ReaderHandle, type SaveProgress, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/reader';
+import { ChalkReader, DEFAULT_CONFIG, useSavedLibraries, type BookSource, type LibrarySource, type LibraryBookLinks, type ReaderConfig, type ReaderHandle, type SaveProgress, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/reader';
 import { Playground } from './Playground.js';
 // pdf.js's worker, for books whose PDF pages carry no rendered image (config.pdfWorkerSrc)
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -23,9 +23,17 @@ const PRESET = env.VITE_CHALK_LIBRARY_URL
   ? [{ url: env.VITE_CHALK_LIBRARY_URL, ...(env.VITE_CHALK_LIBRARY_NAME ? { name: env.VITE_CHALK_LIBRARY_NAME } : {}), ...(env.VITE_CHALK_LIBRARY_TOKEN ? { token: env.VITE_CHALK_LIBRARY_TOKEN } : {}) }]
   : [];
 
+// a book in a library (spec 1.7): `?library=<server>&book=<slug>[&token=<token>]` opens the current revision of that book from the library
+const query = new URLSearchParams(location.search);
+const FROM_LIBRARY: LibrarySource | null = query.get('library') && query.get('book')
+  ? { library: query.get('library')!, slug: query.get('book')!, ...(query.get('token') ? { token: query.get('token')! } : {}) }
+  : null;
+// what the reader hands a host about a library book's questions, kept where a test (or the console) can see it
+const onBookLinks = (links: LibraryBookLinks | null) => { (window as unknown as { __bookLinks?: LibraryBookLinks | null }).__bookLinks = links; };
+
 /** The showcase: pick a sample or open your own .chalk file. */
 export function App() {
-  const [source, setSource] = useState<{ key: string; src: BookSource }>({ key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
+  const [source, setSource] = useState<{ key: string; src: BookSource | LibrarySource }>(FROM_LIBRARY ? { key: `library: ${FROM_LIBRARY.slug}`, src: FROM_LIBRARY } : { key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
   const file = useRef<HTMLInputElement>(null);
   const [config, setConfig] = useState<ReaderConfig>(BASE);
   const [configuring, setConfiguring] = useState(false);
@@ -95,7 +103,7 @@ export function App() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setSource({ key: f.name, src: f }); e.target.value = ''; }} />
       </header>
       <main className="app-main">
-        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} {...(onSavePatch ? { onSavePatch } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} />
+        <ChalkReader ref={reader} key={source.key} source={source.src} config={config} mode={mode} onModeChange={setMode} onDirtyChange={setDirty} {...(onSave ? { onSave } : {})} {...(onSavePatch ? { onSavePatch } : {})} onSavingChange={(s) => { setSaving(s); if (s) (window as unknown as { __savePhases?: string[] }).__savePhases = []; else setPhase(null); if (s && callbacks === 'throw') throw new Error('host callback bug'); if (s && callbacks === 'resave') void reader.current?.save(); }} onSaveProgress={(p) => { setPhase(p); const w = window as unknown as { __savePhases?: string[] }; const log = (w.__savePhases ??= []); if (log.at(-1) !== p.phase) log.push(p.phase); }} libraries={libraries} onLibrariesChange={setLibraries} onBookLinks={onBookLinks} />
         {configuring && <Playground config={config} base={BASE} onChange={setConfig} onClose={() => setConfiguring(false)} />}
       </main>
     </div>

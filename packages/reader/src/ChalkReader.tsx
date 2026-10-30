@@ -34,15 +34,24 @@ import type { Lesson } from '@chalk-format/model';
 import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
 import { searchBook } from './search.js';
-import { isStreamSource, isStreamed, openStreamedBook, windowAround } from './stream.js';
+import { isLibrarySource, isStreamSource, isStreamed, openLibraryStreamedBook, openStreamedBook, windowAround, type LibrarySource, type StreamedBook } from './stream.js';
+import { loadBookLinks, type LibraryBookLinks } from '@chalk-format/store';
 import { newLookup, resetLookup, withLibraries } from './libraries.js';
 import type { Library } from '@chalk-format/store';
 import type { StreamText } from '@chalk-format/model';
 
 export type ChalkReaderProps = {
-  /** The book: bytes, a File/Blob or a URL. Or pass an already opened `book`. */
-  source?: BookSource;
+  /**
+   * The book: bytes, a File/Blob or a URL; or a book in a library, `{ library, slug, token? }` (spec 1.7, "Books in a library": found by its
+   * tags, its pages and media fetched from the library as they are needed). Or pass an already opened `book`.
+   */
+  source?: BookSource | LibrarySource;
   book?: Book;
+  /**
+   * A book from a library: its links item (which sentences of which pages have questions, and the keys of those questions), once it has
+   * arrived, so the host can offer "questions for this line"; null when the book has none. Not called when it could not be fetched.
+   */
+  onBookLinks?: (links: LibraryBookLinks | null, book: StreamedBook) => void;
   /** Fetches assets a thin book does not carry. */
   resolveAsset?: AssetResolver;
   /** Libraries to find media in, first first (this device, a folder, a library server): what a book does not carry
@@ -108,19 +117,34 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
   const config = useMemo(() => resolveConfig(props.config), [props.config]);
   const [opened, setOpened] = useState<{ book: Book | null; error: string | null }>({ book: props.book ?? null, error: null });
 
+  // a library source is an object a host may write inline: it is the same book while its fields are the same
+  const source = props.source;
+  const sourceKey = isLibrarySource(source) ? JSON.stringify([source.library, source.slug, source.token ?? null]) : source;
   useEffect(() => {
     if (props.book) { setOpened({ book: props.book, error: null }); return; }
-    if (!props.source) return;
+    if (!source) return;
     let live = true, mine: Book | null = null;
     setOpened({ book: null, error: null });
     const o = props.resolveAsset ? { resolveAsset: props.resolveAsset } : {};
-    // a streamed book (spec 1.4) is named by its index or its directory; anything else is a .chalk
-    (isStreamSource(props.source) ? openStreamedBook(props.source, o) : openBook(props.source, o)).then(
+    // a book in a library; a streamed book (spec 1.4), named by its index or its directory; anything else is a .chalk
+    (isLibrarySource(source) ? openLibraryStreamedBook(source, o) : isStreamSource(source) ? openStreamedBook(source, o) : openBook(source, o)).then(
       (b) => { if (live) { mine = b; setOpened({ book: b, error: null }); } else b.dispose(); },
       (e: unknown) => { if (live) setOpened({ book: null, error: e instanceof Error ? e.message : String(e) }); },
     );
     return () => { live = false; mine?.dispose(); };
-  }, [props.source, props.book, props.resolveAsset]);
+  }, [sourceKey, props.book, props.resolveAsset]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a library book's links go to the host once, after the book is open (they are not needed to draw a page)
+  const onBookLinks = useRef(props.onBookLinks);
+  onBookLinks.current = props.onBookLinks;
+  const wantsLinks = Boolean(props.onBookLinks);
+  useEffect(() => {
+    const b = opened.book;
+    if (!wantsLinks || !b || !isStreamed(b) || !b.library) return;
+    let live = true;
+    loadBookLinks(b.library).then((links) => { if (live) onBookLinks.current?.(links, b); }, () => {});
+    return () => { live = false; };
+  }, [opened.book, wantsLinks]);
 
   const t = strings(config.locale);
   if (opened.error) return <Shell config={config} className={props.className} style={props.style}><div className="chalk-state is-error" role="alert"><strong>{t.failed}</strong><span>{opened.error}</span></div></Shell>;

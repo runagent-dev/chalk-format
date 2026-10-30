@@ -1,5 +1,6 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
-import type { Lesson, LessonPage, StreamIndex, StreamPage, StreamText } from '@chalk-format/model';
+import { resolutionKey, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
+import { openLibraryBook, type LibraryBook } from '@chalk-format/store';
 import type { AssetResolver, Book } from './book.js';
 
 /**
@@ -34,6 +35,8 @@ export type StreamedBook = Book & {
   addAssets(entries: readonly { id: string; type: string; path: string }[]): void;
   /** Called whenever pages arrive (`lesson` is then a new object). */
   subscribe(fn: () => void): () => void;
+  /** Set for a book opened from a library (`openLibraryStreamedBook`): the book item, its key and revision, and where its items are. */
+  readonly library?: LibraryBook;
 };
 
 export const isStreamed = (b: Book): b is StreamedBook => (b as Partial<StreamedBook>).streamed === true;
@@ -51,9 +54,67 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   if (!res.ok) throw new Error(`could not fetch the book (${res.status})`);
   // the index as BYTES: the version id is the hash of exactly what the host wrote, so it is hashed before it is parsed (and the same bytes are parsed)
   const indexBytes = new Uint8Array(await res.arrayBuffer());
-  const version = `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', indexBytes as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
-  const index = parseStreamIndex(JSON.parse(new TextDecoder().decode(indexBytes)));
   const at = (path: string) => new URL(path, indexUrl).href;
+  return streamedBook({
+    index: parseStreamIndex(JSON.parse(new TextDecoder().decode(indexBytes))),
+    version: await sha256Id(indexBytes),
+    async json(path, signal) {
+      const r = await doFetch(at(path), { signal });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<unknown>;
+    },
+    at,
+  }, { ...o, fetch: doFetch });
+}
+
+/** Where a book in a library is (spec 1.7, "Books in a library"): the library server, the book's slug, and a token if the library needs one. */
+export type LibrarySource = { library: string; slug: string; token?: string | undefined };
+export const isLibrarySource = (s: unknown): s is LibrarySource =>
+  typeof s === 'object' && s !== null && !(s instanceof URL) && typeof (s as LibrarySource).library === 'string' && typeof (s as LibrarySource).slug === 'string';
+
+/**
+ * A book in a library, opened as a streamed book: the current book item is found by its tags, and its pages, text layer and media are items
+ * of the library, each fetched by its key (and checked against it) when the reader needs it. The links item is not fetched here:
+ * `loadBookLinks(book.library)`, or the reader's `onBookLinks`.
+ */
+export async function openLibraryStreamedBook(source: LibrarySource, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch } = {}): Promise<StreamedBook> {
+  const lib = await openLibraryBook({ library: source.library, slug: source.slug, token: source.token, ...(o.fetch ? { fetch: o.fetch } : {}) });
+  const dec = new TextDecoder();
+  return streamedBook({
+    index: parseStreamIndex(lib.index),
+    // the hash of the book item's bytes (its key names the same bytes)
+    version: await sha256Id(lib.bytes),
+    json: async (path, signal) => JSON.parse(dec.decode(await lib.read(path, { signal }))) as unknown,
+    at: (path) => new URL(path, lib.library.endsWith('/') ? lib.library : `${lib.library}/`).href,
+    assetUrl: (id) => lib.urlOf(id),
+    async assetBytes(id, signal) {
+      const key = resolutionKey(id);
+      return key ? (await lib.fetchItem(key, { signal })).slice().buffer as ArrayBuffer : null;
+    },
+    library: lib,
+  }, o);
+}
+
+const sha256Id = async (bytes: Uint8Array) => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+
+/** Where a streamed book's files come from: a folder of files by URL, or the items of a library. */
+type StreamFiles = {
+  index: StreamIndex;
+  version: string;
+  /** A page or the text layer, parsed. */
+  json(path: string, signal: AbortSignal): Promise<unknown>;
+  /** The URL of a file of the book (its own media). */
+  at(path: string): string;
+  /** External media the source can name itself (a library's store), before the host's resolver. */
+  assetUrl?(id: string): string | null;
+  /** External media's bytes, fetched and checked by the source. */
+  assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | null>;
+  library?: LibraryBook;
+};
+
+function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch }): StreamedBook {
+  const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
+  const { index, version, at } = src;
   const assetPath = new Map(index.assets.filter((a) => a.path).map((a) => [a.id, a.path!]));
   const assetType = new Map(index.assets.map((a) => [a.id, a.type]));
 
@@ -81,9 +142,7 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
     const e = entryOf(k); if (!e) return Promise.resolve();
     const job = (async () => {
       try {
-        const r = await doFetch(at(e.file), { signal: abort.signal });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const page = parseStreamPage(index, await r.json(), k < 0);
+        const page = parseStreamPage(index, await src.json(e.file, abort.signal), k < 0);
         if (k >= 0) pages[k] = page; else snipPages[-1 - k] = page;
         loaded.add(e.id); changed();
       } catch {
@@ -105,6 +164,8 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   const resolveUrl = async (id: string): Promise<string | null> => {
     const p = assetPath.get(id);
     if (p) return at(p);
+    const own = src.assetUrl?.(id);
+    if (own) return own;
     if (!o.resolveAsset) return null;
     const r = await o.resolveAsset(id);
     if (r == null) return null;
@@ -114,7 +175,7 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   let text: Promise<StreamText | null> | null = null;
 
   const book: StreamedBook = {
-    streamed: true, index, version,
+    streamed: true, index, version, ...(src.library ? { library: src.library } : {}),
     get lesson() { return lesson; },
     missingAssetIds: [],
     assetUrl(id) {
@@ -124,6 +185,10 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
     },
     peekUrl(id) { const p = assetPath.get(id); return p ? at(p) : settled.get(id); },
     async assetBytes(id) {
+      if (src.assetBytes && !assetPath.has(id)) {
+        const bytes = await src.assetBytes(id, abort.signal).catch(() => null);
+        if (bytes) return { type: assetType.get(id) ?? 'application/octet-stream', bytes };
+      }
       const url = await book.assetUrl(id);
       if (!url) return null;
       const r = await doFetch(url, { signal: abort.signal });
@@ -149,7 +214,7 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
     },
     searchText() {
       if (!index.text) return Promise.resolve(null);
-      text ??= doFetch(at(index.text.file), { signal: abort.signal }).then(async (r) => (r.ok ? parseStreamText(await r.json()) : null)).catch(() => { text = null; return null; });
+      text ??= src.json(index.text.file, abort.signal).then(parseStreamText).catch(() => { text = null; return null; });
       return text;
     },
     addAssets(entries) {

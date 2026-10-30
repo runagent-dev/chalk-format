@@ -42,7 +42,7 @@ The reader fills its container; give the container a height.
 
 | Prop | Type | |
 |---|---|---|
-| `source` | `Uint8Array \| ArrayBuffer \| Blob \| string \| URL` | The book: bytes, a File, or a URL to fetch. |
+| `source` | `Uint8Array \| ArrayBuffer \| Blob \| string \| URL \| { library, slug, token? }` | The book: bytes, a File, a URL to fetch, or a book in a library (below). |
 | `book` | `Book` | An already opened book (`openBook()` / `bookFrom()`), instead of `source`. |
 | `resolveAsset` | `(id) => string \| Blob \| null` (or a Promise) | Fetches assets a thin book does not carry. |
 | `config` | `ReaderConfigInput` | Everything below; partial, the rest stays default. |
@@ -51,6 +51,7 @@ The reader fills its container; give the container a height.
 | `labStorage` | `{ load, save, clear }` | Where labs keep state (default: this browser). |
 | `onLabProgress` | `(progress, { objectId, labId, page }) => void` | A lab reported progress. |
 | `onPageChange` | `(index, page) => void` | The current page changed (0-based). |
+| `onBookLinks` | `(links, book) => void` | A book from a library: its links item (sentences with questions), once it arrives; null if it has none. |
 | `onSavingChange` | `(saving) => void` | Authoring: a save started (`true`) or ended (`false`), for your own Save button. |
 | `onSaveProgress` | `({ phase, done?, total? }) => void` | Authoring: where a save is: collecting the pictures, packing, handing over to `onSave`. |
 | `onSavePatch` | `(patch, media) => Promise<PatchResult>` | Authoring, streamed books: Save sends only the pages that changed and the media added (a patch) instead of the whole book. See [the patch save](../../docs/guides/host-patch-save.md). |
@@ -136,6 +137,13 @@ around it; search loads the book's text file and finds words on pages not loaded
 of the book first (up to 12 requests at a time, with a counter, "Loading the book for editing… 120 of 360", shown
 until the book is whole). `openStreamedBook(url)` gives the same book outside the component. Publish with
 `tools/chalk-stream.ts publish book.chalk out/`.
+
+**A book in a library** (spec 1.7, "Books in a library"): `source={{ library: 'https://library.example.org/', slug: 'physics-9-10-bn' }}`
+(add `token` for a library that needs one to read) opens the current revision of that book (the book item tagged `book:<slug>`,
+`kind:book`, `state:current`; the newest if two are) and reads it like a streamed book: its pages, text layer and media are items of the
+library, fetched by key from the library's store and checked against the key. `onBookLinks` hands the host the book's links item (which
+sentences of which pages have questions, by question key), for "questions for this line". `openLibraryStreamedBook(source)` gives the
+same book outside the component, and `book.library` its book item, revision and keys.
 
 | Option | Default | |
 |---|---|---|
