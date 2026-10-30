@@ -69,7 +69,8 @@ export type OpenedLibraryBook = {
   urlOf(id: string, type?: string): string | null;
   /**
    * Like `urlOf`, and right for files the library adopted in place (registry-api §3.1): those are not at the derived store's URL, and the
-   * library's indexed store (spec 1.2 §5.3, after the derived one in `GET /v1/stores`) names where they are. Its index shard is fetched once.
+   * library's indexed store (spec 1.2 §5.3, after the derived one in `GET /v1/stores`) names where they are (its shard kept a minute). Null
+   * when the item is in an indexed store that needs a token or asks to be verified always: then its bytes are to be fetched (`fetchItem`).
    */
   urlFor(id: string, type?: string, init?: { signal?: AbortSignal }): Promise<string | null>;
   /**
@@ -172,12 +173,15 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   // files the library adopted in place (registry-api §3.1) are found through its indexed stores (spec 1.2 §5.3), listed after the derived one.
   // The index lists exactly the keys the derived store does not have, so it is asked first (one shard per two leading characters, fetched once
   // per book) instead of fetching a derived URL that 404s for each of them. A token goes only to an indexed store that asks for it.
-  const shards = new Map<string, Promise<Map<string, string>>>();
+  // a shard is kept as long as the library says it may be cached (a minute), and dropped at once when a URL it named fails: the library moves an
+  // adopted key to another copy when its owner deletes one (registry-api §3.1), and an open book must see that
+  const SHARD_MS = 60_000;
+  const shards = new Map<string, { at: number; shard: Promise<Map<string, string>> }>();
   const indexedFor = (type: string) => stores.filter((d) => d.kind === 'indexed' && d.base && takes(d.media, type));
-  const inIndex = async (key: string, type: string, signal?: AbortSignal): Promise<{ url: string; store: StoreDescriptor } | null> => {
+  const inIndex = async (key: string, type: string, signal?: AbortSignal): Promise<{ url: string; store: StoreDescriptor; forget: () => void } | null> => {
     for (const s of indexedFor(type)) {
-      const id = `${s.id}|${shardOf(key)}`;
-      let shard = shards.get(id);
+      const id = `${s.id}|${shardOf(key)}`, kept = shards.get(id);
+      let shard = kept && Date.now() - kept.at < SHARD_MS ? kept.shard : undefined;
       if (!shard) {
         const url = shardUrl(s, key), init = signal ? { signal } : {};
         shard = (s.auth === 'bearer' ? fetchWithToken(doFetch, o.token, url, init) : doFetch(url, init)).then(async (r) => {
@@ -186,11 +190,12 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
           const entries = indexShardSchema.parse(await r.json()).entries;
           return new Map(Object.entries(entries).map(([h, e]) => [h, /^[a-z][a-z0-9+.-]*:/i.test(e.p) ? e.p : s.base + e.p] as const));
         });
-        shards.set(id, shard);
-        shard.catch(() => shards.delete(id));   // a failed shard is asked again next time
+        const entry = { at: Date.now(), shard };
+        shards.set(id, entry);
+        shard.catch(() => { if (shards.get(id) === entry) shards.delete(id); });   // a failed shard is asked again next time
       }
       const url = await shard.then((m) => m.get(hashPart(key))).catch(() => undefined);
-      if (url) return { url, store: s };
+      if (url) return { url, store: s, forget: () => shards.delete(id) };
     }
     return null;
   };
@@ -201,13 +206,13 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     const adopted = await inIndex(key, type, signal);
     const own = new Set(ownFor(type));
     if (adopted) own.add(adopted.store);
-    const tries = [...(adopted ? [adopted.store] : []), ...storesFor(type)];
+    const tries: { s: StoreDescriptor; url: string; adopted?: typeof adopted }[] = [...(adopted ? [{ s: adopted.store, url: adopted.url, adopted }] : []), ...storesFor(type).map((s) => ({ s, url: storeUrl(s, key) }))];
     if (!tries.length) throw new Error(`the library names no store for ${type}`);
     const init = signal ? { signal } : {};
     const asked = new Set<string>();
-    let first: unknown;
-    for (const s of tries) {
-      const url = s === adopted?.store ? adopted.url : storeUrl(s, key);
+    let first: unknown, again = true;
+    for (let i = 0; i < tries.length; i++) {
+      const { s, url } = tries[i]!;
       // the book's copy of the library's own store: the same URL, asked once
       if (asked.has(url)) continue;
       asked.add(url);
@@ -215,6 +220,13 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
       try {
         // the token only to the library's store that asks for it (a public CDN is not sent it)
         const r = own.has(s) && s.auth === 'bearer' ? await fetchWithToken(doFetch, o.token, url, init) : await doFetch(url, { headers: {}, ...init });
+        if (!r.ok && tries[i]!.adopted && again) {
+          // the copy the index named is gone: the index is asked again (once), and the library may name another copy now
+          again = false;
+          tries[i]!.adopted!.forget();
+          const next = await inIndex(key, type, signal);
+          if (next && !asked.has(next.url)) { own.add(next.store); tries.splice(i + 1, 0, { s: next.store, url: next.url, adopted: next }); }
+        }
         if (!r.ok) throw new Error(`could not fetch ${id} from ${from} (${r.status})`);
         const bytes = new Uint8Array(await r.arrayBuffer());
         if (!(await verifyAssetBytes(id, bytes))) throw new Error(`${from} sent bytes that are not ${id}`);
@@ -272,8 +284,10 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     async urlFor(id, type, init) {
       const k = resolutionKey(id), t = type ?? typeOf(id);
       const adopted = k ? await inIndex(k, t, init?.signal) : null;
-      // a URL is drawn with no header: an index that needs the token cannot name one
-      return adopted && adopted.store.auth !== 'bearer' ? adopted.url : book.urlOf(id, t);
+      // a URL is drawn with no header and its bytes are not checked: an index that needs the token, or asks to be verified always, names
+      // none (null: fetch the bytes with fetchItem, which checks them)
+      if (adopted) return adopted.store.auth !== 'bearer' && adopted.store.verify !== 'always' ? adopted.url : null;
+      return book.urlOf(id, t);
     },
     storeFor: (type) => storeFor(type),
     storesFor,

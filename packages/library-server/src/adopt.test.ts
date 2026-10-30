@@ -274,6 +274,15 @@ describe('adopting a file in place: a public disk library', () => {
     expect(await book.urlFor(want.assets[0]!.id)).toBe(`${BASE}/files/chalk-books/big-book/assets/${want.assets[0]!.id.replace(':', '-')}`);
     // the adopted items came from their paths, never from a derived URL that 404s
     expect(seen.filter((u) => u.includes('/files/c1/') && !u.endsWith(standardPath(book.key)))).toEqual([]);
+    // another book adopts a copy of a figure; then this book's copy is deleted while the book is open (its shard still names it): the next
+    // read finds the URL gone, asks the index again, and gets the other book's copy
+    const fig = want.assets[0]!, mine = `chalk-books/big-book/assets/${fig.id.replace(':', '-')}`, theirs = `chalk-books/other-book/assets/${fig.id.replace(':', '-')}`;
+    put(theirs, fig.bytes);
+    expect((await adopt({ key: fig.id, sha256: (await assetKeyAndSha256(fig.bytes)).sha256, type: 'image/png', size: fig.size, path: theirs })).status).toBe(200);
+    expect(await book.urlFor(fig.id)).toBe(`${BASE}/files/${mine}`);
+    unlinkSync(join(dir, ...mine.split('/')));
+    expect(text(await book.fetchItem(fig.id))).toBe(text(fig.bytes));
+    expect(await book.urlFor(fig.id)).toBe(`${BASE}/files/${theirs}`);
   });
 
   it('still passes the conformance checks', async () => {

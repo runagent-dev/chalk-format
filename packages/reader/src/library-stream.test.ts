@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string; adopted?: boolean } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string; adopted?: boolean; adoptedStore?: object } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -41,7 +41,7 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
     if (u.host === 'lib.example') {
       if (o.token && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
       if (u.pathname === '/v1/stores') return json({ items: [...(o.firstStore ? [o.firstStore] : []), { ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) },
-        ...(o.adopted ? [{ id: 'library-adopted', kind: 'indexed', base: 'https://lib.example/' }] : [])] });
+        ...(o.adopted ? [{ id: 'library-adopted', kind: 'indexed', base: 'https://lib.example/', ...o.adoptedStore }] : [])] });
       // files adopted in place (registry-api §3.1): everything but the book item, at the book's own paths, named by the index
       const shard = /^\/index\/([a-z2-7]{2})\.json$/.exec(u.pathname)?.[1];
       if (shard) {
@@ -112,6 +112,16 @@ describe('books in a library, in the reader', () => {
     // every item from its adopted path; no derived URL was asked (each would 404)
     expect(lib.asked.filter((a) => a.startsWith('https://'))).toEqual([]);
     expect(lib.asked.filter((a) => a === 'page')).toHaveLength(20);
+  });
+
+  it('adopted media of an indexed store that asks to be verified always are drawn from checked bytes, not a bare URL', async () => {
+    const lib = await library({ adopted: true, adoptedStore: { verify: 'always' } });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    expect((await b.assetUrl(pictureKey))?.startsWith('blob:')).toBe(true);
+    b.dispose();
+    const bad = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: (await library({ adopted: true, adoptedStore: { verify: 'always' }, tamper: pictureKey })).fetch });
+    expect(await bad.assetUrl(pictureKey)).toBeNull();
+    bad.dispose();
   });
 
   it('leaves media the library has no store for to the host, for their bytes as for their URL', async () => {
