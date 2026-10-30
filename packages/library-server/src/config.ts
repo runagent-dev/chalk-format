@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.js';
 import { diskStorage, s3Storage, type Storage } from './storage.js';
 import type { Caller, LibraryOptions } from './app.js';
+import type { DeliveryOptions } from './delivery.js';
 
 /**
  * A library from environment variables (Docker, Coolify):
@@ -13,7 +14,7 @@ import type { Caller, LibraryOptions } from './app.js';
  *   S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION (R2: auto), S3_VIRTUAL_HOSTED (true for AWS)
  *   DISK_DIR         ./library                       (STORAGE=disk)
  *   PUBLIC_URL       where readers fetch bytes: the bucket's public domain or CDN (disk: <this server>/files/)
- *   SERVER_URL       this server's own address (disk uploads come here)
+ *   SERVER_URL       this server's own address (disk uploads and file links come here; a private library's store names it)
  *   TOKENS           name:token,name:token           (callers; a name ending in ! is an administrator)
  *   PUBLIC_READ      true | false                    (search and read without a token; default true)
  *   ORIGINS          https://app.example.org,…       (browsers allowed to call; default any)
@@ -21,8 +22,10 @@ import type { Caller, LibraryOptions } from './app.js';
  *   PORT             8080
  *   NAME             what tools show for this library (default "Chalk library")
  *   UPLOAD_SECRET    signs disk upload tickets (STORAGE=disk; default: random, so tickets end with a restart)
+ *   FILE_LINK_SECRET signs disk file links (STORAGE=disk, PUBLIC_READ=false; default: derived from UPLOAD_SECRET,
+ *                    so random at start when neither is set and links end with a restart)
  */
-export async function libraryFromEnv(env: Record<string, string | undefined> = process.env): Promise<LibraryOptions & { port: number }> {
+export async function libraryFromEnv(env: Record<string, string | undefined> = process.env): Promise<LibraryOptions & DeliveryOptions & { port: number }> {
   const need = (k: string) => { const v = env[k]; if (!v) throw new Error(`${k} is not set`); return v; };
   const port = Number(env.PORT ?? 8080);
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
@@ -34,7 +37,9 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       region: env.S3_REGION ?? 'auto', virtualHosted: env.S3_VIRTUAL_HOSTED === 'true',
     });
   } else {
-    storage = diskStorage(env.DISK_DIR ?? './library', { uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}) });
+    storage = diskStorage(env.DISK_DIR ?? './library', {
+      uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}), ...(env.FILE_LINK_SECRET ? { linkSecret: env.FILE_LINK_SECRET } : {}),
+    });
   }
   return {
     db, storage, port,
@@ -44,6 +49,8 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
     ...(env.MAX_BYTES ? { maxBytes: Number(env.MAX_BYTES) } : {}),
     ...(env.ORIGINS ? { origins: env.ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
     ...(env.NAME ? { name: env.NAME } : {}),
+    // only when set: the default (localhost) would be wrong in a private library's store; the request's address is used instead
+    ...(env.SERVER_URL ? { serverUrl: env.SERVER_URL } : {}),
   };
 }
 

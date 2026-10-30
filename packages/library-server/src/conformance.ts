@@ -1,5 +1,5 @@
 import { assetKeyAndSha256 } from '@chalk-format/model';
-import { createRegistryClient, registryLibrary, RegistryError } from '@chalk-format/store';
+import { createRegistryClient, derivedUrl, registryLibrary, RegistryError } from '@chalk-format/store';
 
 /**
  * Does a library server do what the registry API says (spec/1.2/registry-api.md)? A round trip through the API
@@ -43,8 +43,10 @@ export async function checkLibrary(url: string, o: { token: string; adminToken?:
   await step('search finds it by a Bengali word', async () => (await client.search({ q: 'কন্ডিশন' })).items.some((i) => i.key === key));
   await step('search filters by type', async () => !(await client.search({ q: word, type: ['video/*'] })).items.some((i) => i.key === key));
   await step('readers get the same bytes from the delivery store', async () => {
-    const got = await lib.get(key);
-    return got !== null && got.bytes.length === bytes.length && got.bytes.every((b, i) => b === bytes[i]);
+    // a private library's store (auth "bearer") is read with the token
+    const bearer = (await client.stores()).items.find((d) => d.auth === 'bearer' && d.kind === 'derived');
+    const got = bearer ? new Uint8Array(await (await f(derivedUrl(bearer, key), { headers: { Authorization: `Bearer ${o.token}` } })).arrayBuffer()) : (await lib.get(key))?.bytes ?? null;
+    return got !== null && got.length === bytes.length && got.every((b, i) => b === bytes[i]);
   });
   await step('a key that is not the c1 key of its sha256 is refused', async () => {
     const r = await f(`${url.replace(/\/?$/, '/')}v1/uploads`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${o.token}` },

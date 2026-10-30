@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { C1_KEY_PATTERN, c1FromSha256, isC1Key, type StoreDescriptor } from '@chalk-format/model';
 import { checkRequestSchema, registerRequestSchema, uploadRequestSchema, standardPath, matchesType } from '@chalk-format/store';
 import type { Db } from './db.js';
+import { registerDelivery } from './delivery.js';
 import type { DiskStorage, Storage } from './storage.js';
 
 /**
@@ -94,6 +95,7 @@ export function createLibraryApp(o: LibraryOptions) {
     endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /healthz'],
   }));
 
+  registerDelivery(app, o); // file bytes for signed-in readers (§7.1); registered first: a private library's /v1/stores and /files/* are its own
   // ---- §7 stores for readers: public, cacheable ----
   app.get('/v1/stores', (c) => { c.header('Cache-Control', 'public, max-age=300'); return c.json({ items: [delivery] }); });
 
