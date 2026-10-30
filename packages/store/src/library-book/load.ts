@@ -1,7 +1,10 @@
-import { QUESTION_MANIFEST_TYPE, indexShardSchema, questionAssetKeys, questionManifestSchema, resolutionKey, streamIndexSchema, verifyAssetBytes, type QuestionManifest, type StoreDescriptor, type StreamIndex, type StreamPage } from '@chalk-format/model';
+import { QUESTION_MANIFEST_TYPE, questionAssetKeys, questionManifestSchema, resolutionKey, streamIndexSchema, verifyAssetBytes, type QuestionManifest, type StoreDescriptor, type StreamIndex, type StreamPage } from '@chalk-format/model';
 import { createRegistryClient, type AssetRecord } from '../registry.js';
-import { apiUrl, derivedUrl, hashPart, matchesType, shardOf, shardUrl } from '../urls.js';
+import { apiUrl, derivedUrl, hashPart, matchesType } from '../urls.js';
 import { fetchWithToken, resolveToken, type TokenSource } from '../auth/token.js';
+// files adopted in place (registry-api §3.1): found through the library's indexed store (spec 1.2 §5.3)
+import { indexShardSchema } from '@chalk-format/model';
+import { shardOf, shardUrl } from '../urls.js';
 import {
   LIBRARY_BOOK_TYPE, LIBRARY_LINKS_TYPE, LIBRARY_PAGE_TYPE, LIBRARY_TEXT_TYPE, checkLibraryBook, checkLinks, isKnownLinkRole, libraryBookSchema, libraryLinksSchema,
   type LibraryBook, type LibraryBookPage, type LibraryLinks,
