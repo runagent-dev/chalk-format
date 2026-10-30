@@ -298,7 +298,7 @@ export async function loadBookLinks(book: OpenedLibraryBook, init?: { signal?: A
   const linked = new Set(links.map((l) => l.sentence));
   learn(book, links.map((l) => [l.question, QUESTION_MANIFEST_TYPE] as const));
   const st = stateOf(book);
-  for (const l of links) if (l.questionId) { const id = l.questionId.toLowerCase(); if (!st.fallback.has(id)) st.fallback.set(id, l.question); st.idOfKey.set(l.question, id); }
+  for (const l of links) if (l.questionId) { const id = l.questionId; if (!st.fallback.has(id)) st.fallback.set(id, l.question); st.idOfKey.set(l.question, id); }
   return { ...r.data, sentences: r.data.sentences.filter((s) => linked.has(s.id)), links };
 }
 
@@ -347,8 +347,8 @@ export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly st
   const st = stateOf(book);
   const signal = init?.signal;
   signal?.throwIfAborted();
-  const want = [...new Set(ids.map((x) => x.toLowerCase()))];
-  const given = Object.fromEntries(Object.entries(init?.fallback ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+  const want = [...new Set(ids)];
+  const given = init?.fallback ?? {};
   const currentKey = new Map<string, string>();
   if (!st.noCurrentEndpoint) {
     for (let i = 0; i < want.length; i += CURRENT_BATCH) {
@@ -393,9 +393,10 @@ export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly st
  * may be wrong with it.
  */
 export async function loadQuestion(book: OpenedLibraryBook, keyOrId: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
-  const id = UUID.test(keyOrId) ? keyOrId.toLowerCase() : stateOf(book).idOfKey.get(keyOrId);
+  const isId = UUID.test(keyOrId), id = isId ? keyOrId : stateOf(book).idOfKey.get(keyOrId);
   if (!id) return manifestByKey(book, keyOrId, init);
-  const { resolved, failed } = await resolveQuestions(book, [id], init);
+  // the key the caller named is the fallback (a question may be linked in several versions)
+  const { resolved, failed } = await resolveQuestions(book, [id], { ...init, ...(isId ? {} : { fallback: { [id]: keyOrId } }) });
   const got = resolved.get(id);
   if (got) return got.manifest;
   throw failed.get(id) ?? new Error(`no question with id ${id}`);

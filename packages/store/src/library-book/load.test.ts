@@ -427,12 +427,27 @@ describe('questions by lasting id (spec 1.8 §3.4)', () => {
     await expect(resolveQuestions(b2, [ID])).rejects.toMatchObject({ status: 401 });
     const stop = new AbortController(); stop.abort();
     await expect(resolveQuestions(book, [ID], { signal: stop.signal })).rejects.toThrow();
-    // an older server and a caller-supplied fallback with an upper-case id
+    // an older server and the key a caller names as fallback
     const old = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items, { current: 'off' }).fetch });
-    const r = await resolveQuestions(old, [ID], { fallback: { [ID.toUpperCase()]: t.v1.key } });
+    const r = await resolveQuestions(old, [ID], { fallback: { [ID]: t.v1.key } });
     expect(r.resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
     // what a caller does to a manifest does not reach the next load
     const m = await loadQuestion(book, ID); m.stem = 'changed';
     expect((await loadQuestion(book, ID)).stem).toBe('new stem');
+  });
+
+  it('loadQuestion(key) falls back to the key it was given, not another link\'s, when the library cannot say; ids are asked as written', async () => {
+    const t = await setup();
+    const v0 = await item(manifest('zero'), QUESTION_MANIFEST_TYPE, [`question:${ID}`, 'state:superseded'], '2026-09-01T00:00:00Z');
+    const p = await publish({ sentences: ['s1', 's2'], links: [{ sentence: 's1', question: t.v1.key, questionId: ID, role: 'answers_from' }, { sentence: 's2', question: v0.key, questionId: ID, role: 'answers_from' }] as never });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book, p.linksItem, t.v1, v0], { current: 'off' }).fetch });
+    await loadBookLinks(book);
+    expect((await loadQuestion(book, v0.key)).stem).toBe('zero');
+    expect((await loadQuestion(book, t.v1.key)).stem).toBe('old stem');
+    const upper = ID.toUpperCase(), lib = fakeLibrary([...t.items, ...[]]);
+    const asked: string[] = [];
+    const spy = (async (u: string, i?: RequestInit) => { if (String(u).endsWith('/v1/assets/current')) asked.push(...JSON.parse(String(i!.body)).tags); return lib.fetch(u, i); }) as typeof fetch;
+    await resolveQuestions(await openLibraryBook({ library: LIB, slug: 'demo', fetch: spy }), [upper]);
+    expect(asked).toEqual([`question:${upper}`]);
   });
 });
