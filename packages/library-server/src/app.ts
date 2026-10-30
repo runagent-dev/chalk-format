@@ -3,7 +3,8 @@ import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
-import { c1FromSha256, isC1Key, type StoreDescriptor } from '@chalk-format/model';
+import { z } from 'zod';
+import { C1_KEY_PATTERN, c1FromSha256, isC1Key, type StoreDescriptor } from '@chalk-format/model';
 import { checkRequestSchema, registerRequestSchema, uploadRequestSchema, standardPath, matchesType } from '@chalk-format/store';
 import type { Db } from './db.js';
 import type { DiskStorage, Storage } from './storage.js';
@@ -33,8 +34,11 @@ export type LibraryOptions = {
   origins?: string[];
 };
 
-export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json'];
+export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json',
+  'application/vnd.chalk.book+json', 'application/vnd.chalk.page+json', 'application/vnd.chalk.text+json', 'application/vnd.chalk.links+json'];
 const UPLOAD_SECONDS = 15 * 60;
+/** The set of keys a book uses: larger than a check, since a textbook uses thousands (spec 1.8 §6.3). */
+const bookAssetsSchema = z.object({ keys: z.array(z.string().regex(C1_KEY_PATTERN)).max(20_000).optional() });
 
 /** Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page. */
 const storedType = (type: string) => (/^(text\/html|text\/javascript|application\/javascript)/i.test(type) ? 'application/octet-stream' : type);
@@ -198,11 +202,12 @@ export function createLibraryApp(o: LibraryOptions) {
   // ---- §6 books ----
   app.put('/v1/books/:book/assets', async (c) => {
     const denied = writer(c); if (denied) return denied;
-    const b = await body(c, checkRequestSchema.partial({ keys: true })); if (!b.ok) return b.res;
-    const book = c.req.param('book'), keys = (b.data.keys ?? []).filter(isC1Key);
+    const b = await body(c, bookAssetsSchema); if (!b.ok) return b.res;
+    const book = c.req.param('book'), keys = [...new Set((b.data.keys ?? []).filter(isC1Key))];
     await db.query('DELETE FROM book_assets WHERE book_id = $1', [book]);
-    const known = (await db.query<{ key: string }>('SELECT key FROM assets WHERE key = ANY($1)', [keys])).map((r) => r.key);
-    for (const k of known) await db.query('INSERT INTO book_assets (book_id, key) VALUES ($1, $2) ON CONFLICT DO NOTHING', [book, k]);
+    // one statement for the whole set: a textbook uses thousands of keys (spec 1.8 §6.3)
+    const known = (await db.query<{ key: string }>(`INSERT INTO book_assets (book_id, key) SELECT $1, key FROM assets WHERE key = ANY($2)
+      ON CONFLICT DO NOTHING RETURNING key`, [book, keys])).map((r) => r.key);
     return c.json({ book, keys: known.length });
   });
   app.get('/v1/assets/:key/books', async (c) => {
