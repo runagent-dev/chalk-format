@@ -1,5 +1,5 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
-import { resolutionKey, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
+import { isImageType, resolutionKey, sniffMediaType, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
 import { openLibraryBook, type OpenedLibraryBook, type TokenSource } from '@chalk-format/store';
 import type { AssetResolver, Book } from './book.js';
 
@@ -99,7 +99,12 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       if (!store) return null;
       const unknownFormat = type.endsWith('/*');
       if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat) return lib.urlOf(id, type);
-      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], unknownFormat ? {} : { type });
+      const bytes = await lib.fetchItem(id, { signal, type });
+      // a picture whose format is not known gets the type its bytes show, among the formats a book's pictures take (spec 1.0: png, jpeg, webp,
+      // gif, avif). Never image/svg+xml from a guess: an SVG in a blob: URL of this origin runs its scripts if the URL is opened
+      const shown = unknownFormat ? sniffMediaType(bytes) : null;
+      const sniffed = unknownFormat ? (shown && isImageType(shown) ? shown : null) : type;
+      return new Blob([bytes as BlobPart], sniffed ? { type: sniffed } : {});
     },
     async assetBytes(id, signal) {
       // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does). One it has a store for is

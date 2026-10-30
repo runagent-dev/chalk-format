@@ -111,7 +111,7 @@ describe('books in a library, in the reader', () => {
   });
 
   it("draws a question's picture (its format not known) from whichever image store of the library has it, not the first one's URL", async () => {
-    const qpic = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 4, 4]);
+    const qpic = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 4]);
     const { key: qpicKey } = await assetKeyAndSha256(qpic);
     const question = JSON.stringify({ format: 'chalk.question', manifestVersion: 1, id: 'q1', version: '1', kind: 'short_answer', stem: `![](${qpicKey})`, assets: [qpicKey] });
     const lib = await library({ question, firstStore: { id: 'webp', kind: 'derived', template: 'https://webp.example/{h}', media: ['image/webp'] } });
@@ -121,7 +121,9 @@ describe('books in a library, in the reader', () => {
     await loadQuestion(b.library!, links!.links[0]!.question);
     const url = await b.assetUrl(qpicKey);
     expect(url?.startsWith('blob:')).toBe(true);
-    expect(new Uint8Array(await (await fetch(url!)).arrayBuffer())).toEqual(qpic);
+    const got = await fetch(url!);
+    expect(got.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(qpic);
     b.dispose();
   });
 
