@@ -53,7 +53,8 @@ jobs:
       - name: Tag the release
         run: |
           version=$(node -p "require('./release.json').version")
-          if git rev-parse "v$version" >/dev/null 2>&1; then
+          # the checkout has no tags, so ask the remote (a local check never sees an existing tag and the push is then rejected)
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
             echo "v$version already exists"
           else
             git tag "v$version" && git push origin "v$version"
