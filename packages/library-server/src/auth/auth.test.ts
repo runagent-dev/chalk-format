@@ -198,11 +198,37 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     await db.query("UPDATE auth_refresh_tokens SET rotated_at = now() - interval '31 seconds' WHERE token_hash = $1", [hashOf(late.refresh_token)]);
     expect((await refresh(late.refresh_token)).status).toBe(400);
     expect((await refresh(next.refresh_token)).status).toBe(400);
+    // a successor that has expired meanwhile (a refresh lifetime shorter than the window) is not given again
+    const brief = await tokensOf('arun', PW.arun);
+    const gone = (await (await refresh(brief.refresh_token)).json()) as Tokens;
+    await db.query("UPDATE auth_refresh_tokens SET expires_at = now() - interval '1 second' WHERE token_hash = $1", [hashOf(gone.refresh_token)]);
+    expect((await refresh(brief.refresh_token)).status).toBe(400);
     // signing out within the window ends it too
     const out = await tokensOf('arun', PW.arun);
     await refresh(out.refresh_token);
     await call('/v1/auth/revoke', { body: { refresh_token: out.refresh_token } });
     expect((await refresh(out.refresh_token)).status).toBe(400);
+  });
+
+  it('a retry that lands while the first refresh is still finishing gets a stored successor: signing out with it ends the sign-in', async () => {
+    const { createAuth } = await import('./service.js');
+    const plain = createAuth({ db, keySecret: SECRET });
+    const t = await tokensOf('arun', PW.arun);
+    let fired = false, retried: { refresh_token: string } | null = null;
+    // right after the first request has used the token, before it answers: the retry, then a sign-out with its answer
+    const racing: Db = { ...db, query: async (sql, params) => {
+      const rows = await db.query(sql, params);
+      if (sql.includes('WITH used AS') && !fired) {
+        fired = true;
+        retried = await plain.refreshGrant(t.refresh_token, BASE);
+        await plain.revoke(retried!.refresh_token);
+      }
+      return rows as never;
+    } };
+    expect(await createAuth({ db: racing, keySecret: SECRET }).refreshGrant(t.refresh_token, BASE)).toBeNull();
+    expect(retried).not.toBeNull();
+    expect((await refresh(retried!.refresh_token)).status).toBe(400);
+    expect((await refresh(t.refresh_token)).status).toBe(400);
   });
 
   it('limits sign-in attempts per username and per address', async () => {

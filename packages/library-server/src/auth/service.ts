@@ -23,7 +23,7 @@ export type AuthOptions = {
   userCacheMs?: number;
   /**
    * Seconds after a refresh token was used during which sending it again gives the same successor instead of
-   * ending the sign-in (default 30; 0: never). Covers an answer lost on its way to the client.
+   * ending the sign-in (default 30; 0: never; the spec allows at most 60). Covers an answer lost on its way to the client.
    */
   refreshGrace?: number;
   /** AUTH_KEY_SECRET: seals the private signing keys (at least 32 characters). */
@@ -138,7 +138,8 @@ export function createAuth(o: AuthOptions) {
       token_type: 'Bearer', expires_in: accessTtl, refresh_token: refresh, roles,
     };
   };
-  const issue = async (user: UserRow, issuer: string, family: string, refresh = randomBytes(32).toString('base64url')): Promise<TokenResponse> => {
+  const issue = async (user: UserRow, issuer: string, family: string): Promise<TokenResponse> => {
+    const refresh = randomBytes(32).toString('base64url');
     await db.query(`INSERT INTO auth_refresh_tokens (id, token_hash, family_id, user_id, expires_at) VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))`,
       [randomUUID(), sha256(refresh), family, user.id, refreshTtl]);
     return respond(user, issuer, refresh);
@@ -222,21 +223,26 @@ export function createAuth(o: AuthOptions) {
       /** The token was used already: the same successor again, within the grace window, or the end of the sign-in. */
       const again = async (r: Row): Promise<TokenResponse | null> => {
         const next = r.in_grace && r.successor ? openSuccessor(token, r.id, r.successor) : null;
-        // the successor used in turn means its answer arrived: whoever sends the old token now is not that client
-        const used = next ? (await db.query('SELECT 1 FROM auth_refresh_tokens WHERE token_hash = $1 AND rotated_at IS NOT NULL', [sha256(next)])).length > 0 : true;
-        const u = used ? null : await userById(r.user_id);
-        if (!next || used || !u || u.disabled) { await revokeFamily(r.family_id); return null; }
+        // the successor is stored in the same statement that marked this token used, so it exists here; used in
+        // turn, its answer arrived: whoever sends the old token now is not that client. Expired: nothing to give
+        const usable = next ? (await db.query('SELECT 1 FROM auth_refresh_tokens WHERE token_hash = $1 AND rotated_at IS NULL AND expires_at > now()', [sha256(next)])).length > 0 : false;
+        const u = usable ? await userById(r.user_id) : null;
+        if (!next || !usable || !u || u.disabled) { await revokeFamily(r.family_id); return null; }
         return stillValid(u, r.family_id, await respond(u, issuer, next));
       };
       const r = await read();
       if (!r || r.revoked) return null;
       if (r.rotated_at) return again(r);
       if (!r.live) return null;
-      // used up exactly once, even when two requests race with the same token; the successor is chosen and kept
-      // (sealed with this token) in the same step, so the request that loses the race can give the same one
+      // used up exactly once, even when two requests race with the same token. One statement marks it used, keeps
+      // the successor sealed with it, and stores the successor's row: whoever sees it used (a retry, the request
+      // that lost the race) finds the successor already stored, so signing out with it or revoking works at once
       const next = randomBytes(32).toString('base64url');
-      const won = await db.query('UPDATE auth_refresh_tokens SET rotated_at = now(), successor = $2 WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL RETURNING id',
-        [r.id, sealSuccessor(token, r.id, next)]);
+      const won = await db.query(`WITH used AS (
+          UPDATE auth_refresh_tokens SET rotated_at = now(), successor = $2 WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL RETURNING family_id, user_id)
+        INSERT INTO auth_refresh_tokens (id, token_hash, family_id, user_id, expires_at)
+          SELECT $3, $4, family_id, user_id, now() + make_interval(secs => $5) FROM used RETURNING id`,
+        [r.id, sealSuccessor(token, r.id, next), randomUUID(), sha256(next), refreshTtl]);
       if (!won.length) {
         const lost = await read();
         if (lost && !lost.revoked && lost.rotated_at) return again(lost);
@@ -245,7 +251,7 @@ export function createAuth(o: AuthOptions) {
       }
       const u = await userById(r.user_id);
       if (!u || u.disabled) { await revokeFamily(r.family_id); return null; }
-      return stillValid(u, r.family_id, await issue(u, issuer, r.family_id, next));
+      return stillValid(u, r.family_id, await respond(u, issuer, next));
     },
 
     /** Signing out: the refresh token and every token of its family stop working. Unknown tokens are ignored. */

@@ -65,7 +65,7 @@ starting point. Never commit the real `.env`.
 | `PUBLIC_READ` | `true` | `false`: searching, reading records **and the files' bytes** need a token too (any signed-in user or key; see [A private library](#a-private-library-public_readfalse)). Writing always needs one. |
 | `ACCESS_TOKEN_TTL` | `900` | Seconds an access token lasts. |
 | `REFRESH_TOKEN_TTL` | `2592000` (30 days) | Seconds a refresh token lasts (each use gives a new one). |
-| `REFRESH_TOKEN_GRACE` | `30` | Seconds after a refresh token was used during which sending it again gives the same new token (an answer lost on the way does not sign the device out). `0` turns this off. |
+| `REFRESH_TOKEN_GRACE` | `30` | Seconds after a refresh token was used during which sending it again gives the same new token (an answer lost on the way does not sign the device out). `0` turns this off; at most `60`. |
 | `AUTH_KEY_SECRET` | none | Encrypts the token signing keys in the database (AES-256-GCM), at least 32 characters: `openssl rand -base64 32`. **Required** once the library has user accounts or `PUBLIC_READ=false` (see [below](#the-signing-keys-and-auth_key_secret)). Keep it in the deployment's secret store, not in the database. |
 | `AUTH_RATE_LIMIT` | `10` | Sign-in attempts per minute and username. |
 | `AUTH_RATE_LIMIT_IP` | `60` | Requests to `/v1/auth/token` per minute and client address. Both limits are counted in each process's memory: with several instances the real limit is this times the instances, and a restart clears them. |
