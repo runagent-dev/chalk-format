@@ -35,7 +35,8 @@
       "type": "string"
     },
     "coverAssetId": {
-      "type": "string"
+      "type": "string",
+      "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
     },
     "pages": {
       "minItems": 1,
@@ -72,12 +73,14 @@
             "maximum": 9007199254740991
           },
           "thumb": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
           },
           "assets": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
             }
           },
           "key": {
@@ -129,12 +132,14 @@
             "maximum": 9007199254740991
           },
           "thumb": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
           },
           "assets": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
             }
           },
           "key": {
@@ -159,7 +164,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^c1:[a-z2-7]{25}[aeimquy4]$"
+            "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
           },
           "type": {
             "type": "string"
@@ -201,7 +206,7 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "pattern": "^c1:[a-z2-7]{25}[aeimquy4]$"
+                  "pattern": "^(?:sha256:[0-9a-f]{64}|c1:[a-z2-7]{25}[aeimquy4])$"
                 },
                 "type": {
                   "type": "string"

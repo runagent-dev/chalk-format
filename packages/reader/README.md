@@ -51,7 +51,7 @@ The reader fills its container; give the container a height.
 | `labStorage` | `{ load, save, clear }` | Where labs keep state (default: this browser). |
 | `onLabProgress` | `(progress, { objectId, labId, page }) => void` | A lab reported progress. |
 | `onPageChange` | `(index, page) => void` | The current page changed (0-based). |
-| `onBookLinks` | `(links, book) => void` | A book from a library: its links item (sentences with questions), once it arrives; null if it has none. |
+| `onBookLinks` | `(links, book) => void` | A book from a library: its links item (sentences with questions; links of a role the reader does not know are left out), once it arrives; null if it has none. |
 | `onSavingChange` | `(saving) => void` | Authoring: a save started (`true`) or ended (`false`), for your own Save button. |
 | `onSaveProgress` | `({ phase, done?, total? }) => void` | Authoring: where a save is: collecting the pictures, packing, handing over to `onSave`. |
 | `onSavePatch` | `(patch, media) => Promise<PatchResult>` | Authoring, streamed books: Save sends only the pages that changed and the media added (a patch) instead of the whole book. See [the patch save](../../docs/guides/host-patch-save.md). |
@@ -141,9 +141,12 @@ until the book is whole). `openStreamedBook(url)` gives the same book outside th
 **A book in a library** (spec 1.8, "Books in a library"): `source={{ library: 'https://library.example.org/', slug: 'physics-9-10-bn' }}`
 (add `token` for a library that needs one to read) opens the current revision of that book (the book item tagged `book:<slug>`,
 `kind:book`, `state:current`; the newest if two are) and reads it like a streamed book: its pages, text layer and media are items of the
-library, fetched by key from the library's store and checked against the key. `onBookLinks` hands the host the book's links item (which
-sentences of which pages have questions, by question key), for "questions for this line". `openLibraryStreamedBook(source)` gives the
-same book outside the component, and `book.library` its book item, revision and keys.
+library, fetched by key from the library's store (or, for what that store does not have, from the stores the book suggests) and checked
+against the key. The book item is checked as a book item before anything is drawn. `onBookLinks` hands the host the book's links item
+(which sentences of which pages have questions, by question key), checked, with only the links whose role this version knows (spec 1.8
+§3.4: `answers_from`, `tests_concept`, `formula_source`, `uses_figure`), for "questions for this line". `loadQuestion(book.library, key)`
+fetches one of those questions (spec 1.7), checked. `openLibraryStreamedBook(source)` gives the same book outside the component, and
+`book.library` its book item, revision and keys.
 
 **Signing in to a library.** A library that keeps its books private (`PUBLIC_READ=false`) needs a token: a fixed one (an API key), or a
 user's sign-in. `libraryAuth({ library, storage })` (from `@chalk-format/core`, re-exported here) signs in with a username and password

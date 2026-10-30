@@ -73,7 +73,8 @@ const publishBook = async (revision: number) => {
     ...(index.snipPages ? { snipPages: await Promise.all(index.snipPages.map((p) => toItem(p, revision))) } : {}),
     text: { key: textKey, bytes: textBytes.byteLength },
     assets: index.assets.map(({ path: _path, ...a }) => a),
-    assetSources: (await lib.stores()).items,
+    // a book names no store that needs a token (spec 1.2 §4.4); the reader finds the library's own through GET v1/stores
+    assetSources: (await lib.stores()).items.filter((d) => d.auth !== 'bearer'),
     links,
   };
   const key = await add(json(book), 'application/vnd.chalk.book+json', tags('book', revision));
