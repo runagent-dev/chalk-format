@@ -115,7 +115,10 @@ export function createAuth(o: AuthOptions) {
   const sweep = async () => {
     if (now() - lastSweep < 3600_000) return;
     lastSweep = now();
-    await db.query("DELETE FROM auth_refresh_tokens WHERE expires_at < now() - interval '7 days'");
+    // whole sign-ins only, once their newest token has expired: an old used token of a live sign-in must stay, so
+    // that sending it again is still recognised as reuse
+    await db.query(`DELETE FROM auth_refresh_tokens WHERE family_id IN
+      (SELECT family_id FROM auth_refresh_tokens GROUP BY family_id HAVING max(expires_at) < now() - interval '7 days')`);
   };
   const userByName = async (username: string) => (await db.query<UserRow>('SELECT * FROM auth_users WHERE username = $1', [normalizeUsername(username)]))[0] ?? null;
   const userById = async (id: string) => (await db.query<UserRow>('SELECT * FROM auth_users WHERE id = $1', [id]))[0] ?? null;
@@ -154,9 +157,12 @@ export function createAuth(o: AuthOptions) {
     /** grant_type=refresh_token: the token is used up; using it again revokes every token descended from the same sign-in. */
     async refreshGrant(token: string, issuer: string): Promise<TokenResponse | null> {
       if (typeof token !== 'string' || !token) return null;
-      const r = (await db.query<{ id: string; family_id: string; user_id: string; rotated_at: unknown; revoked_at: unknown; live: boolean }>(
-        'SELECT id, family_id, user_id, rotated_at, revoked_at, expires_at > now() AS live FROM auth_refresh_tokens WHERE token_hash = $1', [sha256(token)]))[0];
-      if (!r || r.revoked_at) return null;
+      // a family is revoked once any of its tokens is: that also covers a successor inserted after the revocation
+      const r = (await db.query<{ id: string; family_id: string; user_id: string; rotated_at: unknown; revoked: boolean; live: boolean }>(
+        `SELECT id, family_id, user_id, rotated_at, expires_at > now() AS live,
+          EXISTS (SELECT 1 FROM auth_refresh_tokens f WHERE f.family_id = t.family_id AND f.revoked_at IS NOT NULL) AS revoked
+        FROM auth_refresh_tokens t WHERE token_hash = $1`, [sha256(token)]))[0];
+      if (!r || r.revoked) return null;
       if (r.rotated_at) { await revokeFamily(r.family_id); return null; }
       if (!r.live) return null;
       // used up exactly once, even when two requests race with the same token
@@ -164,7 +170,11 @@ export function createAuth(o: AuthOptions) {
       if (!won.length) { await revokeFamily(r.family_id); return null; }
       const u = await userById(r.user_id);
       if (!u || u.disabled) { await revokeFamily(r.family_id); return null; }
-      return issue(u, issuer, r.family_id);
+      const tokens = await issue(u, issuer, r.family_id);
+      // a reuse that revoked the family while this request ran: the new token is revoked with it
+      const revoked = await db.query('SELECT 1 FROM auth_refresh_tokens WHERE family_id = $1 AND revoked_at IS NOT NULL LIMIT 1', [r.family_id]);
+      if (revoked.length) { await revokeFamily(r.family_id); return null; }
+      return tokens;
     },
 
     /** Signing out: the refresh token and every token of its family stop working. Unknown tokens are ignored. */

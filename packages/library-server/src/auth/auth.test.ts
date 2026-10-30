@@ -25,7 +25,9 @@ const PW = { rita: 'reader-password-1', arun: 'author-password-1', ada: 'admin-p
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'chalk-library-auth-'));
-  db = await openDb('pglite:');
+  // CHALK_LIBRARY_TEST_DB=postgres://… runs the same tests on a real Postgres, in a schema of their own
+  const pg = process.env.CHALK_LIBRARY_TEST_DB;
+  db = await openDb(pg ?? 'pglite:', pg ? { schema: `auth_test_${Date.now().toString(36)}` } : {});
   app = createLibraryApp({
     db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('ci:t-1,root!:a-1'),
     publicRead: false, issuer: BASE, auth: { rateLimit: { perUser: 1000, perAddress: 1000 } },
@@ -138,6 +140,10 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     expect(await (await refresh(first.refresh_token)).json()).toMatchObject({ error: 'invalid_grant' });
     expect((await refresh(second.refresh_token)).status).toBe(400);
     expect((await refresh(other.refresh_token)).status).toBe(200);
+    // the same token twice at once: whichever wins, nothing of that sign-in works afterwards
+    const raced = await tokensOf('arun', PW.arun);
+    const both = await Promise.all([refresh(raced.refresh_token), refresh(raced.refresh_token)]);
+    for (const r of both.filter((x) => x.status === 200)) expect((await refresh(((await r.json()) as Tokens).refresh_token)).status).toBe(400);
     // signing out: always 200; the token is done
     const t = await tokensOf('arun', PW.arun);
     expect((await call('/v1/auth/revoke', { body: { refresh_token: t.refresh_token } })).status).toBe(200);

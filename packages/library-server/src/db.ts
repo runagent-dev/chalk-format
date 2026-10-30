@@ -35,7 +35,7 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
       async query<T>(sql: string, params: unknown[] = []) { return (await pg.query<T>(sql, params)).rows; },
       async close() { await pg.close(); },
     };
-    await migrate(db, (sql) => pg.exec(sql).then(() => undefined));
+    await migrate(db, (sql) => pg.transaction((tx) => tx.exec(sql)).then(() => undefined));
   } else {
     const { default: postgres } = await import('postgres');
     const schema = o.schema ?? 'chalk_library';
@@ -49,7 +49,7 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
       async query<T>(text: string, params: unknown[] = []) { return (await sql.unsafe(text, params as never[])) as unknown as T[]; },
       async close() { await sql.end(); },
     };
-    await migrate(db, (text) => sql.unsafe(text).simple().then(() => undefined));
+    await migrate(db, (text) => sql.begin((tx) => tx.unsafe(text).simple()).then(() => undefined));
   }
   return db;
 }
@@ -62,10 +62,8 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
     await exec(schemaSql());
     await db.query('INSERT INTO chalk_library_schema (version) VALUES (1)');
   }
-  if (!done.has(2)) {
-    await exec(AUTH_SQL);
-    await db.query('INSERT INTO chalk_library_schema (version) VALUES (2)');
-  }
+  // the tables and their record in one transaction (exec runs in one): a step is applied entirely or not at all
+  if (!done.has(2)) await exec(`${AUTH_SQL}\nINSERT INTO chalk_library_schema (version) VALUES (2);`);
 }
 
 /**
@@ -73,7 +71,7 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
  * registry schema: another registry may issue tokens however it likes. Secrets are kept only as hashes.
  */
 const AUTH_SQL = `
-CREATE TABLE auth_users (
+CREATE TABLE IF NOT EXISTS auth_users (
   id               text PRIMARY KEY,
   username         text NOT NULL UNIQUE,
   password_hash    text NOT NULL,                  -- scrypt$N$r$p$salt$hash
@@ -85,7 +83,7 @@ CREATE TABLE auth_users (
 );
 -- refresh tokens: one row per token; the tokens of one sign-in share a family, which is revoked as a whole when
 -- a used token comes back (theft detection)
-CREATE TABLE auth_refresh_tokens (
+CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
   id          text PRIMARY KEY,
   token_hash  char(64) NOT NULL UNIQUE,            -- SHA-256, hex
   family_id   text NOT NULL,
@@ -95,9 +93,9 @@ CREATE TABLE auth_refresh_tokens (
   rotated_at  timestamptz,                         -- used once: a new token was issued for it
   revoked_at  timestamptz
 );
-CREATE INDEX auth_refresh_tokens_family ON auth_refresh_tokens (family_id);
-CREATE INDEX auth_refresh_tokens_user ON auth_refresh_tokens (user_id);
-CREATE TABLE auth_api_keys (
+CREATE INDEX IF NOT EXISTS auth_refresh_tokens_family ON auth_refresh_tokens (family_id);
+CREATE INDEX IF NOT EXISTS auth_refresh_tokens_user ON auth_refresh_tokens (user_id);
+CREATE TABLE IF NOT EXISTS auth_api_keys (
   id            text PRIMARY KEY,
   name          text NOT NULL,
   key_hash      char(64) NOT NULL UNIQUE,          -- SHA-256 of clk_…, hex
@@ -109,7 +107,7 @@ CREATE TABLE auth_api_keys (
   revoked_at    timestamptz
 );
 -- the library's token signing keys (Ed25519); a retired key keeps its public half until its tokens expire
-CREATE TABLE auth_keys (
+CREATE TABLE IF NOT EXISTS auth_keys (
   kid          text PRIMARY KEY,
   alg          text NOT NULL DEFAULT 'EdDSA',
   public_key   text NOT NULL,                      -- SPKI PEM

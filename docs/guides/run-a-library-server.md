@@ -217,9 +217,11 @@ Turning reading off breaks every reader that has no credential, so do it in this
    each key has a recent "last used".
 3. Set `PUBLIC_READ=false` and restart. Run `chalk-library check <url> --user <an author>` against it.
 4. **Make the bucket private.** The server cannot do this: until the bucket (or its CDN domain) stops serving
-   objects to anyone, every file is still public at its address. Remove the R2 custom domain's public access or
-   the bucket policy; readers then get bytes only through the library (`GET /v1/files/{key}`, a pre-signed link
-   that lasts minutes).
+   objects to anyone, every file is still public at its address. First check that this server delivers files to
+   signed-in readers: with `PUBLIC_READ=false`, `GET /v1/stores` must name a store with `"auth": "bearer"` (a
+   version without it still points readers at the public bucket, and making the bucket private would break
+   them). Then remove the R2 custom domain's public access or the bucket policy; readers get bytes only through
+   the library (`GET /v1/files/{key}`, a pre-signed link that lasts minutes).
 5. Remove the bootstrap tokens nobody needs any more from `TOKENS`.
 
 To go back, set `PUBLIC_READ=true`.
