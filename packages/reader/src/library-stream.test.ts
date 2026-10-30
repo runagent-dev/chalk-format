@@ -106,7 +106,8 @@ describe('books in a library, in the reader', () => {
     expect(await b.assetUrl(pictureKey)).toBe(adoptedAt(pictureKey));
     expect(new Uint8Array((await b.assetBytes(pictureKey))!.bytes)).toEqual(picture);
     b.want(windowAround(0, 20, 20));
-    await settle();
+    // twenty pages: waited for, not a fixed pause (a busy machine runs every package's tests at once)
+    for (let i = 0; i < 200 && !b.lesson.pages.every((p) => b.isLoaded(p.id)); i++) await settle();
     expect(b.lesson.pages.every((p) => b.isLoaded(p.id))).toBe(true);
     expect(b.lesson.pages[3]!.objects[0]).toMatchObject({ type: 'image', assetId: pictureKey });
     // every item from its adopted path; no derived URL was asked (each would 404)
