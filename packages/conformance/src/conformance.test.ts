@@ -163,3 +163,25 @@ describe('question manifests (spec 1.7)', () => {
     expect(v({ ...ok, code: 'has space' })).toBe(false);
   });
 });
+
+// ---- 1.8: books in a library ----
+describe('books in a library (spec 1.8)', () => {
+  const text = readFileSync(new URL('../../../spec/1.8/README.md', import.meta.url), 'utf8');
+  const [book, links] = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1]!) as Record<string, unknown>);
+  const vBook = ajv.compile(schema('library-book.schema.json'));
+  const vLinks = ajv.compile(schema('library-links.schema.json'));
+  it('the examples in the spec text are valid against schema/library-book.schema.json and schema/library-links.schema.json', () => {
+    expect(vBook(book), JSON.stringify(vBook.errors)).toBe(true);
+    expect(vLinks(links), JSON.stringify(vLinks.errors)).toBe(true);
+  });
+  it('the schemas refuse paths in a book item, a book item without stores, another links format and a rectangle off the page', () => {
+    const pages = book!.pages as Record<string, unknown>[], assets = book!.assets as Record<string, unknown>[];
+    expect(vBook({ ...book, pages: [{ ...pages[0], file: 'pages/12.json' }] })).toBe(false);
+    expect(vBook({ ...book, assets: [{ ...assets[0], path: 'assets/x' }] })).toBe(false);
+    expect(vBook({ ...book, text: { key: (book!.text as { key: string }).key, file: 'text.json' } })).toBe(false);
+    expect(vBook({ ...book, assetSources: [] })).toBe(false);
+    expect(vLinks({ ...links, format: 'chalk.links' })).toBe(false);
+    const s = (links!.sentences as Record<string, unknown>[])[0];
+    expect(vLinks({ ...links, sentences: [{ ...s, rects: [[0, 0, 2, 0.1]] }] })).toBe(false);
+  });
+});
