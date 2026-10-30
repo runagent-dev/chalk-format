@@ -33,7 +33,8 @@ export type LibraryOptions = {
   origins?: string[];
 };
 
-export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json'];
+export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json',
+  'application/vnd.chalk.book+json', 'application/vnd.chalk.page+json', 'application/vnd.chalk.text+json', 'application/vnd.chalk.links+json'];
 const UPLOAD_SECONDS = 15 * 60;
 
 /** Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page. */

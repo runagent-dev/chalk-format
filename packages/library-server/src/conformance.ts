@@ -64,7 +64,8 @@ export async function checkLibrary(url: string, o: { token: string; adminToken?:
   });
   await step('books: the set of keys a book uses, and which books use a key', async () => {
     await client.setBookAssets(`conformance-${word}`, [key]);
-    const r = await f(`${url.replace(/\/?$/, '/')}v1/assets/${encodeURIComponent(key)}/books`);
+    // with the token: a library may need one to read (PUBLIC_READ=false)
+    const r = await f(`${url.replace(/\/?$/, '/')}v1/assets/${encodeURIComponent(key)}/books`, { headers: { Authorization: `Bearer ${o.token}` } });
     return ((await r.json()) as { items: { bookId: string }[] }).items.some((b) => b.bookId === `conformance-${word}`);
   });
   if (o.adminToken) {
