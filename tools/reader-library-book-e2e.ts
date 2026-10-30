@@ -31,6 +31,11 @@ const dir = path.join(import.meta.dirname, '../apps/reader/public/samples/showca
 const index = JSON.parse(readFileSync(path.join(dir, 'book.json'), 'utf8')) as StreamIndex;
 const slug = `e2e-physics-${Date.now().toString(36)}`;
 const lib = createRegistryClient(LIBRARY, { token: WRITE_TOKEN });
+// a book names no store that needs a token (spec 1.2 §4.4, 1.8 §3.1), and names at least one: the library's public delivery store. A
+// library whose every store needs a token cannot hold a valid 1.8 book yet: say so before writing anything
+const PUBLIC_STORES = (await lib.stores()).items.filter((d) => d.auth !== 'bearer');
+if (!PUBLIC_STORES.length) { console.error('this library has no store that can be read without a token: a 1.8 book item must name one (spec 1.8 §3.1)'); process.exit(2); }
+
 const enc = new TextEncoder();
 const json = (v: unknown) => enc.encode(JSON.stringify(v));
 const tags = (kind: string, revision: number) => ['origin:chalkbook', `book:${slug}`, `book-revision:${revision}`, `kind:${kind}`, 'state:current'];
@@ -73,7 +78,7 @@ const publishBook = async (revision: number) => {
     ...(index.snipPages ? { snipPages: await Promise.all(index.snipPages.map((p) => toItem(p, revision))) } : {}),
     text: { key: textKey, bytes: textBytes.byteLength },
     assets: index.assets.map(({ path: _path, ...a }) => a),
-    assetSources: (await lib.stores()).items,
+    assetSources: PUBLIC_STORES,
     links,
   };
   const key = await add(json(book), 'application/vnd.chalk.book+json', tags('book', revision));

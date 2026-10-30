@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { lessonPageSchema, streamTextSchema } from '@chalk-format/model';
-import { LIBRARY_BOOK_MEDIA_TYPES, checkLibraryBook, checkLinks, libraryBookSchema, libraryLinksSchema, type LibraryBook, type LibraryLinks } from './schema.js';
+import { LIBRARY_BOOK_MEDIA_TYPES, LINK_ROLES, checkLibraryBook, checkLinks, libraryBookSchema, libraryLinksSchema, type LibraryBook, type LibraryLinks } from './schema.js';
 
 // the two examples of spec 1.8 (§3.1, §3.4): the spec text and the schemas must agree
 const spec = readFileSync(new URL('../../../../spec/1.8/README.md', import.meta.url), 'utf8');
@@ -9,6 +9,7 @@ const [bookJson, linksJson] = [...spec.matchAll(/```json\n([\s\S]*?)\n```/g)].ma
 const book = () => structuredClone(bookJson) as LibraryBook;
 const links = () => structuredClone(linksJson) as LibraryLinks;
 const K = (c: string) => `c1:${c.repeat(25)}a`;
+const S = (c: string) => `sha256:${c.repeat(64)}`;
 
 describe('the book item (spec 1.8 §3.1)', () => {
   it('the example in the spec is a valid book item with no problems', () => {
@@ -33,6 +34,26 @@ describe('the book item (spec 1.8 §3.1)', () => {
     expect(ok({ ...b, assetSources: undefined })).toBe(false);
     // what the book item does not need: text, links, snip pages
     expect(ok({ ...b, text: undefined, links: undefined })).toBe(true);
+  });
+
+  it('takes any content id for an asset (c1 or sha256:, spec 1.2 §3.3), but only c1 keys for items', () => {
+    const ok = (b: unknown) => libraryBookSchema.safeParse(b).success;
+    const b = book();
+    // the example in the spec names one asset by a sha256: id, as the cover, a page's picture and its thumbnail
+    expect(b.assets.some((a) => a.id.startsWith('sha256:'))).toBe(true);
+    expect(b.coverAssetId?.startsWith('sha256:')).toBe(true);
+    const sha = (x: Partial<LibraryBook['assets'][number]> = {}) => ({ ...b, assets: [...b.assets, { id: S('a'), type: 'image/png', ...x }] });
+    expect(ok(sha())).toBe(true);
+    expect(ok(sha({ renditions: [{ id: S('b'), type: 'image/webp' }] }))).toBe(true);
+    expect(ok({ ...sha(), coverAssetId: S('a'), pages: [{ ...b.pages[0], thumb: S('a'), assets: [S('a')] }, b.pages[1]] })).toBe(true);
+    expect(ok({ ...b, assets: [{ ...b.assets[0], id: 'sha256:abc' }] })).toBe(false);
+    expect(ok({ ...b, coverAssetId: 'cover' })).toBe(false);
+    expect(ok({ ...b, pages: [{ ...b.pages[0], thumb: 'thumb.webp' }] })).toBe(false);
+    expect(ok({ ...b, pages: [{ ...b.pages[0], assets: ['img-1'] }] })).toBe(false);
+    // item keys stay c1 keys
+    expect(ok({ ...b, text: { key: S('c') } })).toBe(false);
+    expect(ok({ ...b, links: S('d') })).toBe(false);
+    expect(ok({ ...b, snipPages: [{ ...b.pages[1], id: 'snip', key: S('e') }] })).toBe(false);
   });
 
   it('keeps fields it does not know (an open object, like the 1.4 index)', () => {
@@ -99,6 +120,11 @@ describe('the links item (spec 1.8 §3.4)', () => {
       `link to ${K('e')}: sentence s-missing is not listed`,
       `link s-0412 ${l.links[0]!.question} answers_from: listed twice`,
     ]);
+  });
+
+  it('knows the four roles the spec lists, each named in its table', () => {
+    expect([...LINK_ROLES]).toEqual(['answers_from', 'tests_concept', 'formula_source', 'uses_figure']);
+    for (const r of LINK_ROLES) expect(spec).toMatch(new RegExp(`\\| \`${r}\` \\|`));
   });
 
   it('allows rounding at the edge of the page', () => {

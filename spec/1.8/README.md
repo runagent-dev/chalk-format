@@ -48,16 +48,18 @@ The 1.4 index (`book.json`, 1.4 §3), changed only where a path would name a fil
   "format": "chalk.streamed", "streamVersion": 1, "formatVersion": 11,
   "id": "physics-9-10-bn", "title": "পদার্থবিজ্ঞান", "locale": "bn",
   "createdAt": "2026-10-30T00:00:00Z", "updatedAt": "2026-10-30T00:00:00Z",
+  "coverAssetId": "sha256:e5479490db7fdbadde2e66fa61fcdec1354103c975417d44284abf17eff82b82",
   "pages": [
     { "id": "p12", "key": "c1:fkcj23yh7tj4sucoszwxr3jjai", "title": "সরল দোলক", "label": "১২",
       "width": 1200, "height": 1699, "bytes": 2210, "thumb": "c1:3cz2ot563hcytyt5iotjupwkza",
-      "assets": ["c1:zh7tdapo47ooe22ki3wddvad5e", "c1:wdfqbjot7mgw2falug64x3got4"], "assetBytes": 81234 },
+      "assets": ["c1:zh7tdapo47ooe22ki3wddvad5e", "c1:wdfqbjot7mgw2falug64x3got4", "sha256:e5479490db7fdbadde2e66fa61fcdec1354103c975417d44284abf17eff82b82"], "assetBytes": 103446 },
     { "id": "p13", "key": "c1:xzbcmznxo3cye3622zgl7v4qym", "label": "১৩", "width": 1200, "height": 1699 }
   ],
   "assets": [
     { "id": "c1:zh7tdapo47ooe22ki3wddvad5e", "type": "image/webp", "size": 76012 },
     { "id": "c1:3cz2ot563hcytyt5iotjupwkza", "type": "image/webp", "size": 5222 },
-    { "id": "c1:wdfqbjot7mgw2falug64x3got4", "type": "text/html", "size": 18211 }
+    { "id": "c1:wdfqbjot7mgw2falug64x3got4", "type": "text/html", "size": 18211 },
+    { "id": "sha256:e5479490db7fdbadde2e66fa61fcdec1354103c975417d44284abf17eff82b82", "type": "image/png", "size": 22212 }
   ],
   "text": { "key": "c1:cohznykex3fhyq42vqmjjqqrau", "bytes": 48211 },
   "links": "c1:kggk5mnvftkuqu4k4mpuk5ypby",
@@ -73,10 +75,16 @@ Everything not listed below is as in 1.4 §3.
 |---|---|---|
 | `pages[].key` | required | The key of the page item. Replaces `file`, which MUST be absent |
 | `snipPages[].key` | required | The same, for snip pages |
-| `assets[]` | | Every asset is external: `id` is a c1 key, and `path` MUST be absent. The asset is found through stores (1.2 §6). The `id` of each of its `renditions` is a c1 key too |
+| `assets[]` | | Every asset is external: `id` is a content id (1.2 §3.3), a c1 key or a `sha256:` id, and `path` MUST be absent. The asset is found through stores (1.2 §6) by its c1 key (for a `sha256:` id, the resolution key of 1.2 §3.3). The `id` of each of its `renditions` is a content id too |
 | `text` | | `{ "key": "c1:…", "bytes": n }`: the key of the text item and its size. Replaces `text.file`, which MUST be absent |
 | `links` | | The key of the links item (§3.4), when the book has links |
 | `assetSources` | required | At least one store descriptor (1.2 §5.1): the library's delivery store, as `GET v1/stores` gives it (registry API §7), and any other store the publisher suggests. As in 1.2 §4.4 they MUST NOT need a token (`auth` absent or `"none"`) |
+
+**Item keys and asset ids.** The keys of items of the book (`pages[].key`, `snipPages[].key`, `text.key`, `links`) are
+c1 keys: the library names its items so. An asset id (`assets[].id`, a rendition's `id`, `coverAssetId`, a page's
+`assets` and `thumb`) is any content id. A page item is the page file unchanged (§3.2), and pages written before c1
+keys name their pictures by `sha256:` ids: the book item names those assets by the same ids, so that a page and its
+entry agree. Writers SHOULD use c1 keys for new assets (1.2 §3.3).
 
 The `id` SHOULD be the slug. `format` and `streamVersion` stay those of 1.4: what tells a book item from a 1.4 index is
 its media type, and a book item is never at the end of a URL a 1.4 reader would open. Every asset a page names (`assets`,
@@ -123,8 +131,16 @@ highlight the sentences a question comes from:
 | `sentences[].text` | required | The sentence, as on the page |
 | `links[]` | required | `sentence` (an `id` of `sentences`), `question` (the key of a question manifest, 1.7, that is in the library) and `role` |
 
-The one role this version knows is `answers_from`: the sentence holds what the question asks for. A reader MUST skip a
-link whose role it does not know. A link appears once. Questions without a key in the library are left out by the
+The roles this version knows:
+
+| `role` | The sentence… |
+|---|---|
+| `answers_from` | holds what the question asks for |
+| `tests_concept` | states the idea the question tests |
+| `formula_source` | gives a formula the question uses |
+| `uses_figure` | is about a figure the question uses |
+
+A reader MUST skip a link whose role it does not know, and does not show a sentence left with no link it knows. A link appears once. Questions without a key in the library are left out by the
 publisher. Like the other items, the links item is an open object: writers keep fields they do not know.
 
 ## 4. Tags
@@ -229,7 +245,8 @@ PUT v1/books/<slug>/assets   { "keys": ["c1:…", …] }
 ```
 
 (registry API §6). The keys of a revision are: the book item, its page items, its text and links items, every asset in
-`assets` with the keys of its `renditions` (1.2 §4.3; in a book item their `id`s are c1 keys too) and its `poster`, and the question manifests the links name with the
+`assets` with the keys of its `renditions` (1.2 §4.3) and its `poster`, each by its c1 key (a `sha256:` id by its
+resolution key, 1.2 §3.3), and the question manifests the links name with the
 assets they list. The call replaces the book's set, so it always carries everything that must stay: in steps 3 and 5 both
 revisions, in step 7 the new one, after which the old revision's items that the new one does not use leave the set. The
 keys the library records for the book now are found with `GET v1/search?book=<slug>` (registry API §5), or the publisher
@@ -248,7 +265,8 @@ A reader is given a library (its base URL) and, when the library needs one, a to
 1. **The stores.** `GET v1/stores` (registry API §7) gives the library's delivery store. The reader uses it as a host store
    (1.2 §6.1, step 3) for the whole book: book, page, text and links items, media and questions are all found through it,
    by key, at the store's URL for the key (1.2 §5.2). The book item's `assetSources` are the book's suggested stores
-   (1.2 §4.4), tried after the host's.
+   (1.2 §4.4), tried after the host's: for an item or a media file the library's store does not deliver, or delivers
+   bytes that fail their key.
 2. **The book item.** Find it (§5), fetch it through the stores, and check it: its bytes MUST hash to its key (1.2 §6.4),
    and it MUST be a valid book item. A book item that fails is not used; the reader says the book cannot be opened.
 3. **The pages.** As 1.4 §5: the book item takes the place of the index, a page entry's `key` the place of its `file`.
@@ -256,7 +274,8 @@ A reader is given a library (its base URL) and, when the library needs one, a to
    the book item names them by key, so this is what makes a book item a promise about every page.
 4. **Media.** As 1.4 §5 step 7 and 1.2 §6: every asset is external.
 5. **Questions.** The links item names question manifests by key; the reader fetches them through the stores, as 1.7 says,
-   when it shows them, and their pictures the same way.
+   when it shows them (media type `application/vnd.chalk.question+json`, which picks the store), and their pictures the
+   same way (images; the manifest gives their keys, not their formats).
 
 **A library that needs a token to read.** A library MAY refuse to search and give records without a token (the reference
 library server's `PUBLIC_READ=false`). A reader that was given a token sends `Authorization: Bearer <token>` with every
@@ -296,5 +315,8 @@ are the same.
 - `schema/library-book.schema.json`, `schema/library-links.schema.json`. The two examples above are valid against them.
 - A library server accepts the four media types, and finds book items by the tags of §4
   (`packages/library-server`, its tests).
-- Refused: a book item with a page `file`, an asset `path`, a `text.file`, no `assetSources`, or a key that is not a c1 key; a
-  links item whose `format` is not `chalk-links`, or a rectangle outside 0 to 1.
+- Refused: a book item with a page `file`, an asset `path`, a `text.file`, no `assetSources`, an item key (§3.1) that is
+  not a c1 key, or an asset id that is not a content id; a links item whose `format` is not `chalk-links`, or a rectangle
+  outside 0 to 1.
+- Accepted: a book item whose asset ids are `sha256:` ids (the example above names one); a links item with a role this
+  version does not know (a reader skips that link, §3.4).

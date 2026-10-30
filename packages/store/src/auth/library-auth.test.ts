@@ -424,6 +424,8 @@ describe('library clients with a sign-in', () => {
       format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: 'demo', title: 'Demo', locale: 'bn', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z',
       pages: [{ id: 'p1', key: page.key, title: 'One', width: 800, height: 600, bytes: page.bytes.byteLength, assets: [picture.key] }],
       assets: [{ id: picture.key, type: 'image/webp', size: picture.bytes.byteLength }],
+      // a book names no store that needs a token (spec 1.2 §4.4): the library's own store, which does, comes from GET v1/stores
+      assetSources: [{ id: 'mirror', kind: 'derived', template: 'https://mirror.example/{h}' }],
     })), 'application/vnd.chalk.book+json', ['book:demo', 'kind:book', 'state:current']);
 
     const auth = libraryAuth({ library: BASE, fetch: s.fetch, now });

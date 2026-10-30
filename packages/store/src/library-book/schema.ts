@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { C1_KEY_PATTERN, renditionSchema, storeDescriptorSchema, streamAssetSchema, streamIndexSchema, streamPageSchema } from '@chalk-format/model';
+import { C1_KEY_PATTERN, contentKeySchema, renditionSchema, storeDescriptorSchema, streamAssetSchema, streamIndexSchema, streamPageSchema } from '@chalk-format/model';
 
 /**
  * Books in a library (spec 1.8): a streamed book (spec 1.4) kept as items of a library (spec 1.2, the registry API), so
@@ -20,17 +20,26 @@ export const LIBRARY_LINKS_TYPE = 'application/vnd.chalk.links+json';
 /** The four media types of a book in a library, for a library server's list of accepted types. */
 export const LIBRARY_BOOK_MEDIA_TYPES = [LIBRARY_BOOK_TYPE, LIBRARY_PAGE_TYPE, LIBRARY_TEXT_TYPE, LIBRARY_LINKS_TYPE] as const;
 
+/** A library item's key (a page, the text, the links, a question): a c1 key, as the library names its items. */
 const c1 = z.string().regex(C1_KEY_PATTERN);
+/**
+ * An asset's id: any content id (spec 1.2 §3.3), a c1 key or a `sha256:` id. A page item is the page file unchanged (§3.2), so the ids a
+ * page uses stay as the book was written; a store finds a `sha256:` id by its c1 key (its resolution key).
+ */
+const contentId = contentKeySchema;
 /** A library has no paths: a field that names a file in a 1.4 book MUST be absent here. */
 const noPath = z.never().optional();
 
-/** A page entry: the 1.4 entry, with the key of its page item instead of a file. */
-export const libraryBookPageSchema = streamPageSchema.omit({ file: true }).extend({ key: c1, file: noPath });
+/** A page entry: the 1.4 entry, with the key of its page item instead of a file. Its `thumb` and `assets` are asset ids. */
+export const libraryBookPageSchema = streamPageSchema.omit({ file: true }).extend({
+  key: c1, file: noPath, thumb: contentId.optional(), assets: z.array(contentId).optional(),
+});
 
-/** Every asset is external: found through the stores (spec 1.2 §6), never at a path in the book. */
-export const libraryBookAssetSchema = streamAssetSchema.extend({ id: c1, path: noPath, renditions: z.array(renditionSchema.extend({ id: c1 })).optional() });
+/** Every asset is external: found through the stores (spec 1.2 §6) by its content id, never at a path in the book. */
+export const libraryBookAssetSchema = streamAssetSchema.extend({ id: contentId, path: noPath, renditions: z.array(renditionSchema.extend({ id: contentId })).optional() });
 
 export const libraryBookSchema = streamIndexSchema.extend({
+  coverAssetId: contentId.optional(),
   pages: z.array(libraryBookPageSchema).min(1),
   snipPages: z.array(libraryBookPageSchema).optional(),
   assets: z.array(libraryBookAssetSchema),
@@ -59,8 +68,15 @@ export const linksSentenceSchema = z.looseObject({
   text: z.string(),
 });
 
-/** The roles this version knows. A reader skips a link whose role it does not know. */
-export const LINK_ROLES = ['answers_from'] as const;
+/**
+ * The roles this version knows (spec 1.8 §3.4). A reader skips a link whose role it does not know.
+ *
+ * - `answers_from`: the sentence holds what the question asks for;
+ * - `tests_concept`: the question tests the idea the sentence states;
+ * - `formula_source`: the question uses a formula the sentence gives;
+ * - `uses_figure`: the question uses the figure the sentence is about.
+ */
+export const LINK_ROLES = ['answers_from', 'tests_concept', 'formula_source', 'uses_figure'] as const;
 export type LinkRole = (typeof LINK_ROLES)[number];
 
 export const linksLinkSchema = z.looseObject({
@@ -85,6 +101,9 @@ export type LibraryBookAsset = z.infer<typeof libraryBookAssetSchema>;
 export type LibraryLinks = z.infer<typeof libraryLinksSchema>;
 export type LinksSentence = z.infer<typeof linksSentenceSchema>;
 export type LinksLink = z.infer<typeof linksLinkSchema>;
+
+/** Whether this version knows a link's role. */
+export const isKnownLinkRole = (role: string): role is LinkRole => (LINK_ROLES as readonly string[]).includes(role);
 
 const dup = (xs: string[]): string[] => [...new Set(xs.filter((x, i) => xs.indexOf(x) !== i))];
 

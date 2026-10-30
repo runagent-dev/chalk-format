@@ -1,5 +1,5 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
-import { resolutionKey, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
+import { isImageType, resolutionKey, sniffMediaType, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
 import { openLibraryBook, type OpenedLibraryBook, type TokenSource } from '@chalk-format/store';
 import type { AssetResolver, Book } from './book.js';
 
@@ -91,18 +91,36 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     at: (path) => new URL(path, lib.library.endsWith('/') ? lib.library : `${lib.library}/`).href,
     // drawn by URL, so the browser and the CDN cache it, as any streamed book's media (spec 1.2 §6: what a URL draws is not hashed). A store that
     // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
-    // media are fetched, checked against their id, and drawn from a blob
+    // media are fetched, checked against their id, and drawn from a blob. So is a picture whose format is not known (`image/*`, a question's):
+    // which of the library's image stores has it is found by asking each in turn, which a URL cannot do. A blob is made once per id: a page
+    // that drew a question's picture by URL before the question was read keeps that URL
     async assetUrl(id, signal) {
       const type = lib.typeOf(id);
       const store = resolutionKey(id) ? lib.storeFor(type) : null;
       if (!store) return null;
-      if (store.auth !== 'bearer' && store.verify !== 'always') return lib.urlOf(id, type);
-      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
+      const unknownFormat = type.endsWith('/*');
+      // a question's picture is checked before it is shown (spec 1.7 §4), even one the pages also draw
+      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat && !lib.mustCheck(id)) return lib.urlOf(id, type);
+      const bytes = await lib.fetchItem(id, { signal, type });
+      // a picture whose format is not known gets the type its bytes show, among the formats a book's pictures take (spec 1.0: png, jpeg, webp,
+      // gif, avif). Never image/svg+xml from a guess: an SVG in a blob: URL of this origin runs its scripts if the URL is opened
+      const shown = unknownFormat ? sniffMediaType(bytes) : null;
+      const sniffed = unknownFormat ? (shown && isImageType(shown) ? shown : null) : type;
+      return new Blob([bytes as BlobPart], sniffed ? { type: sniffed } : {});
     },
     async assetBytes(id, signal) {
-      // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does)
+      // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does). One it has a store for is
+      // fetched from it, else from the stores the book suggests, and checked
       if (!resolutionKey(id) || !lib.storeFor(lib.typeOf(id))) return undefined;
       return (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer;
+    },
+    // after the host's resolver (spec 1.8 §7 step 1): media the library has no store for, from the stores the book suggests, checked and drawn
+    // from a blob. (Media the library's store names by a public URL are drawn from that URL, as above: a picture missing there is not looked
+    // for elsewhere, since an <img> says only that it failed. The publisher puts every item of a book in the library first, spec 1.8 §6.1.)
+    async fallbackUrl(id, signal) {
+      const type = lib.typeOf(id);
+      if (!resolutionKey(id) || lib.storeFor(type) || !lib.storesFor(type).length) return null;
+      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     library: lib,
   }, o);
@@ -120,6 +138,8 @@ type StreamFiles = {
   at(path: string): string;
   /** External media the source can name itself (a library's store), before the host's resolver: a URL, or the bytes as a Blob. */
   assetUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
+  /** External media the source can find only after the host's resolver (a book's suggested stores): a URL, or the bytes as a Blob. */
+  fallbackUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
   /** External media's bytes, fetched and checked by the source; undefined for an id it cannot name. */
   assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | undefined>;
   library?: OpenedLibraryBook;
@@ -179,7 +199,7 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
     const p = assetPath.get(id);
     if (p) return at(p);
     const own = await src.assetUrl?.(id, abort.signal);
-    const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null);
+    const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null) ?? (await src.fallbackUrl?.(id, abort.signal)) ?? null;
     if (r == null) return null;
     if (typeof r === 'string') return r;
     // disposed while the bytes were on their way: no URL that nothing would revoke
@@ -206,7 +226,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
       }
       const url = await book.assetUrl(id);
       if (!url) return null;
-      const r = await doFetch(url, { signal: abort.signal });
+      // a blob: URL holds bytes already here (checked ones from a store, or the host's): the host's fetch may not know the scheme
+      const r = await (url.startsWith('blob:') ? globalThis.fetch(url, { signal: abort.signal }) : doFetch(url, { signal: abort.signal }));
       if (!r.ok) return null;
       return { type: assetType.get(id) ?? r.headers.get('content-type') ?? 'application/octet-stream', bytes: await r.arrayBuffer() };
     },

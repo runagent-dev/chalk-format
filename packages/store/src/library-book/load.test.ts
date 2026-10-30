@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assetKeyAndSha256 } from '@chalk-format/model';
-import { loadBookLinks, openLibraryBook } from './load.js';
+import { assetKeyAndSha256, QUESTION_MANIFEST_TYPE } from '@chalk-format/model';
+import { loadBookLinks, loadQuestion, openLibraryBook } from './load.js';
 import { hashPart } from '../urls.js';
 
 const enc = new TextEncoder();
@@ -16,15 +16,16 @@ async function item(value: unknown, type: string, tags: string[] = [], createdAt
 }
 
 /** A small book published as the contract says: pages, text, links and a picture as items, the book item last. */
-async function publish(o: { revision?: number; title?: string; createdAt?: string } = {}) {
+type Link = { sentence: string; question: string; role: string };
+async function publish(o: { revision?: number; title?: string; createdAt?: string; links?: Link[]; sentences?: string[] } = {}) {
   const picture = await item(new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3]), 'image/webp');
   const page = { id: 'p1', title: 'One', width: 800, height: 600, background: { type: 'image', assetId: picture.key }, objects: [] };
   const pageItem = await item(page, 'application/vnd.chalk.page+json', ['kind:page']);
   const textItem = await item({ v: 1, pages: { p1: [{ text: 'দোলক', x: 10, y: 10, width: 40, fontSize: 12 }] } }, 'application/vnd.chalk.text+json', ['kind:text']);
   const linksItem = await item({
     format: 'chalk-links', version: 1, book: 'demo', bookRevision: o.revision ?? 1,
-    sentences: [{ id: 's1', page: 1, pageId: 'p1', rects: [[0.1, 0.1, 0.5, 0.05]], text: 'দোলক' }],
-    links: [{ sentence: 's1', question: 'c1:aaaaaaaaaaaaaaaaaaaaaaaaaa', role: 'answers_from' }],
+    sentences: (o.sentences ?? ['s1']).map((id) => ({ id, page: 1, pageId: 'p1', rects: [[0.1, 0.1, 0.5, 0.05]], text: 'দোলক' })),
+    links: o.links ?? [{ sentence: 's1', question: 'c1:aaaaaaaaaaaaaaaaaaaaaaaaaa', role: 'answers_from' }],
   }, 'application/vnd.chalk.links+json', ['kind:links']);
   const book = await item({
     format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: 'demo', title: o.title ?? 'Demo', locale: 'bn',
@@ -39,7 +40,7 @@ async function publish(o: { revision?: number; title?: string; createdAt?: strin
 }
 
 /** A fake library: the registry API (search, stores) and its store, with an optional token for reading. */
-function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores?: unknown[] } = {}) {
+function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores?: unknown[]; mirror?: Item[]; mirrorTamper?: string } = {}) {
   const calls: string[] = [];
   const fetch = (async (url: string, init?: RequestInit) => {
     const u = new URL(String(url));
@@ -59,6 +60,17 @@ function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores
       const hit = items.find((i) => at(i.key) === u.href);
       if (!hit) return new Response('not found', { status: 404 });
       return new Response((hit.key === o.tamper ? enc.encode('something else') : hit.bytes) as unknown as BodyInit, { status: 200, headers: { 'content-type': hit.type } });
+    }
+    // the store the book suggests (its `assetSources`): another copy, with what it holds
+    if (u.host === 'elsewhere.example') {
+      const hit = (o.mirror ?? []).find((i) => u.pathname === `/c1/${hashPart(i.key).slice(0, 2)}/${hashPart(i.key).slice(2, 4)}/${hashPart(i.key)}`);
+      if (!hit) return new Response('not found', { status: 404 });
+      return new Response((hit.key === o.mirrorTamper ? enc.encode('something else') : hit.bytes) as unknown as BodyInit, { status: 200 });
+    }
+    // a store of the library that keeps only images, or only questions
+    if (u.host === 'img.example' || u.host === 'q.example') {
+      const hit = items.find((i) => u.pathname === `/${hashPart(i.key)}`);
+      return hit ? new Response(hit.bytes as unknown as BodyInit, { status: 200 }) : new Response('not found', { status: 404 });
     }
     return new Response('no', { status: 404 });
   }) as typeof globalThis.fetch;
@@ -127,15 +139,54 @@ describe('openLibraryBook (books in a library)', () => {
     expect(book.urlOf(webp.key)).toBe(`https://img.example/${hashPart(webp.key)}`);
   });
 
-  it('a book that names no store gets every store of the library it can read, not only the one for books', async () => {
+  it('refuses a book item that is not a valid book item (spec 1.8 §7 step 2): no stores, a store that needs a token, an asset it does not list', async () => {
     const p = await publish();
-    const raw = JSON.parse(new TextDecoder().decode(p.book.bytes)) as Record<string, unknown>;
-    delete raw.assetSources;
+    const raw = () => JSON.parse(new TextDecoder().decode(p.book.bytes)) as Record<string, unknown> & { assetSources: unknown[]; pages: { assets?: string[] }[] };
+    const open = async (b: unknown) => openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([await item(b, p.book.type, p.book.tags)]).fetch });
+    const none = raw();
+    delete (none as Record<string, unknown>).assetSources;
+    await expect(open(none)).rejects.toThrow(/not a valid book item: assetSources/);
+    const bearer = raw();
+    bearer.assetSources = [{ id: 'private', kind: 'derived', template: 'https://x.example/{h}', auth: 'bearer' }];
+    await expect(open(bearer)).rejects.toThrow(/not a valid book item: store private/);
+    const unlisted = raw();
+    unlisted.pages[0]!.assets = ['c1:bbbbbbbbbbbbbbbbbbbbbbbbba'];
+    await expect(open(unlisted)).rejects.toThrow(/not a valid book item: page p1: c1:b+a is not in assets/);
+    const path = raw();
+    (path.assets as Record<string, unknown>[])[0]!.path = 'assets/picture.webp';
+    await expect(open(path)).rejects.toThrow(/not a valid book item: assets\.0\.path/);
+  });
+
+  it('opens a book whose assets have sha256: ids (the page files keep the ids they were written with), and fetches them by their c1 key', async () => {
+    const p = await publish();
+    const sha = `sha256:${p.picture.sha256}`;
+    const raw = JSON.parse(new TextDecoder().decode(p.book.bytes)) as Record<string, unknown> & { pages: Record<string, unknown>[]; assets: Record<string, unknown>[] };
+    raw.pages[0]!.assets = [sha];
+    raw.pages[0]!.thumb = sha;
+    raw.coverAssetId = sha;
+    raw.assets[0]!.id = sha;
     const bookItem = await item(raw, p.book.type, p.book.tags);
-    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/*'] };
-    const indexed = { id: 'idx', kind: 'indexed', base: 'https://idx.example/' };
-    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bookItem], { stores: [images, indexed, STORE] }).fetch });
-    expect(book.index.assetSources?.map((s) => s.id)).toEqual(['pictures', 'library']);
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bookItem, p.pageItem, p.picture]).fetch });
+    expect(book.item.assets[0]!.id).toBe(sha);
+    expect(book.index.coverAssetId).toBe(sha);
+    expect(book.typeOf(sha)).toBe('image/webp');
+    expect(book.urlOf(sha)).toBe(at(p.picture.key));
+    expect(await book.fetchItem(sha)).toEqual(p.picture.bytes);
+  });
+
+  it("fetches what the library's store does not have from the stores the book suggests, checked, and only then", async () => {
+    const p = await publish();
+    const lib = fakeLibrary([p.book, p.pageItem], { mirror: [p.picture, p.textItem] });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    await book.read(book.index.pages[0]!.file);
+    expect(lib.calls.some((c) => c.startsWith('elsewhere.example'))).toBe(false);
+    expect(await book.fetchItem(p.picture.key)).toEqual(p.picture.bytes);
+    expect(JSON.parse(new TextDecoder().decode(await book.read(book.index.text!.file)))).toMatchObject({ v: 1 });
+    expect(lib.calls.filter((c) => c.startsWith('elsewhere.example'))).toHaveLength(2);
+    // the library's error when no store has it, and bytes that fail their key from the book's store are refused too
+    await expect(book.fetchItem(p.linksItem.key)).rejects.toThrow(/could not fetch .* from the library \(404\)/);
+    const bad = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book], { mirror: [p.picture], mirrorTamper: p.picture.key }).fetch });
+    await expect(bad.fetchItem(p.picture.key)).rejects.toThrow(/from the library \(404\)/);
   });
 
   it('a superseded or other book is not opened', async () => {
@@ -182,9 +233,69 @@ describe('openLibraryBook (books in a library)', () => {
     expect(await loadBookLinks({ ...book, links: null })).toBeNull();
   });
 
+  it('gives the host only the links whose role this version knows, and the sentences that still have one (spec 1.8 §3.4)', async () => {
+    const q = (c: string) => `c1:${c.repeat(25)}a`;
+    const p = await publish({
+      sentences: ['s1', 's2', 's3'],
+      links: [
+        { sentence: 's1', question: q('a'), role: 'answers_from' },
+        { sentence: 's1', question: q('b'), role: 'formula_source' },
+        { sentence: 's2', question: q('c'), role: 'tests_concept' },
+        { sentence: 's2', question: q('d'), role: 'uses_figure' },
+        { sentence: 's2', question: q('e'), role: 'explains' },
+        { sentence: 's3', question: q('f'), role: 'explains' },
+      ],
+    });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book, p.linksItem]).fetch });
+    const links = await loadBookLinks(book);
+    expect(links?.links.map((l) => l.role)).toEqual(['answers_from', 'formula_source', 'tests_concept', 'uses_figure']);
+    expect(links?.sentences.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+
+  it('refuses a links item that is not one, or that names a page the book does not have', async () => {
+    const p = await publish();
+    const raw = JSON.parse(new TextDecoder().decode(p.linksItem.bytes)) as { sentences: { pageId: string; rects: number[][] }[] };
+    const withLinks = async (l: unknown) => {
+      const li = await item(l, p.linksItem.type);
+      const b = JSON.parse(new TextDecoder().decode(p.book.bytes)) as Record<string, unknown>;
+      const bi = await item({ ...b, links: li.key }, p.book.type, p.book.tags);
+      return loadBookLinks(await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bi, li]).fetch }));
+    };
+    await expect(withLinks({ ...raw, sentences: [{ ...raw.sentences[0], rects: [[0, 0, 2, 1]] }] })).rejects.toThrow(/not a links item/);
+    await expect(withLinks({ ...raw, sentences: [{ ...raw.sentences[0], pageId: 'p9' }] })).rejects.toThrow(/page p9 is not in the book/);
+  });
+
+  it('types the questions of the links and their pictures, so a store that keeps only those types serves them', async () => {
+    const pic = await item(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1]), 'image/png');
+    const question = await item({ format: 'chalk.question', manifestVersion: 1, id: 'q1', version: '1', kind: 'short_answer', stem: `কেন? ![দোলক](${pic.key})`, assets: [pic.key] }, QUESTION_MANIFEST_TYPE);
+    const p = await publish({ links: [{ sentence: 's1', question: question.key, role: 'answers_from' }] });
+    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/png'] };
+    const questions = { id: 'questions', kind: 'derived', template: 'https://q.example/{h}', media: [QUESTION_MANIFEST_TYPE] };
+    const books = { ...STORE, media: ['application/vnd.chalk.book+json', 'application/vnd.chalk.page+json', 'application/vnd.chalk.links+json'] };
+    const lib = fakeLibrary([p.book, p.linksItem, question, pic], { stores: [images, questions, books] });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    expect(book.typeOf(question.key)).toBe('application/octet-stream');
+    await loadBookLinks(book);
+    expect(book.typeOf(question.key)).toBe(QUESTION_MANIFEST_TYPE);
+    expect(await book.fetchItem(question.key)).toEqual(question.bytes);
+    const m = await loadQuestion(book, question.key);
+    expect(m.id).toBe('q1');
+    expect(book.typeOf(pic.key)).toBe('image/*');
+    expect(book.urlOf(pic.key)).toBe(`https://img.example/${hashPart(pic.key)}`);
+    expect(await book.fetchItem(pic.key)).toEqual(pic.bytes);
+    // a picture's format is not known: every image store of the library is tried (a webp-only one first, then one that has png)
+    const webpOnly = { id: 'webp', kind: 'derived', template: 'https://webp.example/{h}', media: ['image/webp'] };
+    const two = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book, p.linksItem, question, pic], { stores: [webpOnly, images, questions, books] }).fetch });
+    await loadQuestion(two, question.key);
+    expect(two.storesFor('image/*').map((s) => s.id)).toEqual(['webp', 'pictures', 'library']);
+    expect(await two.fetchItem(pic.key)).toEqual(pic.bytes);
+    // a book's own type is never changed by what is learned later
+    expect(book.typeOf(p.linksItem.key)).toBe('application/vnd.chalk.links+json');
+  });
+
   it('rejects a book item without item keys', async () => {
     const bad = await item({ format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: 'x', title: 'x', locale: 'en', createdAt: '', updatedAt: '', pages: [{ id: 'p1', file: 'pages/1.json' }], assets: [] },
       'application/vnd.chalk.book+json', ['book:demo', 'kind:book', 'state:current']);
-    await expect(openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bad]).fetch })).rejects.toThrow(/no item key/);
+    await expect(openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bad]).fetch })).rejects.toThrow(/not a valid book item: pages\.0\.key/);
   });
 });
