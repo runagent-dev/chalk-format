@@ -239,6 +239,19 @@ describe('adopting: off by default, and a private library', () => {
     expect(states.filter((x) => x.startsWith('available:') && x !== `available:${path}`)).toEqual([]);
   });
 
+  it('a key withdrawn while its bytes are being read is not adopted: 410, and no location', async () => {
+    const bytes = new TextEncoder().encode('withdrawn mid-read'), k = await assetKeyAndSha256(bytes), path = 'chalk-books/mid/a.png';
+    mkdirSync(join(dir, 'chalk-books', 'mid'), { recursive: true }); writeFileSync(join(dir, ...path.split('/')), bytes);
+    let app: ReturnType<typeof createLibraryApp> | null = null;
+    const call = (p: string, body: object, t = 't-1') => app!.fetch(new Request(`${BASE}${p}`, { method: 'POST', headers: { ...json, ...bearer(t) }, body: JSON.stringify(body) }));
+    const disk = diskStorage(dir, { uploadBase: BASE });
+    const storage = new Proxy(disk, { get: (t, key) => (key === 'read' ? async (p: string) => { if (p === path) expect((await call(`/v1/assets/${k.key}/withdraw`, {}, 'a-1')).status).toBe(200); return t.read(p); } : Reflect.get(t, key)) }) as typeof disk;
+    app = createLibraryApp({ db, storage, publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1,admin!:a-1'), adoptPrefixes: ['chalk-books/'] });
+    expect((await call('/v1/uploads', { ...k, type: 'image/png', size: bytes.byteLength })).status).toBe(200);
+    expect((await call('/v1/assets/adopt', { ...k, type: 'image/png', size: bytes.byteLength, path })).status).toBe(410);
+    expect(await db.query('SELECT path FROM locations WHERE key = $1', [k.key])).toEqual([]);
+  });
+
   it('ADOPT_PREFIXES: each made a folder, never the library\'s own layout or a path outside the bucket', async () => {
     expect(adoptPrefixes(' chalk-books , media/old/ ')).toEqual(['chalk-books/', 'media/old/']);
     expect(adoptPrefixes(undefined)).toEqual([]);

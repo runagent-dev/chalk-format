@@ -114,8 +114,11 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
       // path, where a pending upload's unverified bytes may be). A withdrawn key is never made available again.
       await db.query(`WITH asset AS (INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
           ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size WHERE assets.status = 'pending')
-        INSERT INTO locations (key, store, path, verified_at) VALUES ($1, 'library', $6, now())
+        INSERT INTO locations (key, store, path, verified_at) SELECT $1, 'library', $6, now() WHERE NOT EXISTS (SELECT 1 FROM assets WHERE key = $1 AND status = 'withdrawn')
         ON CONFLICT (key, store) DO UPDATE SET path = EXCLUDED.path, verified_at = now()`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user, a.path]);
+      // withdrawn while its bytes were being read: nothing more is done for it
+      const [now] = await db.query<{ status: string }>('SELECT status FROM assets WHERE key = $1', [a.key]);
+      if (now?.status === 'withdrawn') return fail(c, 410, 'gone', 'this asset was withdrawn');
       // an upload that was started (pending) may have left unverified bytes at the standard path, the library's own
       // copy: removed, so the derived store 404s and readers find the key where it was adopted
       // (unless a register of that upload just made the standard path its location)
