@@ -62,4 +62,59 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
     await exec(schemaSql());
     await db.query('INSERT INTO chalk_library_schema (version) VALUES (1)');
   }
+  if (!done.has(2)) {
+    await exec(AUTH_SQL);
+    await db.query('INSERT INTO chalk_library_schema (version) VALUES (2)');
+  }
 }
+
+/**
+ * Step 2: the library as its own identity provider (spec/1.2/registry-api.md §10). Not part of the reference
+ * registry schema: another registry may issue tokens however it likes. Secrets are kept only as hashes.
+ */
+const AUTH_SQL = `
+CREATE TABLE auth_users (
+  id               text PRIMARY KEY,
+  username         text NOT NULL UNIQUE,
+  password_hash    text NOT NULL,                  -- scrypt$N$r$p$salt$hash
+  roles            text[] NOT NULL,                -- reader, author, admin (expanded: an author also holds reader)
+  disabled         boolean NOT NULL DEFAULT false,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  last_sign_in_at  timestamptz
+);
+-- refresh tokens: one row per token; the tokens of one sign-in share a family, which is revoked as a whole when
+-- a used token comes back (theft detection)
+CREATE TABLE auth_refresh_tokens (
+  id          text PRIMARY KEY,
+  token_hash  char(64) NOT NULL UNIQUE,            -- SHA-256, hex
+  family_id   text NOT NULL,
+  user_id     text NOT NULL REFERENCES auth_users (id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  expires_at  timestamptz NOT NULL,
+  rotated_at  timestamptz,                         -- used once: a new token was issued for it
+  revoked_at  timestamptz
+);
+CREATE INDEX auth_refresh_tokens_family ON auth_refresh_tokens (family_id);
+CREATE INDEX auth_refresh_tokens_user ON auth_refresh_tokens (user_id);
+CREATE TABLE auth_api_keys (
+  id            text PRIMARY KEY,
+  name          text NOT NULL,
+  key_hash      char(64) NOT NULL UNIQUE,          -- SHA-256 of clk_…, hex
+  hint          text NOT NULL,                     -- the first characters, to tell keys apart in a list
+  roles         text[] NOT NULL,
+  created_by    text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_used_at  timestamptz,
+  revoked_at    timestamptz
+);
+-- the library's token signing keys (Ed25519); a retired key keeps its public half until its tokens expire
+CREATE TABLE auth_keys (
+  kid          text PRIMARY KEY,
+  alg          text NOT NULL DEFAULT 'EdDSA',
+  public_key   text NOT NULL,                      -- SPKI PEM
+  private_key  text,                               -- PKCS#8 PEM; removed when the key is retired
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  retired_at   timestamptz
+);
+`;
