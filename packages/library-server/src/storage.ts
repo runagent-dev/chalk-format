@@ -83,14 +83,18 @@ export function s3Storage(o: S3Options): Storage {
     },
     async presignGet(path, expiresSeconds, g) {
       // the response's type and name are fixed by the signature (response-* parameters), not by whoever holds the URL
-      const seconds = clampSeconds(expiresSeconds), u = new URL(objectUrl(path));
+      const seconds = clampSeconds(expiresSeconds), u = new URL(objectUrl(path)), type = servedType(g.contentType);
+      const expiresAt = new Date(Date.now() + seconds * 1000);
       u.searchParams.set('X-Amz-Expires', String(seconds));
-      u.searchParams.set('response-content-type', servedType(g.contentType));
-      // a browser keeps the bytes no longer than the URL is valid (the bucket's own Cache-Control may say a year)
-      u.searchParams.set('response-cache-control', `private, max-age=${seconds}`);
-      if (g.filename) u.searchParams.set('response-content-disposition', contentDisposition(g.filename));
+      u.searchParams.set('response-content-type', type);
+      // a browser keeps the bytes until the URL ends, whenever it fetched them (the bucket's own Cache-Control may say a year)
+      u.searchParams.set('response-cache-control', 'private');
+      u.searchParams.set('response-expires', expiresAt.toUTCString());
+      // an SVG may hold script: shown by an <img>, never opened as a page on the bucket's origin (a bucket sends no CSP)
+      const disposition = g.filename ? contentDisposition(g.filename) : type === 'image/svg+xml' ? 'inline' : null;
+      if (disposition) u.searchParams.set('response-content-disposition', type === 'image/svg+xml' ? disposition.replace(/^inline/, 'attachment') : disposition);
       const signed = await aws.sign(new Request(u, { method: 'GET' }), { aws: { signQuery: true } });
-      return { url: signed.url, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+      return { url: signed.url, expiresAt: expiresAt.toISOString() };
     },
     async head(path) {
       const r = await send(objectUrl(path), { method: 'HEAD' });

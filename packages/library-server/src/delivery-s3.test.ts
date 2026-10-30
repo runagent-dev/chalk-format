@@ -79,7 +79,13 @@ describe('presignGet on S3 storage', () => {
     expect(Math.abs(Date.parse(expiresAt) - Date.now() - 300_000)).toBeLessThan(2000);
     expect(new URL((await s.presignGet('x', 10 ** 9, { contentType: 'image/png' })).url).searchParams.get('X-Amz-Expires')).toBe('604800');
     expect(new URL((await s.presignGet('x', 60, { contentType: 'image/png' })).url).searchParams.get('response-content-type')).toBe('image/png');
-    expect(u.searchParams.get('response-cache-control')).toBe('private, max-age=300');
+    // cached until the URL ends, not for its lifetime from whenever it was fetched
+    expect(u.searchParams.get('response-cache-control')).toBe('private');
+    expect(Date.parse(u.searchParams.get('response-expires')!)).toBe(Math.floor(Date.parse(expiresAt) / 1000) * 1000);
+    // an SVG is never opened as a page on the bucket's origin
+    const svg = new URL((await s.presignGet('x', 60, { contentType: 'image/svg+xml' })).url).searchParams;
+    expect([svg.get('response-content-type'), svg.get('response-content-disposition')]).toEqual(['image/svg+xml', 'attachment']);
+    expect(new URL((await s.presignGet('x', 60, { contentType: 'image/svg+xml', filename: 'a.svg' })).url).searchParams.get('response-content-disposition')).toBe("attachment; filename*=UTF-8''a.svg");
     // a type registered with odd spelling is still code
     for (const t of [' text/html', 'TEXT/HTML; charset=utf-8', 'text/html ', 'application/xhtml+xml', 'text/xml', 'application/javascript', 'not a type', ''])
       expect(new URL((await s.presignGet('x', 60, { contentType: t })).url).searchParams.get('response-content-type'), t).toBe('application/octet-stream');
