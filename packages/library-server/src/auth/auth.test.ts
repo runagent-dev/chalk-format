@@ -1,10 +1,11 @@
-import { createHmac, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, createHmac, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { checkLibrary, createLibraryApp, diskStorage, openDb, tokenCallers, type Db } from '../index.js';
 import { keyFromPem, signAccessToken } from './jwt.js';
+import { keySealer } from './sealed.js';
 
 // a private library (PUBLIC_READ=false) in this process, with a bootstrap author (t-1) and administrator (a-1)
 const BASE = 'http://library.test';
@@ -21,6 +22,8 @@ const tokensOf = async (username: string, password: string) => { const r = await
 const refresh = (refresh_token: string) => call('/v1/auth/token', { body: { grant_type: 'refresh_token', refresh_token } });
 const part = (t: string, i: number) => JSON.parse(Buffer.from(t.split('.')[i]!, 'base64url').toString()) as Record<string, unknown>;
 const b64 = (x: unknown) => (Buffer.isBuffer(x) ? x : Buffer.from(typeof x === 'string' ? x : JSON.stringify(x))).toString('base64url');
+const hashOf = (t: string) => createHash('sha256').update(t).digest('hex');
+const SECRET = 'a-test-secret-that-is-long-enough-0123456789';
 const PW = { rita: 'reader-password-1', arun: 'author-password-1', ada: 'admin-password-1', dan: 'disabled-password-1' };
 
 beforeAll(async () => {
@@ -30,7 +33,7 @@ beforeAll(async () => {
   db = await openDb(pg ?? 'pglite:', pg ? { schema: `auth_test_${Date.now().toString(36)}` } : {});
   app = createLibraryApp({
     db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('ci:t-1,root!:a-1'),
-    publicRead: false, issuer: BASE, auth: { rateLimit: { perUser: 1000, perAddress: 1000 } },
+    publicRead: false, issuer: BASE, auth: { rateLimit: { perUser: 1000, perAddress: 1000 }, keySecret: SECRET },
   });
   for (const [username, roles] of [['rita', ['reader']], ['arun', ['author']], ['ada', ['admin']], ['dan', ['reader']]] as const) {
     const r = await call('/v1/admin/users', { token: 'a-1', body: { username, password: PW[username], roles } });
@@ -89,14 +92,14 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
 
   it('a password reset that lands while a sign-in is checking the old password wins', async () => {
     const { createAuth } = await import('./service.js');
-    const other = createAuth({ db });
+    const other = createAuth({ db, keySecret: SECRET });
     const dan = (await other.findUser('dan'))!;
     // the reset happens between the password check and the issuing of tokens
     const racing: Db = { ...db, query: async (sql, params) => {
       if (sql.startsWith('UPDATE auth_users SET last_sign_in_at')) await other.updateUser(dan.id, { password: 'a-brand-new-password' });
       return db.query(sql, params);
     } };
-    expect(await createAuth({ db: racing }).passwordGrant('dan', PW.dan, BASE)).toBeNull();
+    expect(await createAuth({ db: racing, keySecret: SECRET }).passwordGrant('dan', PW.dan, BASE)).toBeNull();
     expect((await db.query('SELECT 1 FROM auth_refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL', [dan.id])).length).toBe(0);
     await other.updateUser(dan.id, { password: PW.dan });
   });
@@ -105,7 +108,7 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     const t = await tokensOf('rita', PW.rita);
     const kid = part(t.access_token, 0).kid as string;
     const row = (await db.query<{ public_key: string; private_key: string }>('SELECT public_key, private_key FROM auth_keys WHERE kid = $1', [kid]))[0]!;
-    const real = keyFromPem(kid, row.public_key, row.private_key);
+    const real = keyFromPem(kid, row.public_key, keySealer(SECRET).open(kid, row.private_key)!);
     const claims = { iss: BASE, sub: part(t.access_token, 1).sub as string, name: 'rita', roles: ['reader'] };
     const ok = (token: string) => call('/v1/search', { token }).then((r) => r.status);
     expect(await ok(signAccessToken(real, claims, 900))).toBe(200);
@@ -149,15 +152,20 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     const second = (await r2.json()) as Tokens;
     expect(second.refresh_token).not.toBe(first.refresh_token);
     expect(second.roles).toEqual(['reader', 'author']);
-    // the first one again: theft. Both it and its successor stop working; another sign-in is not touched
+    // the first one again once the window for lost answers has passed: theft. Both it and its successor stop
+    // working; another sign-in is not touched
     const other = await tokensOf('arun', PW.arun);
+    await db.query("UPDATE auth_refresh_tokens SET rotated_at = now() - interval '31 seconds' WHERE token_hash = $1", [hashOf(first.refresh_token)]);
     expect(await (await refresh(first.refresh_token)).json()).toMatchObject({ error: 'invalid_grant' });
     expect((await refresh(second.refresh_token)).status).toBe(400);
     expect((await refresh(other.refresh_token)).status).toBe(200);
-    // the same token twice at once: whichever wins, nothing of that sign-in works afterwards
+    // the same token twice at once: both get the same successor, which works once
     const raced = await tokensOf('arun', PW.arun);
     const both = await Promise.all([refresh(raced.refresh_token), refresh(raced.refresh_token)]);
-    for (const r of both.filter((x) => x.status === 200)) expect((await refresh(((await r.json()) as Tokens).refresh_token)).status).toBe(400);
+    expect(both.map((r) => r.status)).toEqual([200, 200]);
+    const [a, b] = (await Promise.all(both.map((r) => r.json()))) as Tokens[];
+    expect(a!.refresh_token).toBe(b!.refresh_token);
+    expect((await refresh(a!.refresh_token)).status).toBe(200);
     // signing out: always 200; the token is done
     const t = await tokensOf('arun', PW.arun);
     expect((await call('/v1/auth/revoke', { body: { refresh_token: t.refresh_token } })).status).toBe(200);
@@ -166,8 +174,39 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     expect((await refresh('never-issued')).status).toBe(400);
   });
 
+  it('a refresh whose answer was lost: the same token again within the window gives the same successor', async () => {
+    const first = await tokensOf('arun', PW.arun);
+    const lost = (await (await refresh(first.refresh_token)).json()) as Tokens;
+    // the client never saw that answer and tries again: the same refresh token back, a new access token, still signed in
+    const r = await refresh(first.refresh_token);
+    expect(r.status).toBe(200);
+    const retried = (await r.json()) as Tokens;
+    expect(retried.refresh_token).toBe(lost.refresh_token);
+    expect(retried.access_token).not.toBe(lost.access_token);
+    expect((await call('/v1/search', { token: retried.access_token })).status).toBe(200);
+    expect((await refresh(first.refresh_token)).status).toBe(200);
+    // the successor works, once; after it was used, the first token is a reuse even within the window
+    const third = (await (await refresh(retried.refresh_token)).json()) as Tokens;
+    expect(await (await refresh(first.refresh_token)).json()).toMatchObject({ error: 'invalid_grant' });
+    expect((await refresh(third.refresh_token)).status).toBe(400);
+    // the successor is kept sealed with the token it replaced, never in the clear
+    const stored = JSON.stringify(await db.query('SELECT * FROM auth_refresh_tokens'));
+    expect(stored).not.toContain(lost.refresh_token);
+    // past the window: a reuse, the sign-in ends
+    const late = await tokensOf('arun', PW.arun);
+    const next = (await (await refresh(late.refresh_token)).json()) as Tokens;
+    await db.query("UPDATE auth_refresh_tokens SET rotated_at = now() - interval '31 seconds' WHERE token_hash = $1", [hashOf(late.refresh_token)]);
+    expect((await refresh(late.refresh_token)).status).toBe(400);
+    expect((await refresh(next.refresh_token)).status).toBe(400);
+    // signing out within the window ends it too
+    const out = await tokensOf('arun', PW.arun);
+    await refresh(out.refresh_token);
+    await call('/v1/auth/revoke', { body: { refresh_token: out.refresh_token } });
+    expect((await refresh(out.refresh_token)).status).toBe(400);
+  });
+
   it('limits sign-in attempts per username and per address', async () => {
-    const limited = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: () => null, issuer: BASE, auth: { rateLimit: { perUser: 3, perAddress: 6 } } });
+    const limited = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: () => null, issuer: BASE, auth: { rateLimit: { perUser: 3, perAddress: 6 }, keySecret: SECRET } });
     const post = (body: object) => limited.fetch(new Request(`${BASE}/v1/auth/token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
     const statuses = [];
     for (let i = 0; i < 4; i++) statuses.push((await post({ grant_type: 'password', username: 'rita', password: 'wrong-guess-' + i })).status);
@@ -238,7 +277,7 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
   it('rotating the signing key keeps tokens signed with the old one valid until they expire', async () => {
     const { createAuth } = await import('./service.js');
     const before = await tokensOf('rita', PW.rita);
-    await createAuth({ db }).rotateSigningKey();
+    await createAuth({ db, keySecret: SECRET }).rotateSigningKey();
     await new Promise((res) => setTimeout(res, 5_100));
     // this app re-reads its keys when it meets a kid it does not know, or every 5 minutes
     expect((await call('/v1/search', { token: before.access_token })).status).toBe(200);

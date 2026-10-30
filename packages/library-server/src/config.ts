@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.js';
 import { diskStorage, s3Storage, type Storage } from './storage.js';
+import { checkKeySetup } from './auth/service.js';
 import type { LibraryOptions } from './app.js';
 import type { Caller } from './auth/roles.js';
 
@@ -19,6 +20,8 @@ import type { Caller } from './auth/roles.js';
  *   PUBLIC_READ      true | false                    (search and read without a token; default true)
  *   ACCESS_TOKEN_TTL 900                             (seconds an access token lasts)
  *   REFRESH_TOKEN_TTL 2592000                        (seconds a refresh token lasts: 30 days)
+ *   REFRESH_TOKEN_GRACE 30                           (seconds a used refresh token still gives the same successor; 0: never)
+ *   AUTH_KEY_SECRET  at least 32 characters          (encrypts the token signing keys; needed once there are users or PUBLIC_READ=false)
  *   AUTH_RATE_LIMIT  10                              (token requests per minute and username; per process)
  *   AUTH_RATE_LIMIT_IP 60                            (token requests per minute and address; per process)
  *   TRUST_PROXY      false                           (true: the caller's address is the last X-Forwarded-For entry)
@@ -32,6 +35,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   const need = (k: string) => { const v = env[k]; if (!v) throw new Error(`${k} is not set`); return v; };
   const port = Number(env.PORT ?? 8080);
   const positive = (k: string) => { const n = Number(env[k]); if (!Number.isInteger(n) || n <= 0) throw new Error(`${k} must be a whole number above 0`); return n; };
+  const natural = (k: string) => { const n = Number(env[k]); if (!Number.isInteger(n) || n < 0) throw new Error(`${k} must be a whole number, 0 or more`); return n; };
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
   const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   let storage: Storage;
@@ -43,15 +47,20 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   } else {
     storage = diskStorage(env.DISK_DIR ?? './library', { uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}) });
   }
+  const publicRead = env.PUBLIC_READ !== 'false';
+  const keySecret = env.AUTH_KEY_SECRET || undefined;
+  try { await checkKeySetup(db, { publicRead, ...(keySecret ? { keySecret } : {}) }); } catch (e) { await db.close(); throw e; }
   return {
     db, storage, port,
     publicUrl: env.PUBLIC_URL ?? `${serverUrl.replace(/\/$/, '')}/files/`,
     callers: tokenCallers(env.TOKENS ?? ''),
-    publicRead: env.PUBLIC_READ !== 'false',
+    publicRead,
     issuer: serverUrl.replace(/\/+$/, ''),
     auth: {
       ...(env.ACCESS_TOKEN_TTL ? { accessTtl: positive('ACCESS_TOKEN_TTL') } : {}),
       ...(env.REFRESH_TOKEN_TTL ? { refreshTtl: positive('REFRESH_TOKEN_TTL') } : {}),
+      ...(env.REFRESH_TOKEN_GRACE ? { refreshGrace: natural('REFRESH_TOKEN_GRACE') } : {}),
+      ...(keySecret ? { keySecret } : {}),
       rateLimit: { ...(env.AUTH_RATE_LIMIT ? { perUser: positive('AUTH_RATE_LIMIT') } : {}), ...(env.AUTH_RATE_LIMIT_IP ? { perAddress: positive('AUTH_RATE_LIMIT_IP') } : {}) },
       trustProxy: env.TRUST_PROXY === 'true',
     },

@@ -64,6 +64,9 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
   }
   // the tables and their record in one transaction (exec runs in one): a step is applied entirely or not at all
   if (!done.has(2)) await exec(`${AUTH_SQL}\nINSERT INTO chalk_library_schema (version) VALUES (2);`);
+  // step 3: a rotated refresh token keeps its successor, sealed with the rotated token itself, so that sending it
+  // again within the grace window gives the same successor (a lost answer does not sign the device out)
+  if (!done.has(3)) await exec('ALTER TABLE auth_refresh_tokens ADD COLUMN IF NOT EXISTS successor text;\nINSERT INTO chalk_library_schema (version) VALUES (3);');
 }
 
 /**
@@ -111,7 +114,7 @@ CREATE TABLE IF NOT EXISTS auth_keys (
   kid          text PRIMARY KEY,
   alg          text NOT NULL DEFAULT 'EdDSA',
   public_key   text NOT NULL,                      -- SPKI PEM
-  private_key  text,                               -- PKCS#8 PEM; removed when the key is retired
+  private_key  text,                               -- PKCS#8 PEM, sealed (enc:v1:…) with AUTH_KEY_SECRET; removed when the key is retired
   created_at   timestamptz NOT NULL DEFAULT now(),
   retired_at   timestamptz
 );

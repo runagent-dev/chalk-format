@@ -64,6 +64,8 @@ starting point. Never commit the real `.env`.
 | `PUBLIC_READ` | `true` | `false`: searching and reading records needs a token too (any signed-in user or key). Writing always needs one. |
 | `ACCESS_TOKEN_TTL` | `900` | Seconds an access token lasts. |
 | `REFRESH_TOKEN_TTL` | `2592000` (30 days) | Seconds a refresh token lasts (each use gives a new one). |
+| `REFRESH_TOKEN_GRACE` | `30` | Seconds after a refresh token was used during which sending it again gives the same new token (an answer lost on the way does not sign the device out). `0` turns this off. |
+| `AUTH_KEY_SECRET` | none | Encrypts the token signing keys in the database (AES-256-GCM), at least 32 characters: `openssl rand -base64 32`. **Required** once the library has user accounts or `PUBLIC_READ=false` (see [below](#the-signing-keys-and-auth_key_secret)). Keep it in the deployment's secret store, not in the database. |
 | `AUTH_RATE_LIMIT` | `10` | Sign-in attempts per minute and username. |
 | `AUTH_RATE_LIMIT_IP` | `60` | Requests to `/v1/auth/token` per minute and client address. Both limits are counted in each process's memory: with several instances the real limit is this times the instances, and a restart clears them. |
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy (Coolify's Traefik, nginx): the client's address is the last `X-Forwarded-For` entry. Leave it `false` when the server is reached directly, or anyone can choose their address. |
@@ -174,9 +176,27 @@ usage) and `admin` (author + withdraw, users and keys). Apps find the endpoints 
 `/.well-known/openid-configuration` and the public keys at `/.well-known/jwks.json`.
 
 What the database keeps: users with scrypt password hashes, the SHA-256 of refresh tokens and API keys, and the
-signing keys (table `auth_keys`, made on first start). Whoever can read the library's database can sign tokens, so
-treat its credentials like the tokens themselves. `chalk-library signing-key rotate` makes a new key; the old one
-stays in JWKS until its tokens have expired (instances re-read keys within 5 minutes).
+signing keys (table `auth_keys`, made on first start), their private halves encrypted with `AUTH_KEY_SECRET`.
+`chalk-library signing-key rotate` makes a new key; the old one stays in JWKS until its tokens have expired
+(instances re-read keys within 5 minutes).
+
+#### The signing keys and AUTH_KEY_SECRET
+
+Whoever holds a private signing key can sign an access token for any user, so the keys are stored encrypted
+(AES-256-GCM, each bound to its key id) under a key derived from `AUTH_KEY_SECRET`, which lives in the deployment's
+environment, not in the database. A copy of the database alone (a backup, a read-only leak) cannot sign tokens.
+
+- **Set it before the first user.** `user add`, `POST /v1/admin/users` and `signing-key rotate` refuse to run
+  without it (`503 not_configured` from the API), and the server refuses to start without it when the library
+  has users, when `PUBLIC_READ=false`, or when its keys are already encrypted. A library with no accounts and
+  `PUBLIC_READ=true` (every deployment before accounts existed) starts as before.
+- **Existing keys are encrypted on the first start with the secret**: no new key, so tokens already issued stay
+  valid. The CLI needs the same `AUTH_KEY_SECRET` in its environment as the server.
+- **A wrong secret stops the start** (`AUTH_KEY_SECRET does not decrypt the token signing key …`), rather than
+  silently making new keys. If the secret was lost or must change, run `chalk-library signing-key rotate` with the
+  new one: it retires the old keys without reading them and makes a new one. Access tokens signed with the old keys
+  stay valid until they expire (15 minutes; their public keys are still in the database); sign-ins continue,
+  since refresh tokens do not depend on the keys.
 
 **Bootstrapping the first administrator.** Either keep an administrator in `TOKENS` (`admin!:<long random>`) and
 create users through the API, or, with access to the database, from the command line:
@@ -204,15 +224,16 @@ The same through the API, as an administrator: `POST /v1/admin/keys {"name","rol
 **Signing in from an app.** `POST /v1/auth/token` with `{"grant_type":"password","username","password"}` gives
 an access token and a refresh token. Before the access token expires, `{"grant_type":"refresh_token",
 "refresh_token"}` gives new ones; each refresh token works once, and sending a used one again ends that sign-in
-on every device that shares it (theft detection). `POST /v1/auth/revoke {"refresh_token"}` signs out.
-A client helper that does all of this (`libraryAuth` in `@chalk-format/store`) is being added separately; until it
-lands, an app calls these two endpoints itself.
+on every device that shares it (theft detection). The one exception is a retry: within `REFRESH_TOKEN_GRACE`
+seconds (30) of its use, the same token gives the same new refresh token again, as long as that one has not been
+used, so a client whose answer was lost stays signed in. `POST /v1/auth/revoke {"refresh_token"}` signs out.
+`libraryAuth` in `@chalk-format/store` does all of this for a browser or an app (`signIn`, `token()`, `signOut`).
 
 ### Making a library private (PUBLIC_READ=false)
 
 Turning reading off breaks every reader that has no credential, so do it in this order:
 
-1. Deploy this version with `PUBLIC_READ=true` (nothing changes for anyone) and `SERVER_URL` set.
+1. Deploy this version with `PUBLIC_READ=true` (nothing changes for anyone), `SERVER_URL` and `AUTH_KEY_SECRET` set.
 2. Create the users and keys (above), and give every consumer one: the reader apps (users sign in, or a reader
    key on their server), the dashboard, CI, publishers. Check each with `GET /v1/auth/me`, and in `key list` that
    each key has a recent "last used".
