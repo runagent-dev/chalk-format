@@ -70,6 +70,8 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
       expect(r.status).toBe(200);
       expectNeverAPage(r);
       expect(r.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+      // kept per token: a browser must not answer a request without one from this
+      expect(r.headers.get('vary')).toContain('Authorization');
       expect(await r.text()).toBe(LAB);
     }
     // an author's (and an admin's) token reads too: reading needs any role

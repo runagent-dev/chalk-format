@@ -92,6 +92,7 @@ describe('a private library on a private S3 bucket (PUBLIC_READ=false)', () => {
     const r = await fetch(`${BASE}/v1/files/${h}`, { headers: bearer(), redirect: 'manual' });
     expect(r.status).toBe(302);
     expect(r.headers.get('cache-control')).toBe('private, max-age=240');
+    expect(r.headers.get('vary')).toContain('Authorization');
     const loc = new URL(r.headers.get('location')!);
     expect(loc.origin).toBe(S3);
     expect(loc.pathname).toBe(`/books/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`);

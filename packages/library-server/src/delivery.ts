@@ -34,6 +34,11 @@ export const FILE_REDIRECT_CACHE = 'private, max-age=240';
 /** A link for places that cannot send a header (the contract allows 5 to 15 minutes; a video plays from it). */
 export const LINK_SECONDS = 15 * 60;
 
+/**
+ * A token's answer is kept for that token only: without Vary a browser would answer a later request with no
+ * token (after signing out) from its cache. Origin too, as the API's CORS headers depend on it.
+ */
+const BY_TOKEN = 'Authorization, Origin';
 const PATH = /^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/[a-z2-7]{25}[aeimquy4]$/;
 /** `c1:…` or the hash part alone (the `{h}` of the template). */
 const keyOf = (s: string) => { const k = s.startsWith('c1:') ? s : `c1:${s}`; return isC1Key(k) ? k : null; };
@@ -72,11 +77,11 @@ export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions 
     const a = await available(c, c.req.param('key')); if ('res' in a) return a.res;
     if (disk) {
       const file = disk.file(a.path);
-      return file ? serveFile(c, file, a.type, 'private, max-age=31536000, immutable') : fail(c, 404, 'not_found', 'no such asset');
+      return file ? serveFile(c, file, a.type, { 'Cache-Control': 'private, max-age=31536000, immutable', Vary: BY_TOKEN }) : fail(c, 404, 'not_found', 'no such asset');
     }
     // the bearer header is not sent on to the bucket: fetch drops Authorization on a redirect to another origin
     const { url } = await o.storage.presignGet(a.path, FILE_SECONDS, { contentType: a.type });
-    return c.body(null, 302, { Location: url, 'Cache-Control': FILE_REDIRECT_CACHE, 'Referrer-Policy': 'no-referrer' });
+    return c.body(null, 302, { Location: url, 'Cache-Control': FILE_REDIRECT_CACHE, Vary: BY_TOKEN, 'Referrer-Policy': 'no-referrer' });
   });
 
   app.get('/v1/assets/:key/link', async (c) => {
@@ -89,29 +94,31 @@ export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions 
   });
 
   // ---- a private disk library: /files/ serves signed links only ----
+  // a signed link's URL is its credential, so it is cached by URL; it is used from any page (an <img>, a fetch)
   app.get('/files/*', async (c, next) => {
     if (publicRead || !disk) return next();
-    const path = decodeURIComponent(c.req.path.slice('/files/'.length));
+    let path: string;
+    try { path = decodeURIComponent(c.req.path.slice('/files/'.length)); } catch { return c.notFound(); }
     if (!PATH.test(path)) return c.notFound();
     const signed = disk.link(path, { exp: c.req.query('exp'), sig: c.req.query('sig'), fn: c.req.query('fn') });
     if (!signed) return c.text('this link is not valid or has expired', 403, { 'Cache-Control': 'no-store' });
     const row = await assetOf(`c1:${path.split('/').pop()}`);
     const file = row?.status === 'available' ? disk.file(path) : null;
     if (!file) return c.text(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
-    return serveFile(c, file, row!.type, 'private, max-age=31536000, immutable', signed.filename, true);
+    return serveFile(c, file, row!.type, {
+      'Cache-Control': 'private, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*',
+      ...(signed.filename ? { 'Content-Disposition': contentDisposition(signed.filename) } : {}),
+    });
   });
 }
 
 /** One file from the disk, whole or a range (video), never as a web page. */
-function serveFile(c: Context, file: string, type: string, cache: string, filename?: string, anyOrigin = false) {
+function serveFile(c: Context, file: string, type: string, extra: Record<string, string>) {
   const size = statSync(file).size, range = /bytes=(\d*)-(\d*)/.exec(c.req.header('range') ?? '');
   const headers: Record<string, string> = {
-    'Content-Type': servedType(type), 'Cache-Control': cache, 'Accept-Ranges': 'bytes',
+    'Content-Type': servedType(type), 'Accept-Ranges': 'bytes',
     'Access-Control-Expose-Headers': 'Content-Length, Content-Range', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': 'sandbox',
-    'Referrer-Policy': 'no-referrer',
-    // /v1/* answers carry the API's CORS headers; a signed link is used from any page (an <img>, a fetch)
-    ...(anyOrigin ? { 'Access-Control-Allow-Origin': '*' } : {}),
-    ...(filename ? { 'Content-Disposition': contentDisposition(filename) } : {}),
+    'Referrer-Policy': 'no-referrer', ...extra,
   };
   if (range && (range[1] || range[2])) {
     const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2])), end = range[1] && range[2] ? Math.min(size - 1, Number(range[2])) : size - 1;
