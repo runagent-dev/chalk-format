@@ -39,6 +39,8 @@ export const LINK_SECONDS = 15 * 60;
  * token (after signing out) from its cache. Origin too, as the API's CORS headers depend on it.
  */
 const BY_TOKEN = 'Authorization, Origin';
+/** CORS for signed links: the URL is the credential, so any page may read the answer. */
+const ANY_ORIGIN = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Length, Content-Range' };
 const PATH = /^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/[a-z2-7]{25}[aeimquy4]$/;
 /** `c1:…` or the hash part alone (the `{h}` of the template). */
 const keyOf = (s: string) => { const k = s.startsWith('c1:') ? s : `c1:${s}`; return isC1Key(k) ? k : null; };
@@ -100,17 +102,19 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
   })));
   app.get('/files/*', async (c, next) => {
     if (publicRead || !disk) return next();
+    // every answer, errors included, is readable from any page: a reader tells an expired link (403) from a withdrawn file (410)
+    const refuse = (status: 403 | 404 | 410, text: string) => c.text(text, status, { ...ANY_ORIGIN, 'Cache-Control': 'no-store' });
     let path: string;
-    try { path = decodeURIComponent(c.req.path.slice('/files/'.length)); } catch { return c.notFound(); }
-    if (!PATH.test(path)) return c.notFound();
+    try { path = decodeURIComponent(c.req.path.slice('/files/'.length)); } catch { return refuse(404, 'not found'); }
+    if (!PATH.test(path)) return refuse(404, 'not found');
     const signed = disk.link(path, { exp: c.req.query('exp'), sig: c.req.query('sig'), fn: c.req.query('fn') });
-    if (!signed) return c.text('this link is not valid or has expired', 403, { 'Cache-Control': 'no-store' });
+    if (!signed) return refuse(403, 'this link is not valid or has expired');
     const row = await assetOf(`c1:${path.split('/').pop()}`);
     const file = row?.status === 'available' ? disk.file(path) : null;
-    if (!file) return c.text(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
+    if (!file) return row?.status === 'withdrawn' ? refuse(410, 'gone') : refuse(404, 'not found');
     return serveFile(c, file, row!.type, {
       // kept no longer than the link is valid
-      'Cache-Control': `private, max-age=${Math.max(0, Number(c.req.query('exp')) - Math.floor(Date.now() / 1000))}`, 'Access-Control-Allow-Origin': '*',
+      'Cache-Control': `private, max-age=${Math.max(0, Number(c.req.query('exp')) - Math.floor(Date.now() / 1000))}`, ...ANY_ORIGIN,
       ...(signed.filename ? { 'Content-Disposition': contentDisposition(signed.filename) } : {}),
     });
   });
@@ -126,7 +130,8 @@ function serveFile(c: Context, file: string, type: string, extra: Record<string,
   };
   if (range && (range[1] || range[2])) {
     const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2])), end = range[1] && range[2] ? Math.min(size - 1, Number(range[2])) : size - 1;
-    if (start >= size || start > end) return c.body(null, 416, { 'Content-Range': `bytes */${size}` });
+    // the size is readable cross-origin too (the CORS headers of `extra`)
+    if (start >= size || start > end) return c.body(null, 416, { ...Object.fromEntries(Object.entries(headers).filter(([k]) => k.startsWith('Access-Control-'))), 'Content-Range': `bytes */${size}` });
     return c.body(Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream, 206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) });
   }
   return c.body(Readable.toWeb(createReadStream(file)) as ReadableStream, 200, { ...headers, 'Content-Length': String(size) });

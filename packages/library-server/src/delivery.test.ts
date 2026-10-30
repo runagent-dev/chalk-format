@@ -94,6 +94,8 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
   it('/files/ answers only signed links: 403 without one, and an HMAC link works without a token', async () => {
     expect((await get(priv, `/files/${path}`)).status).toBe(403);
     expect((await get(priv, `/files/${path}`, bearer())).status).toBe(403); // a token is not a signature
+    // refusals are readable cross-origin: a reader tells an expired link from a withdrawn file
+    expect((await get(priv, `/files/${path}`)).headers.get('access-control-allow-origin')).toBe('*');
     expect((await get(priv, `/v1/assets/${key}/link`)).status).toBe(401);
     const l = await link();
     expect(l.url.startsWith(`${BASE}/files/${path}?exp=`)).toBe(true);
@@ -111,6 +113,8 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
     expect(maxAge).toBeLessThanOrEqual(15 * 60);
     expect(await r.text()).toBe(LAB);
     const part = await get(priv, l.url, { Range: 'bytes=2-8' });
+    const bad = await get(priv, l.url, { Range: 'bytes=9999-' });
+    expect([bad.status, bad.headers.get('access-control-allow-origin'), bad.headers.get('access-control-expose-headers')]).toEqual([416, '*', 'Content-Length, Content-Range']);
     const pre = await priv.fetch(new Request(l.url, { method: 'OPTIONS', headers: { Origin: 'https://reader.example.org', 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'range' } }));
     expect([pre.status, pre.headers.get('access-control-allow-origin'), pre.headers.get('access-control-allow-headers')]).toEqual([204, '*', 'Range']);
     expect(part.status).toBe(206);
@@ -162,7 +166,8 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
     expect(res.status).toBe(200);
     expect((await get(priv, `/v1/files/${wh}`, bearer())).status).toBe(410);
     expect((await get(priv, `/v1/assets/${w.key}/link`, bearer())).status).toBe(410);
-    expect((await get(priv, before.url)).status).toBe(410);
+    const gone = await get(priv, before.url);
+    expect([gone.status, gone.headers.get('access-control-allow-origin')]).toEqual([410, '*']);
     expect((await get(priv, `/files/${wpath}`)).status).toBe(403);
     expect((await get(priv, `/v1/files/${wh}`)).status).toBe(401);
   });
