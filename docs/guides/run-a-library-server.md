@@ -205,7 +205,8 @@ The same through the API, as an administrator: `POST /v1/admin/keys {"name","rol
 an access token and a refresh token. Before the access token expires, `{"grant_type":"refresh_token",
 "refresh_token"}` gives new ones; each refresh token works once, and sending a used one again ends that sign-in
 on every device that shares it (theft detection). `POST /v1/auth/revoke {"refresh_token"}` signs out.
-`@chalk-format/store`'s `libraryAuth` does all of this for a browser or app.
+A client helper that does all of this (`libraryAuth` in `@chalk-format/store`) is being added separately; until it
+lands, an app calls these two endpoints itself.
 
 ### Making a library private (PUBLIC_READ=false)
 
