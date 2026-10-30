@@ -87,6 +87,20 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     expect((await signIn('dan', PW.dan)).status).toBe(200);
   });
 
+  it('a password reset that lands while a sign-in is checking the old password wins', async () => {
+    const { createAuth } = await import('./service.js');
+    const other = createAuth({ db });
+    const dan = (await other.findUser('dan'))!;
+    // the reset happens between the password check and the issuing of tokens
+    const racing: Db = { ...db, query: async (sql, params) => {
+      if (sql.startsWith('UPDATE auth_users SET last_sign_in_at')) await other.updateUser(dan.id, { password: 'a-brand-new-password' });
+      return db.query(sql, params);
+    } };
+    expect(await createAuth({ db: racing }).passwordGrant('dan', PW.dan, BASE)).toBeNull();
+    expect((await db.query('SELECT 1 FROM auth_refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL', [dan.id])).length).toBe(0);
+    await other.updateUser(dan.id, { password: PW.dan });
+  });
+
   it('refuses expired, forged, other-key, other-audience, other-issuer and tampered tokens, and alg none or HS256', async () => {
     const t = await tokensOf('rita', PW.rita);
     const kid = part(t.access_token, 0).kid as string;

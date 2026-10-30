@@ -48,8 +48,16 @@ const UPLOAD_SECONDS = 15 * 60;
 /** The set of keys a book uses: larger than a check, since a textbook uses thousands (spec 1.8 §6.3). */
 const bookAssetsSchema = z.object({ keys: z.array(z.string().regex(C1_KEY_PATTERN)).max(20_000).optional() });
 
-/** Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page. */
-const storedType = (type: string) => (/^(text\/html|text\/javascript|application\/javascript)/i.test(type) ? 'application/octet-stream' : type);
+/**
+ * Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page.
+ * The registered type is normalised first (" TEXT/HTML; x" is HTML), and anything that is not one plain media type
+ * is plain bytes too.
+ */
+const storedType = (type: string) => {
+  const t = type.split(';')[0]!.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(t)) return 'application/octet-stream';
+  return /^(text\/(html|javascript|ecmascript|xml|xsl)|application\/(javascript|ecmascript|x-javascript|xhtml\+xml|xml|xslt\+xml))$/.test(t) ? 'application/octet-stream' : t;
+};
 
 type Row = {
   key: string; sha256: string; type: string; size: string | number; width: number | null; height: number | null; duration: number | null; pages: number | null;

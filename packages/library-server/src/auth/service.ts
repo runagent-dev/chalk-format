@@ -109,6 +109,13 @@ export function createAuth(o: AuthOptions) {
       token_type: 'Bearer', expires_in: accessTtl, refresh_token: refresh, roles,
     };
   };
+  /** After issuing: if the user was disabled or got a new password meanwhile, the new sign-in is revoked at once. */
+  const stillValid = async (user: UserRow, tokens: TokenResponse) => {
+    const now = (await db.query<{ password_hash: string; disabled: boolean }>('SELECT password_hash, disabled FROM auth_users WHERE id = $1', [user.id]))[0];
+    if (now && !now.disabled && now.password_hash === user.password_hash) return tokens;
+    await db.query(`UPDATE auth_refresh_tokens SET revoked_at = now() WHERE family_id = (SELECT family_id FROM auth_refresh_tokens WHERE token_hash = $1) AND revoked_at IS NULL`, [sha256(tokens.refresh_token)]);
+    return null;
+  };
   const revokeFamily = (family: string) => db.query('UPDATE auth_refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL', [family]);
   const revokeUser = (id: string) => db.query('UPDATE auth_refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [id]);
   let lastSweep = 0;
@@ -151,7 +158,8 @@ export function createAuth(o: AuthOptions) {
       const ok = await verifyPassword(password, u?.password_hash ?? null);
       if (!u || !ok || u.disabled) return null;
       await db.query('UPDATE auth_users SET last_sign_in_at = now() WHERE id = $1', [u.id]);
-      return issue(u, issuer);
+      // a password reset or disabling that ran while this was checking the old password wins
+      return stillValid(u, await issue(u, issuer));
     },
 
     /** grant_type=refresh_token: the token is used up; using it again revokes every token descended from the same sign-in. */
@@ -174,7 +182,7 @@ export function createAuth(o: AuthOptions) {
       // a reuse that revoked the family while this request ran: the new token is revoked with it
       const revoked = await db.query('SELECT 1 FROM auth_refresh_tokens WHERE family_id = $1 AND revoked_at IS NOT NULL LIMIT 1', [r.family_id]);
       if (revoked.length) { await revokeFamily(r.family_id); return null; }
-      return tokens;
+      return stillValid(u, tokens);
     },
 
     /** Signing out: the refresh token and every token of its family stop working. Unknown tokens are ignored. */
