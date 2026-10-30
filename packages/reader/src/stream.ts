@@ -126,7 +126,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
   const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
   const { index, version, at } = src;
   const assetPath = new Map(index.assets.filter((a) => a.path).map((a) => [a.id, a.path!]));
-  const assetType = new Map(index.assets.map((a) => [a.id, a.type]));
+  // an asset's renditions carry their own type (spec 1.2): a webp rendition of a png is image/webp
+  const assetType = new Map<string, string>(index.assets.flatMap((a) => [[a.id, a.type] as const, ...(a.renditions ?? []).map((x) => [x.id, x.type] as const)]));
 
   const placeholder = (p: StreamPage): LessonPage => ({
     id: p.id, title: p.title ?? '', ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
