@@ -1,10 +1,10 @@
 import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
-import type { Context, Env, Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { isC1Key, type StoreDescriptor } from '@chalk-format/model';
 import { standardPath } from '@chalk-format/store';
 import type { LibraryOptions } from './app.js';
-import { requireRole } from './auth/guard.js';
+import { requireRole, type AuthVariables } from './auth/guard.js';
 import { contentDisposition, servedType, type DiskStorage } from './storage.js';
 
 /**
@@ -43,11 +43,10 @@ const PATH = /^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/[a-z2-7]{25}[aeimquy4]$/;
 /** `c1:…` or the hash part alone (the `{h}` of the template). */
 const keyOf = (s: string) => { const k = s.startsWith('c1:') ? s : `c1:${s}`; return isC1Key(k) ? k : null; };
 
-export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions & DeliveryOptions) {
+export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: LibraryOptions & DeliveryOptions) {
   const publicRead = o.publicRead !== false;
   const disk = 'ticket' in o.storage ? (o.storage as DiskStorage) : null;
   const fail = (c: Context, status: number, code: string, message: string) => c.json({ error: { code, message } }, status as never);
-  const reader = (c: Context) => (publicRead ? null : requireRole(c, 'reader'));
   const assetOf = async (key: string) => (await o.db.query<{ type: string; status: string }>('SELECT type, status FROM assets WHERE key = $1', [key]))[0] ?? null;
   /** The record behind a key the caller may read, or the answer to send instead. */
   const available = async (c: Context, raw: string) => {
@@ -73,7 +72,7 @@ export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions 
   });
 
   app.get('/v1/files/:key', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied; // a public library lets anyone through
     const a = await available(c, c.req.param('key')); if ('res' in a) return a.res;
     if (disk) {
       const file = disk.file(a.path);
@@ -85,7 +84,7 @@ export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions 
   });
 
   app.get('/v1/assets/:key/link', async (c) => {
-    const denied = reader(c); if (denied) return denied;
+    const denied = requireRole(c, 'reader'); if (denied) return denied; // a public library lets anyone through
     const a = await available(c, c.req.param('key')); if ('res' in a) return a.res;
     const link = await o.storage.presignGet(a.path, LINK_SECONDS, { contentType: a.type });
     // a disk link is this server's /files/: at the address the request reached unless SERVER_URL says (the signature does not cover the host)

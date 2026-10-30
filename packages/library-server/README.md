@@ -14,7 +14,14 @@ PORT=8787 DATABASE_URL=pglite:./.data/db STORAGE=disk DISK_DIR=./.data/files \
 npx tsx src/cli.ts check http://localhost:8787 --token dev-token --admin-token dev-admin
 ```
 
-Docker, from the repository root: `docker build -f packages/library-server/Dockerfile -t chalk-library-server .`
+Users and API keys (the library issues its own tokens; spec 1.2 registry API §10):
+
+```bash
+DATABASE_URL=pglite:./.data/db npx tsx src/cli.ts user add alice --roles admin    # asks for a password
+DATABASE_URL=pglite:./.data/db npx tsx src/cli.ts key add ci --roles author       # prints the key once
+```
+
+(PGlite allows one process at a time: stop `serve` first, or use the admin API.) Docker, from the repository root: `docker build -f packages/library-server/Dockerfile -t chalk-library-server .`
 
 Every setting, Postgres and S3 setup, bucket CORS, deploying and security:
 [docs/guides/run-a-library-server.md](../../docs/guides/run-a-library-server.md). Using libraries in the

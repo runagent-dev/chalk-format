@@ -1,21 +1,37 @@
-import type { Context } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
+import { hasRole, type Caller, type Role } from './roles.js';
 
 /**
- * STAND-IN, replaced by the roles work (library authentication, task A1): the same signature, implemented on
- * today's checks so the routes that use it (delivery.ts) work before roles exist.
+ * One check for every route: `const denied = requireRole(c, 'author'); if (denied) return denied;`.
  *
- *   reader  any caller with a token (today's `reader` rule when PUBLIC_READ=false; a public library does not
- *           call this for reading)
- *   author  any caller with a token (today's `writer` rule)
- *   admin   a caller whose name ends in `!` in TOKENS
+ * - no valid token: 401 `unauthorized` (a `reader` route of a library with PUBLIC_READ=true lets it through, as
+ *   before roles existed);
+ * - a valid token without the role: 403 `forbidden`.
  *
- * A Response to send (401 without a valid token, 403 with one that may not do this), or null to go on.
+ * It reads what `authenticate` put on the request, so it works on every route under `/v1/`.
  */
-export type Role = 'reader' | 'author' | 'admin';
+export type { Role } from './roles.js';
+export type AuthVariables = { caller: Caller | null; publicRead: boolean; bearer: boolean };
 
 export function requireRole(c: Context, role: Role): Response | null {
-  const caller = c.get('caller') as { user: string; admin?: boolean } | null | undefined;
-  if (!caller) return c.json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-  if (role === 'admin' && !caller.admin) return c.json({ error: { code: 'forbidden', message: 'only an administrator can do this' } }, 403);
+  const caller = c.get('caller') as Caller | null | undefined;
+  if (role === 'reader' && !caller && c.get('publicRead') === true) return null; // fails closed off `authenticate`'s routes
+  if (!caller) {
+    c.header('WWW-Authenticate', c.get('bearer') ? 'Bearer realm="chalk-library", error="invalid_token"' : 'Bearer realm="chalk-library"');
+    return c.json({ error: { code: 'unauthorized', message: c.get('bearer') ? 'this token is not valid (expired, revoked or not from this library)' : 'a token is needed' } }, 401);
+  }
+  if (!hasRole(caller, role)) return c.json({ error: { code: 'forbidden', message: `this needs the ${role} role` } }, 403);
   return null;
+}
+
+/** Reads `Authorization: Bearer …` once per request and puts the caller (or null) on it. */
+export function authenticate(o: { publicRead: boolean; resolve: (token: string, c: Context) => Promise<Caller | null> }): MiddlewareHandler {
+  return async (c, next) => {
+    const h = c.req.header('authorization');
+    const token = h && /^Bearer /i.test(h) ? h.slice(7).trim() : '';
+    c.set('publicRead', o.publicRead);
+    c.set('bearer', Boolean(token));
+    c.set('caller', token ? await o.resolve(token, c) : null);
+    await next();
+  };
 }

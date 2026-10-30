@@ -5,3 +5,6 @@ export { registerDelivery, FILE_SECONDS, LINK_SECONDS, type DeliveryOptions } fr
 export { scanStorage } from './scan.js';
 export { libraryFromEnv, tokenCallers } from './config.js';
 export { checkLibrary, type Check } from './conformance.js';
+export { createAuth, AuthError, type Auth, type AuthOptions, type TokenResponse, type UserRecord, type ApiKeyRecord } from './auth/service.js';
+export { requireRole, authenticate, type AuthVariables } from './auth/guard.js';
+export { ROLES, expandRoles, hasRole, rolesOf, parseRoles, type Role, type CallerKind } from './auth/roles.js';

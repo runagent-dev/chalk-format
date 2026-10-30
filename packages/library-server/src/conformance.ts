@@ -6,16 +6,35 @@ import { createRegistryClient, derivedUrl, registryLibrary, RegistryError } from
  * with the same client authoring tools use: upload, verify, de-duplicate, search, fetch through the delivery store,
  * refuse wrong bytes and keys, keep book usage, honour tokens, withdraw. For the reference server's tests and for
  * anyone writing another one:  chalk-library check https://library.example.org --token … [--admin-token …]
+ *
+ * With `username` and `password` instead of a token it signs in first (§10: the password grant) and also checks
+ * the library's sign-in: who am I, and that a refresh token works once and only once.
  */
 export type Check = { name: string; ok: boolean; detail?: string };
 
-export async function checkLibrary(url: string, o: { token: string; adminToken?: string; fetch?: typeof fetch }): Promise<Check[]> {
+export type CheckOptions = { token?: string; username?: string; password?: string; adminToken?: string; fetch?: typeof fetch };
+
+export async function checkLibrary(url: string, opts: CheckOptions): Promise<Check[]> {
   const out: Check[] = [];
-  const f = o.fetch ?? globalThis.fetch.bind(globalThis);
+  const f = opts.fetch ?? globalThis.fetch.bind(globalThis);
   const step = async (name: string, fn: () => Promise<boolean | string>) => {
     try { const r = await fn(); out.push(r === true ? { name, ok: true } : { name, ok: false, ...(typeof r === 'string' ? { detail: r } : {}) }); }
     catch (e) { out.push({ name, ok: false, detail: e instanceof Error ? e.message : String(e) }); }
   };
+  const tokenUrl = `${url.replace(/\/?$/, '/')}v1/auth/token`;
+  const grant = (body: Record<string, string>) => f(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let signedIn: { access_token: string; refresh_token: string; roles: string[] } | null = null;
+  if (!opts.token) {
+    if (!opts.username || !opts.password) throw new Error('checkLibrary needs a token, or a username and a password');
+    await step('sign in with a username and a password', async () => {
+      const r = await grant({ grant_type: 'password', username: opts.username!, password: opts.password! });
+      if (!r.ok) return `answered ${r.status}`;
+      signedIn = (await r.json()) as typeof signedIn;
+      return signedIn?.access_token && signedIn.refresh_token ? true : 'no tokens in the answer';
+    });
+    if (!signedIn) return out;
+  }
+  const o = { ...opts, token: opts.token ?? signedIn!.access_token };
   const client = createRegistryClient(url, { token: o.token, fetch: f });
   const anon = createRegistryClient(url, { fetch: f });
   const lib = registryLibrary({ url, token: o.token, fetch: f });
@@ -70,6 +89,23 @@ export async function checkLibrary(url: string, o: { token: string; adminToken?:
     const r = await f(`${url.replace(/\/?$/, '/')}v1/assets/${encodeURIComponent(key)}/books`, { headers: { Authorization: `Bearer ${o.token}` } });
     return ((await r.json()) as { items: { bookId: string }[] }).items.some((b) => b.bookId === `conformance-${word}`);
   });
+  if (signedIn) {
+    const s = signedIn as { access_token: string; refresh_token: string };
+    await step('GET v1/auth/me names the signed-in user', async () => {
+      const r = await f(`${url.replace(/\/?$/, '/')}v1/auth/me`, { headers: { Authorization: `Bearer ${s.access_token}` } });
+      const me = (await r.json()) as { name?: string; kind?: string };
+      return me.name?.toLowerCase() === opts.username!.trim().toLowerCase() && me.kind === 'user' ? true : JSON.stringify(me);
+    });
+    await step('a refresh token gives new tokens once, and using it again ends the sign-in', async () => {
+      const first = await grant({ grant_type: 'refresh_token', refresh_token: s.refresh_token });
+      if (!first.ok) return `refresh answered ${first.status}`;
+      const next = (await first.json()) as { refresh_token: string };
+      if (next.refresh_token === s.refresh_token) return 'the refresh token was not rotated';
+      const again = await grant({ grant_type: 'refresh_token', refresh_token: s.refresh_token });
+      const after = await grant({ grant_type: 'refresh_token', refresh_token: next.refresh_token });
+      return again.status === 400 && after.status === 400 ? true : `reuse answered ${again.status}, its successor ${after.status}`;
+    });
+  }
   if (o.adminToken) {
     const admin = o.adminToken;
     await step('withdraw: readers get nothing, and the key cannot be uploaded again', async () => {

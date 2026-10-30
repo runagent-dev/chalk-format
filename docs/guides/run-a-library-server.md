@@ -60,9 +60,14 @@ starting point. Never commit the real `.env`.
 | `UPLOAD_SECRET` | random at start | `STORAGE=disk`: signs upload links. Set it if you run more than one instance, or if uploads must survive a restart. |
 | `FILE_LINK_SECRET` | derived from `UPLOAD_SECRET` | `STORAGE=disk` with `PUBLIC_READ=false`: signs file links (`/files/…?exp=&sig=`). Not set: derived from `UPLOAD_SECRET`, so random at start when neither is set (links, which last 15 minutes, then end with a restart). Set one of them if you run more than one instance. |
 | `PUBLIC_URL` | `<SERVER_URL>/files/` | Where readers fetch the bytes: the bucket's public domain or CDN. With disk storage the server serves them itself at `/files/`. |
-| `SERVER_URL` | `http://localhost:<PORT>` | This server's own public address. Disk storage puts it in upload links. With `PUBLIC_READ=false` the store at `GET /v1/stores` names it; not set, the address the request reached is used (with `X-Forwarded-Proto`), and the answer is not shared-cacheable. |
-| `TOKENS` | none | Who may write: `name:token,name:token`. A name ending in `!` is an administrator (`admin!:…`). Compared in constant time. |
-| `PUBLIC_READ` | `true` | `false`: searching, reading records **and the files' bytes** need a token too (see [A private library](#a-private-library-public_readfalse)). Writing always needs one. |
+| `SERVER_URL` | `http://localhost:<PORT>` | This server's own public address, e.g. `https://library.example.org`. Disk storage puts it in upload links, and it is the `iss` of every access token, so set it in production and do not change it casually (tokens issued under the old value stop working). With `PUBLIC_READ=false` the store at `GET /v1/stores` names it; not set, the address the request reached is used (with `X-Forwarded-Proto`), and the answer is not shared-cacheable. |
+| `TOKENS` | none | Bootstrap tokens: `name:token,name:token`. A plain name is an author (reads and writes), a name ending in `!` an administrator (`admin!:…`). Compared in constant time. See [Users, sign-in and API keys](#users-sign-in-and-api-keys). |
+| `PUBLIC_READ` | `true` | `false`: searching, reading records **and the files' bytes** need a token too (any signed-in user or key; see [A private library](#a-private-library-public_readfalse)). Writing always needs one. |
+| `ACCESS_TOKEN_TTL` | `900` | Seconds an access token lasts. |
+| `REFRESH_TOKEN_TTL` | `2592000` (30 days) | Seconds a refresh token lasts (each use gives a new one). |
+| `AUTH_RATE_LIMIT` | `10` | Sign-in attempts per minute and username. |
+| `AUTH_RATE_LIMIT_IP` | `60` | Requests to `/v1/auth/token` per minute and client address. Both limits are counted in each process's memory: with several instances the real limit is this times the instances, and a restart clears them. |
+| `TRUST_PROXY` | `false` | `true` behind a reverse proxy (Coolify's Traefik, nginx): the client's address is the last `X-Forwarded-For` entry. Leave it `false` when the server is reached directly, or anyone can choose their address. |
 | `ORIGINS` | any | Browser origins allowed to call the API (CORS), comma separated, e.g. `https://editor.example.org`. |
 | `MAX_BYTES` | `536870912` (512 MiB) | The largest file accepted. |
 | `PORT` | `8080` | |
@@ -192,7 +197,15 @@ needs `GetObject` on the bucket, which it already has (it reads uploads back to 
 chalk-library serve                       # the API (the default)
 chalk-library scan [prefix]               # adopt media already in the storage; again adds only what is new
 chalk-library check <url> --token T [--admin-token A]   # conformance: does a server do what the registry API says?
+chalk-library check <url> --user U [--admin-token A]    # the same, signed in (password: CHALK_LIBRARY_PASSWORD, a prompt or stdin)
+chalk-library user add <username> --roles reader        # users (password: a prompt without echo, or the first line of stdin)
+chalk-library user list | disable <username> | enable <username> | password <username>
+chalk-library key add <name> --roles author             # API keys for machines; the key is printed once
+chalk-library key list | revoke <id>
+chalk-library signing-key rotate                        # a new token signing key
 ```
+
+`user`, `key` and `signing-key` need only `DATABASE_URL` (and `DB_SCHEMA`), not the storage settings.
 
 From the repository use `npx tsx packages/library-server/src/cli.ts <command>`. From a build use
 `node dist/server.mjs <command>`.
@@ -204,6 +217,75 @@ From the repository use `npx tsx packages/library-server/src/cli.ts <command>`. 
 - with an admin token, it also withdraws the file.
 
 It leaves one withdrawn test record behind.
+
+## Users, sign-in and API keys
+
+The library is its own identity provider ([registry API §10](../../spec/1.2/registry-api.md#10-authentication)).
+Every client sends `Authorization: Bearer <credential>`, one of:
+
+| Credential | For | Made by | Lasts |
+|---|---|---|---|
+| Access token (a JWT signed with the library's Ed25519 key) | people, in an app | `POST /v1/auth/token` with a username and password | 15 minutes; renewed with the refresh token (30 days, single use) |
+| API key `clk_…` | machines: CI, a publisher, an app's server | an administrator (`key add`, `POST /v1/admin/keys`) | until revoked |
+| Bootstrap token (`TOKENS`) | the first administrator; existing deployments | the operator, in the environment | until removed from `TOKENS` |
+
+Roles: `reader` (search, records, file bytes, book usage), `author` (reader + upload, register, record book
+usage) and `admin` (author + withdraw, users and keys). Apps find the endpoints at
+`/.well-known/openid-configuration` and the public keys at `/.well-known/jwks.json`.
+
+What the database keeps: users with scrypt password hashes, the SHA-256 of refresh tokens and API keys, and the
+signing keys (table `auth_keys`, made on first start). Whoever can read the library's database can sign tokens, so
+treat its credentials like the tokens themselves. `chalk-library signing-key rotate` makes a new key; the old one
+stays in JWKS until its tokens have expired (instances re-read keys within 5 minutes).
+
+**Bootstrapping the first administrator.** Either keep an administrator in `TOKENS` (`admin!:<long random>`) and
+create users through the API, or, with access to the database, from the command line:
+
+```bash
+DATABASE_URL=postgres://… chalk-library user add alice --roles admin   # asks for the password twice
+printf '%s\n' "$PW" | DATABASE_URL=… chalk-library user add bob --roles author   # from a script
+```
+
+In the Docker image: `docker exec -it chalk-library node server.mjs user add alice --roles admin`.
+
+**Keys for CI and the dashboard.** One key per tool, with the least role it needs, kept in that tool's secret
+store:
+
+```bash
+chalk-library key add github-publish --roles author     # CI that publishes books and media
+chalk-library key add dashboard --roles author          # an app's server that uploads on its users' behalf
+chalk-library key add web-reader --roles reader         # a server that only reads
+chalk-library key list                                  # names, roles, when last used
+chalk-library key revoke <id>                           # stops working at once
+```
+
+The same through the API, as an administrator: `POST /v1/admin/keys {"name","roles"}` returns `{ id, key }` once.
+
+**Signing in from an app.** `POST /v1/auth/token` with `{"grant_type":"password","username","password"}` gives
+an access token and a refresh token. Before the access token expires, `{"grant_type":"refresh_token",
+"refresh_token"}` gives new ones; each refresh token works once, and sending a used one again ends that sign-in
+on every device that shares it (theft detection). `POST /v1/auth/revoke {"refresh_token"}` signs out.
+A client helper that does all of this (`libraryAuth` in `@chalk-format/store`) is being added separately; until it
+lands, an app calls these two endpoints itself.
+
+### Making a library private (PUBLIC_READ=false)
+
+Turning reading off breaks every reader that has no credential, so do it in this order:
+
+1. Deploy this version with `PUBLIC_READ=true` (nothing changes for anyone) and `SERVER_URL` set.
+2. Create the users and keys (above), and give every consumer one: the reader apps (users sign in, or a reader
+   key on their server), the dashboard, CI, publishers. Check each with `GET /v1/auth/me`, and in `key list` that
+   each key has a recent "last used".
+3. Set `PUBLIC_READ=false` and restart. Run `chalk-library check <url> --user <an author>` against it.
+4. **Make the bucket private.** The server cannot do this: until the bucket (or its CDN domain) stops serving
+   objects to anyone, every file is still public at its address. First check that this server delivers files to
+   signed-in readers: with `PUBLIC_READ=false`, `GET /v1/stores` must name a store with `"auth": "bearer"` (a
+   version without it still points readers at the public bucket, and making the bucket private would break
+   them). Then remove the R2 custom domain's public access or the bucket policy; readers get bytes only through
+   the library (`GET /v1/files/{key}`, a pre-signed link that lasts minutes).
+5. Remove the bootstrap tokens nobody needs any more from `TOKENS`.
+
+To go back, set `PUBLIC_READ=true`.
 
 ## Build and run with Docker
 
@@ -250,8 +332,12 @@ Any Docker host or platform (Coolify, Fly.io, Railway, Render, a VM with Docker)
   delivery (`/files/`) also sends `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
   Pre-signed and signed links of a private library keep these types (on S3 the type is fixed by the signature).
 - **Tokens.**
-  - Only the SHA-256 of each token is kept in memory, and tokens are compared in constant time.
-  - Writing needs a token. Withdrawing needs an administrator's.
+  - Only the SHA-256 of each bootstrap token is kept in memory, and they are compared in constant time. Refresh
+    tokens and API keys are stored only as SHA-256, passwords only as scrypt hashes; none is ever logged.
+  - Access tokens are verified with Ed25519 only (a token that says `alg: none` or `HS256` is refused), and their
+    issuer, audience and expiry are checked. A disabled user's tokens stop working within 10 seconds.
+  - Writing needs `author`. Withdrawing, users and keys need `admin`.
+  - Sign-in attempts are limited per username and per address (per process; see `AUTH_RATE_LIMIT`).
   - A withdrawn key is deleted from storage, and it can never be uploaded again.
   - Use one token per person or tool, so `uploadedBy` says who added what.
 - **What books keep.** Books hold keys only, never the server's address or a token. A token in a browser bundle can
