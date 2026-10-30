@@ -201,6 +201,18 @@ describe('adopting a file in place: a public disk library', () => {
     expect(reads).toEqual([]);
   });
 
+  it('an uploaded key whose standard copy was found gone is adopted at a book path (read once, added)', async () => {
+    const bytes = new TextEncoder().encode('uploaded, then lost'), rec = await createRegistryClient(BASE, { token: 't-1', fetch: f }).add(bytes, { type: 'image/png' });
+    unlinkSync(join(dir, ...standardPath(rec.key).split('/')));
+    await db.query("UPDATE locations SET missing = true WHERE key = $1", [rec.key]);
+    put('chalk-books/lost/a.png', bytes);
+    reads.length = 0;
+    const r = (await (await adopt({ key: rec.key, sha256: rec.sha256, type: 'image/png', size: bytes.byteLength, path: 'chalk-books/lost/a.png' })).json()) as Rec;
+    expect(reads).toEqual(['chalk-books/lost/a.png']);
+    expect(r.locations!.map((l) => l.path).sort()).toEqual([standardPath(rec.key), 'chalk-books/lost/a.png']);
+    expect(text(await (await f(`${BASE}/v1/files/${rec.key}`)).arrayBuffer())).toBe(text(bytes));
+  });
+
   it('a pending upload is completed by adopting; a path adopted after the first copy was deleted is added', async () => {
     const bytes = new TextEncoder().encode('started as an upload'), k = await assetKeyAndSha256(bytes);
     const up = await f(`${BASE}/v1/uploads`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify({ ...k, type: 'image/png', size: bytes.byteLength }) });

@@ -130,7 +130,7 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
     // copy at the standard path (uploaded; no one else deletes it), so nothing is read again. Another book's path is
     // ADDED as one more location, so the key outlives either book's copy.
     // A path adopted before is HEADed (not read): its owner may have deleted it since.
-    const std = locs.find((l) => l.path === standardPath(a.key) && l.verified_at != null);
+    const std = locs.find((l) => l.path === standardPath(a.key) && l.verified_at != null && !l.missing);   // a copy found gone is no reason to skip
     const same = locs.find((l) => l.path === a.path && l.verified_at != null);
     let keep = row?.status === 'available' && Boolean(std);
     if (row?.status === 'available' && !keep && same) {
