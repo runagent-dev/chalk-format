@@ -269,7 +269,7 @@ describe('openLibraryBook (books in a library)', () => {
     const pic = await item(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1]), 'image/png');
     const question = await item({ format: 'chalk.question', manifestVersion: 1, id: 'q1', version: '1', kind: 'short_answer', stem: `কেন? ![দোলক](${pic.key})`, assets: [pic.key] }, QUESTION_MANIFEST_TYPE);
     const p = await publish({ links: [{ sentence: 's1', question: question.key, role: 'answers_from' }] });
-    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/png', 'image/webp'] };
+    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/png'] };
     const questions = { id: 'questions', kind: 'derived', template: 'https://q.example/{h}', media: [QUESTION_MANIFEST_TYPE] };
     const books = { ...STORE, media: ['application/vnd.chalk.book+json', 'application/vnd.chalk.page+json', 'application/vnd.chalk.links+json'] };
     const lib = fakeLibrary([p.book, p.linksItem, question, pic], { stores: [images, questions, books] });
@@ -283,6 +283,12 @@ describe('openLibraryBook (books in a library)', () => {
     expect(book.typeOf(pic.key)).toBe('image/*');
     expect(book.urlOf(pic.key)).toBe(`https://img.example/${hashPart(pic.key)}`);
     expect(await book.fetchItem(pic.key)).toEqual(pic.bytes);
+    // a picture's format is not known: every image store of the library is tried (a webp-only one first, then one that has png)
+    const webpOnly = { id: 'webp', kind: 'derived', template: 'https://webp.example/{h}', media: ['image/webp'] };
+    const two = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([p.book, p.linksItem, question, pic], { stores: [webpOnly, images, questions, books] }).fetch });
+    await loadQuestion(two, question.key);
+    expect(two.storesFor('image/*').map((s) => s.id)).toEqual(['webp', 'pictures', 'library']);
+    expect(await two.fetchItem(pic.key)).toEqual(pic.bytes);
     // a book's own type is never changed by what is learned later
     expect(book.typeOf(p.linksItem.key)).toBe('application/vnd.chalk.links+json');
   });

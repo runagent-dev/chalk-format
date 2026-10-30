@@ -100,9 +100,18 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     async assetBytes(id, signal) {
-      // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does)
+      // an id the library has no store for is not its to answer: the host's resolver may know it (as assetUrl does). One it has a store for is
+      // fetched from it, else from the stores the book suggests, and checked
       if (!resolutionKey(id) || !lib.storeFor(lib.typeOf(id))) return undefined;
       return (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer;
+    },
+    // after the host's resolver (spec 1.8 §7 step 1): media the library has no store for, from the stores the book suggests, checked and drawn
+    // from a blob. (Media the library's store names by a public URL are drawn from that URL, as above: a picture missing there is not looked
+    // for elsewhere, since an <img> says only that it failed. The publisher puts every item of a book in the library first, spec 1.8 §6.1.)
+    async fallbackUrl(id, signal) {
+      const type = lib.typeOf(id);
+      if (!resolutionKey(id) || lib.storeFor(type) || !lib.storesFor(type).length) return null;
+      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     library: lib,
   }, o);
@@ -120,6 +129,8 @@ type StreamFiles = {
   at(path: string): string;
   /** External media the source can name itself (a library's store), before the host's resolver: a URL, or the bytes as a Blob. */
   assetUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
+  /** External media the source can find only after the host's resolver (a book's suggested stores): a URL, or the bytes as a Blob. */
+  fallbackUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
   /** External media's bytes, fetched and checked by the source; undefined for an id it cannot name. */
   assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | undefined>;
   library?: OpenedLibraryBook;
@@ -179,7 +190,7 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
     const p = assetPath.get(id);
     if (p) return at(p);
     const own = await src.assetUrl?.(id, abort.signal);
-    const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null);
+    const r = own ?? (o.resolveAsset ? await o.resolveAsset(id) : null) ?? (await src.fallbackUrl?.(id, abort.signal)) ?? null;
     if (r == null) return null;
     if (typeof r === 'string') return r;
     // disposed while the bytes were on their way: no URL that nothing would revoke
@@ -206,7 +217,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
       }
       const url = await book.assetUrl(id);
       if (!url) return null;
-      const r = await doFetch(url, { signal: abort.signal });
+      // a blob: URL holds bytes already here (checked ones from a store, or the host's): the host's fetch may not know the scheme
+      const r = await (url.startsWith('blob:') ? globalThis.fetch(url, { signal: abort.signal }) : doFetch(url, { signal: abort.signal }));
       if (!r.ok) return null;
       return { type: assetType.get(id) ?? r.headers.get('content-type') ?? 'application/octet-stream', bytes: await r.arrayBuffer() };
     },

@@ -98,6 +98,18 @@ describe('books in a library, in the reader', () => {
     expect(new Uint8Array(bytes!.bytes)).toEqual(picture);
   });
 
+  it('after the host, finds media the library has no store for in the stores the book suggests, checked', async () => {
+    const lib = await library({ storeMedia: ['application/*'] });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    const url = await b.assetUrl(pictureKey);
+    expect(url?.startsWith('blob:')).toBe(true);
+    expect(new Uint8Array(await (await fetch(url!)).arrayBuffer())).toEqual(picture);
+    expect(new Uint8Array((await b.assetBytes(pictureKey))!.bytes)).toEqual(picture);
+    b.dispose();
+    const bad = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: (await library({ storeMedia: ['application/*'], tamper: pictureKey })).fetch });
+    expect(await bad.assetUrl(pictureKey)).toBeNull();
+  });
+
   it('hands out the bytes of a rendition with the type the book declares for it', async () => {
     const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 5, 5]);
     const lib = await library({ rendition: webp });

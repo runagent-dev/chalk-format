@@ -66,6 +66,11 @@ export type OpenedLibraryBook = {
    * the book's suggested stores only when the library's fails (`fetchItem`).
    */
   storeFor(type: string): StoreDescriptor | null;
+  /**
+   * Every store `fetchItem` tries for a type, in order: the library's (its first that takes the type; for a type whose format is not known,
+   * `image/*`, each that takes it), then those the book suggests that take it. Empty: no store of the library or the book can deliver it.
+   */
+  storesFor(type: string): StoreDescriptor[];
   /** Headers a fetch from that store needs (a bearer token for a store with `auth: 'bearer'`, the current one when the token is a function). */
   headersFor(type: string): Promise<Record<string, string>>;
 };
@@ -141,6 +146,9 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   // suggested stores come after, for an item that store does not have: never sent a token (a book names no store that needs one).
   const storeFor = (type: string) => pickStore(stores, type);
   let suggested: StoreDescriptor[] = [];
+  // a picture whose format is not known may be in any of the library's image stores (a webp-only one, then a png-only one): each is tried
+  const ownFor = (type: string) => (type.endsWith('/*') ? stores.filter((d) => addressable(d) && takes(d.media, type)) : [storeFor(type)].filter((d) => d !== null));
+  const storesFor = (type: string) => [...ownFor(type), ...suggested.filter((s) => takes(s.media, type))];
   const headersOf = async (s: StoreDescriptor): Promise<Record<string, string>> => {
     const t = s.auth === 'bearer' ? await resolveToken(o.token) : undefined;
     return t ? { Authorization: `Bearer ${t}` } : {};
@@ -149,8 +157,8 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   const get = async (id: string, type: string, signal?: AbortSignal): Promise<Uint8Array> => {
     const key = resolutionKey(id);
     if (!key) throw new Error(`${id} is not a content key`);
-    const own = storeFor(type);
-    const tries = [...(own ? [own] : []), ...suggested.filter((s) => takes(s.media, type))];
+    const own = new Set(ownFor(type));
+    const tries = storesFor(type);
     if (!tries.length) throw new Error(`the library names no store for ${type}`);
     const init = signal ? { signal } : {};
     const asked = new Set<string>();
@@ -160,10 +168,10 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
       // the book's copy of the library's own store: the same URL, asked once
       if (asked.has(url)) continue;
       asked.add(url);
-      const from = s === own ? 'the library' : `the book's store ${s.id}`;
+      const from = own.has(s) ? 'the library' : `the book's store ${s.id}`;
       try {
         // the token only to the library's store that asks for it (a public CDN is not sent it)
-        const r = s === own && s.auth === 'bearer' ? await fetchWithToken(doFetch, o.token, url, init) : await doFetch(url, { headers: {}, ...init });
+        const r = own.has(s) && s.auth === 'bearer' ? await fetchWithToken(doFetch, o.token, url, init) : await doFetch(url, { headers: {}, ...init });
         if (!r.ok) throw new Error(`could not fetch ${id} from ${from} (${r.status})`);
         const bytes = new Uint8Array(await r.arrayBuffer());
         if (!(await verifyAssetBytes(id, bytes))) throw new Error(`${from} sent bytes that are not ${id}`);
@@ -218,6 +226,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     fetchItem: (id, init) => get(id, init?.type ?? typeOf(id), init?.signal),
     urlOf(id, type) { const k = resolutionKey(id), s = storeFor(type ?? typeOf(id)); return k && s ? storeUrl(s, k) : null; },
     storeFor: (type) => storeFor(type),
+    storesFor,
     async headersFor(type) { const s = storeFor(type); return s ? headersOf(s) : {}; },
     // what the book says comes first: a type learned later never changes one it gives
     [LEARN]: (learned) => { for (const [id, type] of learned) if (!types.has(id)) types.set(id, type); },
