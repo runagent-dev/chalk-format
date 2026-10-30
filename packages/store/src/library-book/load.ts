@@ -74,6 +74,11 @@ export type OpenedLibraryBook = {
    * `image/*`, each that takes it), then those the book suggests that take it. Empty: no store of the library or the book can deliver it.
    */
   storesFor(type: string): StoreDescriptor[];
+  /**
+   * Whether an id's bytes must be checked against it before they are shown, never drawn from a bare URL: a picture of a question `loadQuestion`
+   * has read (spec 1.7 §4), even when the book's pages use it too.
+   */
+  mustCheck(id: string): boolean;
   /** Headers a fetch from that store needs (a bearer token for a store with `auth: 'bearer'`, the current one when the token is a function). */
   headersFor(type: string): Promise<Record<string, string>>;
 };
@@ -134,8 +139,8 @@ function bookItemOf(raw: unknown): LibraryBook {
 
 /** Media types learned after the book was opened (the questions of its links, their pictures): `typeOf` answers them too. */
 const LEARN = Symbol('learn types');
-type Learning = { [LEARN]?: (types: Iterable<readonly [string, string]>) => void };
-const learn = (book: OpenedLibraryBook, types: Iterable<readonly [string, string]>) => (book as OpenedLibraryBook & Learning)[LEARN]?.(types);
+type Learning = { [LEARN]?: (types: Iterable<readonly [string, string]>, mustCheck?: boolean) => void };
+const learn = (book: OpenedLibraryBook, types: Iterable<readonly [string, string]>, mustCheck?: boolean) => (book as OpenedLibraryBook & Learning)[LEARN]?.(types, mustCheck);
 
 /** Finds, fetches and checks the current book item of `slug`, and returns it as a streamed book whose files are library items. */
 export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<OpenedLibraryBook> {
@@ -213,6 +218,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   const types = new Map<string, string>(index.assets.flatMap((a) => [[a.id, a.type] as const, ...(a.renditions ?? []).map((x) => [x.id, x.type] as const)]));
   if (links) types.set(links, LIBRARY_LINKS_TYPE);
   const typeOf = (id: string) => types.get(id) ?? 'application/octet-stream';
+  const checked = new Set<string>();
 
   const book: OpenedLibraryBook & Learning = {
     library: o.library, slug: o.slug, key: record.key, record, item, index, bytes,
@@ -232,7 +238,8 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     storesFor,
     async headersFor(type) { const s = storeFor(type); return s ? headersOf(s) : {}; },
     // what the book says comes first: a type learned later never changes one it gives
-    [LEARN]: (learned) => { for (const [id, type] of learned) if (!types.has(id)) types.set(id, type); },
+    mustCheck: (id) => checked.has(id),
+    [LEARN]: (learned, mustCheck) => { for (const [id, type] of learned) { if (!types.has(id)) types.set(id, type); if (mustCheck) checked.add(id); } },
   };
   return book;
 }
@@ -263,6 +270,8 @@ export async function loadBookLinks(book: OpenedLibraryBook, init?: { signal?: A
 export async function loadQuestion(book: OpenedLibraryBook, key: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
   const r = questionManifestSchema.safeParse(JSON.parse(dec.decode(await book.fetchItem(key, { ...init, type: QUESTION_MANIFEST_TYPE }))));
   if (!r.success) throw new Error(`${key} is not a question manifest (${QUESTION_MANIFEST_TYPE}): ${issues(r.error)}`);
-  learn(book, [[key, QUESTION_MANIFEST_TYPE], ...[...(r.data.assets ?? []), ...questionAssetKeys(r.data)].map((k) => [k, 'image/*'] as const)]);
+  learn(book, [[key, QUESTION_MANIFEST_TYPE]]);
+  // spec 1.7 §4: a question's picture is checked against its key before it is shown, even one the book's pages also use
+  learn(book, [...(r.data.assets ?? []), ...questionAssetKeys(r.data)].map((k) => [k, 'image/*'] as const), true);
   return r.data;
 }

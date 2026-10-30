@@ -92,13 +92,15 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     // drawn by URL, so the browser and the CDN cache it, as any streamed book's media (spec 1.2 §6: what a URL draws is not hashed). A store that
     // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
     // media are fetched, checked against their id, and drawn from a blob. So is a picture whose format is not known (`image/*`, a question's):
-    // which of the library's image stores has it is found by asking each in turn, which a URL cannot do
+    // which of the library's image stores has it is found by asking each in turn, which a URL cannot do. A blob is made once per id: a page
+    // that drew a question's picture by URL before the question was read keeps that URL
     async assetUrl(id, signal) {
       const type = lib.typeOf(id);
       const store = resolutionKey(id) ? lib.storeFor(type) : null;
       if (!store) return null;
       const unknownFormat = type.endsWith('/*');
-      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat) return lib.urlOf(id, type);
+      // a question's picture is checked before it is shown (spec 1.7 §4), even one the pages also draw
+      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat && !lib.mustCheck(id)) return lib.urlOf(id, type);
       const bytes = await lib.fetchItem(id, { signal, type });
       // a picture whose format is not known gets the type its bytes show, among the formats a book's pictures take (spec 1.0: png, jpeg, webp,
       // gif, avif). Never image/svg+xml from a guess: an SVG in a blob: URL of this origin runs its scripts if the URL is opened

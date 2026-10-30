@@ -127,6 +127,22 @@ describe('books in a library, in the reader', () => {
     b.dispose();
   });
 
+  it("checks a question's picture before it is shown (spec 1.7 §4), even one the book's pages also use", async () => {
+    const question = JSON.stringify({ format: 'chalk.question', manifestVersion: 1, id: 'q2', version: '1', kind: 'short_answer', stem: `![](${pictureKey})`, assets: [pictureKey] });
+    const open = async (tamper?: string) => {
+      const lib = await library({ question, ...(tamper ? { tamper } : {}) });
+      const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+      await loadQuestion(b.library!, (await loadBookLinks(b.library!))!.links[0]!.question);
+      return b;
+    };
+    const ok = await open();
+    expect(ok.library!.mustCheck(pictureKey)).toBe(true);
+    const url = await ok.assetUrl(pictureKey);
+    expect(url?.startsWith('blob:')).toBe(true);
+    ok.dispose();
+    expect(await (await open(pictureKey)).assetUrl(pictureKey)).toBeNull();
+  });
+
   it('hands out the bytes of a rendition with the type the book declares for it', async () => {
     const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 5, 5]);
     const lib = await library({ rendition: webp });
