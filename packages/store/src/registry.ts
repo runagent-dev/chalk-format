@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { assetKeyAndSha256, assetMetaSchema, storeDescriptorSchema } from '@chalk-format/model';
+import { fetchWithToken, type TokenSource } from './auth/token.js';
 
 /**
  * The registry API, version 1 (spec/1.2/registry-api.md): request and response shapes, and a small typed
@@ -64,14 +65,16 @@ export class RegistryError extends Error {
  * A client for authoring tools. `add(file)` does the whole of registry-api §3: hash once, ask, upload only
  * what is missing, register.
  */
-export function createRegistryClient(base: string, o: { token?: string | (() => string | undefined | Promise<string | undefined>); fetch?: typeof fetch } = {}) {
+export function createRegistryClient(base: string, o: {
+  /** A token (API key), or a function giving the current one (a sign-in: `libraryAuth(...).token`); a function is asked again once after a 401. */
+  token?: TokenSource | undefined;
+  fetch?: typeof fetch;
+} = {}) {
   const f = o.fetch ?? globalThis.fetch.bind(globalThis);
   const root = base.endsWith('/') ? base : base + '/';
   async function call<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
-    // a token, or a function giving the current one (sign-ins expire and refresh)
-    const token = typeof o.token === 'function' ? await o.token() : o.token;
-    const headers: Record<string, string> = { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-    const r = await f(root + path, { ...init, headers: { ...headers, ...(init.headers as Record<string, string> | undefined) } });
+    const headers: Record<string, string> = { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers as Record<string, string> | undefined) };
+    const r = await fetchWithToken(f, o.token, root + path, { ...init, headers });
     const body = r.status === 204 ? null : await r.json().catch(() => null);
     if (!r.ok) { const e = errorSchema.safeParse(body); throw new RegistryError(r.status, e.success ? e.data.error.code : 'failed', e.success ? e.data.error.message : `HTTP ${r.status}`); }
     return schema.parse(body);

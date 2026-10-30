@@ -1,6 +1,7 @@
 import { C1_KEY_PATTERN, resolutionKey, streamIndexSchema, verifyAssetBytes, type StoreDescriptor, type StreamIndex, type StreamPage } from '@chalk-format/model';
 import { createRegistryClient, type AssetRecord } from '../registry.js';
 import { apiUrl, derivedUrl, hashPart, matchesType } from '../urls.js';
+import { fetchWithToken, resolveToken, type TokenSource } from '../auth/token.js';
 import { LIBRARY_BOOK_TYPE, LIBRARY_LINKS_TYPE, LIBRARY_PAGE_TYPE, LIBRARY_TEXT_TYPE, type BookItem, type BookItemPage, type BookLinks } from './load-types.js';
 
 /**
@@ -15,8 +16,11 @@ export type OpenLibraryBookOptions = {
   library: string;
   /** The book's slug: its items carry the tag `book:<slug>`. */
   slug: string;
-  /** Sent as `Authorization: Bearer <token>` to the API (a library with PUBLIC_READ=false), and to a store that asks for it. */
-  token?: string | undefined;
+  /**
+   * Sent as `Authorization: Bearer <token>` to the API (a library with PUBLIC_READ=false), and to a store that asks for it (`auth: 'bearer'`).
+   * A token, or a function giving the current one (a sign-in: `libraryAuth(...).token`), which is asked again once after a 401.
+   */
+  token?: TokenSource | undefined;
   fetch?: typeof fetch;
 };
 
@@ -49,8 +53,8 @@ export type OpenedLibraryBook = {
   urlOf(id: string, type?: string): string | null;
   /** The library's store for a type: the first of `GET /v1/stores` (derived or api) whose `media` take it. Items and media come from these. */
   storeFor(type: string): StoreDescriptor | null;
-  /** Headers a fetch from that store needs (a bearer token for a store with `auth: 'bearer'`). */
-  headersFor(type: string): Record<string, string>;
+  /** Headers a fetch from that store needs (a bearer token for a store with `auth: 'bearer'`, the current one when the token is a function). */
+  headersFor(type: string): Promise<Record<string, string>>;
 };
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -101,14 +105,19 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   // everything is read from the library asked for, even when the book names another copy of it in `assetSources` (a mirror, a test library):
   // the publisher put every item of the book here before the book item, so it is all here. Each type from the first of its stores that takes it.
   const storeFor = (type: string) => pickStore(stores, type);
-  const headersOf = (s: StoreDescriptor): Record<string, string> => (s.auth === 'bearer' && o.token ? { Authorization: `Bearer ${o.token}` } : {});
+  const headersOf = async (s: StoreDescriptor): Promise<Record<string, string>> => {
+    const t = s.auth === 'bearer' ? await resolveToken(o.token) : undefined;
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  };
   // a `sha256:` id is fetched by its c1 key but checked against the whole digest it names
   const get = async (id: string, type: string, signal?: AbortSignal): Promise<Uint8Array> => {
     const key = resolutionKey(id);
     if (!key) throw new Error(`${id} is not a content key`);
     const s = storeFor(type);
     if (!s) throw new Error(`the library names no store for ${type}`);
-    const r = await doFetch(storeUrl(s, key), { headers: headersOf(s), ...(signal ? { signal } : {}) });
+    const init = signal ? { signal } : {};
+    // the token only to a store that asks for it (a public CDN is not sent it)
+    const r = s.auth === 'bearer' ? await fetchWithToken(doFetch, o.token, storeUrl(s, key), init) : await doFetch(storeUrl(s, key), { headers: {}, ...init });
     if (!r.ok) throw new Error(`could not fetch ${id} from the library (${r.status})`);
     const bytes = new Uint8Array(await r.arrayBuffer());
     if (!(await verifyAssetBytes(id, bytes))) throw new Error(`the library sent bytes that are not ${id}`);
@@ -157,7 +166,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     fetchItem: (id, init) => get(id, init?.type ?? typeOf(id), init?.signal),
     urlOf(id, type) { const k = resolutionKey(id), s = storeFor(type ?? typeOf(id)); return k && s ? storeUrl(s, k) : null; },
     storeFor: (type) => storeFor(type),
-    headersFor(type) { const s = storeFor(type); return s ? headersOf(s) : {}; },
+    async headersFor(type) { const s = storeFor(type); return s ? headersOf(s) : {}; },
   };
   return book;
 }
