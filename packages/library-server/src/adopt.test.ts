@@ -213,6 +213,25 @@ describe('adopting: off by default, and a private library', () => {
     expect(text(await (await f(url)).arrayBuffer())).toBe(text(PAGE));
   });
 
+  it('a key is never available without its location, even between two statements (a reader would look at the standard path)', async () => {
+    const bytes = new TextEncoder().encode('pending, then adopted'), k = await assetKeyAndSha256(bytes), path = 'chalk-books/race/a.png';
+    mkdirSync(join(dir, 'chalk-books', 'race'), { recursive: true }); writeFileSync(join(dir, ...path.split('/')), bytes);
+    // after every statement the app runs, look at what a reader would see
+    const states: string[] = [];
+    const watched: Db = { close: () => db.close(), async query<T>(sql: string, params?: unknown[]) {
+      const r = await db.query<T>(sql, params);
+      const [x] = await db.query<{ status: string; path: string | null }>("SELECT a.status, l.path FROM assets a LEFT JOIN locations l ON l.key = a.key AND l.store = 'library' WHERE a.key = $1", [k.key]);
+      if (x) states.push(`${x.status}:${x.path ?? '-'}`);
+      return r;
+    } };
+    const app = createLibraryApp({ db: watched, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1'), adoptPrefixes: ['chalk-books/'] });
+    const call = (p: string, body: object) => app.fetch(new Request(`${BASE}${p}`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify(body) }));
+    expect((await call('/v1/uploads', { ...k, type: 'image/png', size: bytes.byteLength })).status).toBe(200);
+    expect((await call('/v1/assets/adopt', { ...k, type: 'image/png', size: bytes.byteLength, path })).status).toBe(200);
+    expect(states).toContain(`available:${path}`);
+    expect(states.filter((x) => x.startsWith('available:') && x !== `available:${path}`)).toEqual([]);
+  });
+
   it('ADOPT_PREFIXES: each made a folder, never the library\'s own layout or a path outside the bucket', async () => {
     expect(adoptPrefixes(' chalk-books , media/old/ ')).toEqual(['chalk-books/', 'media/old/']);
     expect(adoptPrefixes(undefined)).toEqual([]);

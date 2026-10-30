@@ -66,8 +66,17 @@ type Deps = {
 /** The indexed store readers of a public library use for adopted files; null when there is none to name. */
 export async function adoptedStore(d: Pick<Deps, 'db' | 'prefixes' | 'publicRead' | 'base'>, c: Context): Promise<StoreDescriptor | null> {
   if (!d.publicRead) return null;
-  const any = d.prefixes.length > 0 || (await d.db.query("SELECT 1 FROM locations WHERE store = 'library' AND path NOT LIKE 'c1/%' LIMIT 1")).length > 0;
+  // adopting is on, or was (files adopted before ADOPT_PREFIXES was emptied are still served); looked up at most once a minute
+  const any = d.prefixes.length > 0 || (await adoptedBefore(d.db));
   return any ? { id: 'library-adopted', kind: 'indexed', base: `${d.base(c)}/` } : null;
+}
+const seen = new WeakMap<Db, { at: number; any: boolean }>();
+async function adoptedBefore(db: Db) {
+  const s = seen.get(db);
+  if (s && (s.any || Date.now() - s.at < 60_000)) return s.any;
+  const any = (await db.query("SELECT 1 FROM locations WHERE store = 'library' AND path NOT LIKE 'c1/%' LIMIT 1")).length > 0;
+  seen.set(db, { at: Date.now(), any });
+  return any;
 }
 
 export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) {
@@ -101,10 +110,12 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
       // read once, inside the bucket: the bytes are what the key names (nothing is recorded otherwise, nothing deleted)
       if (head.size !== a.size || (await d.sha256Of(storage, a.path)) !== a.sha256) return fail(c, 422, 'verification_failed', `the object at ${a.path} is not the one this key names`);
       await d.ensureStore();
-      await db.query(`INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
-        ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size WHERE assets.status = 'pending'`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user]);
-      await db.query(`INSERT INTO locations (key, store, path, verified_at) VALUES ($1, 'library', $2, now())
-        ON CONFLICT (key, store) DO UPDATE SET path = EXCLUDED.path, verified_at = now()`, [a.key, a.path]);
+      // one statement, so readers never see the key available without its location (they would look at the standard
+      // path, where a pending upload's unverified bytes may be). A withdrawn key is never made available again.
+      await db.query(`WITH asset AS (INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
+          ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size WHERE assets.status = 'pending')
+        INSERT INTO locations (key, store, path, verified_at) VALUES ($1, 'library', $6, now())
+        ON CONFLICT (key, store) DO UPDATE SET path = EXCLUDED.path, verified_at = now()`, [a.key, a.sha256, a.type, a.size, c.get('caller')!.user, a.path]);
     }
     await d.describe(a);
     return c.json(await d.recordOf(a.key));
