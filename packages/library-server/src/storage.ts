@@ -20,7 +20,8 @@ export interface Storage {
    * bearer token. `contentType` is what the response says (code is always made `application/octet-stream`).
    */
   presignGet(path: string, expiresSeconds: number, o: GetOptions): Promise<{ url: string; expiresAt: string }>;
-  head(path: string): Promise<{ size: number } | null>;
+  /** The object's size, and the type it is stored with when the storage keeps one (S3: what the bucket serves it as). */
+  head(path: string): Promise<{ size: number; type?: string } | null>;
   /** The object's bytes as a stream (for hashing without holding it in memory), or null. */
   read(path: string): Promise<ReadableStream<Uint8Array> | null>;
   /** Every object below a prefix (for scanning a bucket that already has media). */
@@ -103,7 +104,8 @@ export function s3Storage(o: S3Options): Storage {
       const r = await send(objectUrl(path), { method: 'HEAD' });
       if (r.status === 404) return null;
       if (!r.ok) throw new Error(`storage HEAD ${r.status}`);
-      return { size: Number(r.headers.get('content-length') ?? 0) };
+      const type = r.headers.get('content-type');
+      return { size: Number(r.headers.get('content-length') ?? 0), ...(type ? { type } : {}) };
     },
     async read(path) {
       const r = await send(objectUrl(path));

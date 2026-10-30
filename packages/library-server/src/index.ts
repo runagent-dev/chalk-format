@@ -3,6 +3,7 @@ export { openDb, type Db } from './db.js';
 export { s3Storage, diskStorage, servedType, type Storage, type S3Options, type DiskStorage, type GetOptions } from './storage.js';
 export { registerDelivery, FILE_SECONDS, LINK_SECONDS, type DeliveryOptions } from './delivery.js';
 export { scanStorage } from './scan.js';
+export { adoptPrefixes, locate } from './adopt.js';
 export { libraryFromEnv, tokenCallers } from './config.js';
 export { checkLibrary, type Check } from './conformance.js';
 export { createAuth, checkKeySetup, AuthError, type Auth, type AuthOptions, type TokenResponse, type UserRecord, type ApiKeyRecord } from './auth/service.js';

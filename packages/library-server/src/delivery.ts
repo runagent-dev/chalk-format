@@ -2,7 +2,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import type { Context, Hono } from 'hono';
 import { isC1Key, type StoreDescriptor } from '@chalk-format/model';
-import { standardPath } from '@chalk-format/store';
+import { assetAt, locate } from './adopt.js';
 import type { LibraryOptions } from './app.js';
 import { requireRole, type AuthVariables } from './auth/guard.js';
 import { contentDisposition, servedType, type DiskStorage } from './storage.js';
@@ -41,7 +41,6 @@ export const LINK_SECONDS = 15 * 60;
 const BY_TOKEN = 'Authorization, Origin';
 /** CORS for signed links: the URL is the credential, so any page may read the answer. */
 const ANY_ORIGIN = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Length, Content-Range' };
-const PATH = /^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/[a-z2-7]{25}[aeimquy4]$/;
 /** `c1:…` or the hash part alone (the `{h}` of the template). */
 const keyOf = (s: string) => { const k = s.startsWith('c1:') ? s : `c1:${s}`; return isC1Key(k) ? k : null; };
 
@@ -55,14 +54,9 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
     const key = keyOf(raw), row = key ? await assetOf(key) : null;
     if (row?.status === 'withdrawn') return { res: fail(c, 410, 'gone', 'this asset was withdrawn') };
     if (!key || row?.status !== 'available') return { res: fail(c, 404, 'not_found', 'no such asset') };
-    return { key, path: standardPath(key), type: row.type };
+    return { key, path: await locate(o.db, key), type: row.type }; // where the bytes are: the standard path, or where they were adopted
   };
-  // only X-Forwarded-Proto is taken from the request (a proxy's TLS); the host is the one the request reached
-  const base = (c: Context) => {
-    if (o.serverUrl) return o.serverUrl.replace(/\/+$/, '');
-    const u = new URL(c.req.url), proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
-    return `${proto === 'https' || proto === 'http' ? proto : u.protocol.slice(0, -1)}://${u.host}`;
-  };
+  const base = (c: Context) => baseOf(c, o.serverUrl);
 
   // ---- the store readers use: a private library's names this server, with a token ----
   app.get('/v1/stores', async (c, next) => {
@@ -106,10 +100,10 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
     const refuse = (status: 403 | 404 | 410, text: string) => c.text(text, status, { ...ANY_ORIGIN, 'Cache-Control': 'no-store' });
     let path: string;
     try { path = decodeURIComponent(c.req.path.slice('/files/'.length)); } catch { return refuse(404, 'not found'); }
-    if (!PATH.test(path)) return refuse(404, 'not found');
+    // the signature covers the path: the standard layout, or where a file was adopted (the link the API signed)
     const signed = disk.link(path, { exp: c.req.query('exp'), sig: c.req.query('sig'), fn: c.req.query('fn') });
     if (!signed) return refuse(403, 'this link is not valid or has expired');
-    const row = await assetOf(`c1:${path.split('/').pop()}`);
+    const row = await assetAt(o.db, path);
     const file = row?.status === 'available' ? disk.file(path) : null;
     if (!file) return row?.status === 'withdrawn' ? refuse(410, 'gone') : refuse(404, 'not found');
     return serveFile(c, file, row!.type, {
@@ -118,6 +112,13 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
       ...(signed.filename ? { 'Content-Disposition': contentDisposition(signed.filename) } : {}),
     });
   });
+}
+
+/** This server's public address: SERVER_URL, else the one the request reached (only X-Forwarded-Proto is taken from the request, a proxy's TLS). */
+export function baseOf(c: Context, serverUrl: string | undefined) {
+  if (serverUrl) return serverUrl.replace(/\/+$/, '');
+  const u = new URL(c.req.url), proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+  return `${proto === 'https' || proto === 'http' ? proto : u.protocol.slice(0, -1)}://${u.host}`;
 }
 
 /** One file from the disk, whole or a range (video), never as a web page. */

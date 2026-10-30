@@ -33,7 +33,7 @@ In another terminal:
 ```bash
 curl localhost:8787/healthz                                  # {"ok":true,"name":"Chalk library"}
 cd packages/library-server
-npx tsx src/cli.ts check http://localhost:8787 --token dev-token --admin-token dev-admin   # 15 checks, all "ok"
+npx tsx src/cli.ts check http://localhost:8787 --token dev-token --admin-token dev-admin   # 16 checks, all "ok"
 cd ../.. && CHALK_LIBRARY_TOKEN=dev-token npx tsx tools/library-add.ts http://localhost:8787 examples/library-seed.json
 ```
 
@@ -72,6 +72,7 @@ starting point. Never commit the real `.env`.
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy (Coolify's Traefik, nginx): the client's address is the last `X-Forwarded-For` entry. Leave it `false` when the server is reached directly, or anyone can choose their address. |
 | `ORIGINS` | any | Browser origins allowed to call the API (CORS), comma separated, e.g. `https://editor.example.org`. |
 | `MAX_BYTES` | `536870912` (512 MiB) | The largest file accepted. |
+| `ADOPT_PREFIXES` | none (off) | Where in its own bucket the library adopts files in place, comma separated, e.g. `chalk-books/` (a trailing `/` is added). Never `c1/`. See [Files adopted in place](#files-adopted-in-place). |
 | `PORT` | `8080` | |
 | `NAME` | `Chalk library` | Shown at `/` and `/healthz`. |
 
@@ -133,6 +134,37 @@ What the bucket needs:
 
 A bucket that already holds media can be adopted: `scan` hashes each object, copies it (server side) to its
 standard path, and records it with a title from its file name.
+
+### Files adopted in place
+
+When another tool writes files into the library's own bucket in its own layout (the Chalk dashboard writes books
+as `chalk-books/<slug>/assets/…`, `…/pages/…`), the library can serve those files where they are instead of a
+second copy at `c1/…`. Set `ADOPT_PREFIXES=chalk-books/`; the tool then calls
+[`POST /v1/assets/adopt`](../../spec/1.2/registry-api.md#31-adopting-a-file-in-place) with the key, the size, the
+type and the path. The server HEADs the object, reads it once inside the bucket to check its SHA-256, and records
+the asset with that path as its location. Nothing is copied.
+
+- **Readers of a public library** get a second store at `GET /v1/stores`, after the usual one:
+  `{ "id": "library-adopted", "kind": "indexed", "base": "<SERVER_URL>/" }`. For an adopted key the `c1/…` URL
+  404s, and the reader looks the key up in `GET /index/{h0}.json`, which names the file's URL under `PUBLIC_URL`
+  (e.g. `https://assets.example.org/chalk-books/…`). Shards are answered with `Cache-Control: public, max-age=60`
+  and an `ETag`, so put the server behind the same CDN if readers are many. Set `SERVER_URL`: without it the
+  store names the address the request reached and `/v1/stores` is not shared-cacheable.
+- **The bucket must serve the prefix at `PUBLIC_URL`.** A custom domain on an R2 bucket serves every path in it,
+  so `https://assets.example.org/chalk-books/…` works as soon as the objects are there. The type a reader is
+  served is the one the object was written with (a bucket does not know the registered type): write it correctly.
+  A public library refuses (`403`) to adopt an object stored as HTML, JavaScript or an XML document type, which
+  the CDN would serve as a page; store such files as `application/octet-stream`, or upload them.
+- **A private library** (`PUBLIC_READ=false`) names no index and does not serve `/index/` (404): its bearer
+  store, `/v1/files/{h}`, and `/v1/assets/{key}/link` already pre-sign the adopted path.
+- **Withdrawing** an adopted key marks it withdrawn and takes it out of the index, and `/v1/files` answers `410`,
+  but the object itself is **never deleted**: it belongs to the tool that wrote it. Only a copy at the standard
+  path (if there is one) is removed. To make the bytes unreachable at the CDN, the owner deletes the object.
+- **The owner keeps the object where it is.** If it is moved or deleted, readers of the index get a 404 (they
+  verify what they get, so another file at that path is refused). Adopting the key again at a new path replaces a
+  location whose object is gone; an adopted key whose object still exists keeps its first location.
+- A key the library already has (uploaded, or adopted elsewhere) stays where it is; adopting it again only updates
+  its title, tags and the other descriptive fields, and reads nothing.
 
 ## A private library (`PUBLIC_READ=false`)
 
