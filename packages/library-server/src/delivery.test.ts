@@ -188,7 +188,7 @@ describe('a public library (PUBLIC_READ=true, the default) is unchanged', () => 
 
 describe('settings', () => {
   it('FILE_LINK_SECRET signs disk links (else derived from UPLOAD_SECRET); SERVER_URL only when set', async () => {
-    const env = { DATABASE_URL: 'pglite:', STORAGE: 'disk', DISK_DIR: dir, PUBLIC_READ: 'false' };
+    const env = { DATABASE_URL: 'pglite:', STORAGE: 'disk', DISK_DIR: dir, PUBLIC_READ: 'false', AUTH_KEY_SECRET: 'a test secret of at least thirty-two characters' };
     const a = await libraryFromEnv({ ...env, FILE_LINK_SECRET: 'from env' });
     const b = await libraryFromEnv({ ...env, UPLOAD_SECRET: 'up', SERVER_URL: 'https://lib.example.org' });
     try {

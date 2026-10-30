@@ -52,7 +52,9 @@ export async function runAuthCommand(args: string[], env: Record<string, string 
   const opt = (n: string) => { const i = args.indexOf(n); return i > 0 ? args[i + 1] : undefined; };
   if (!env.DATABASE_URL) { console.error('DATABASE_URL is not set (the library\'s database)'); return 2; }
   const db = await openDb(env.DATABASE_URL, { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
-  const auth = createAuth({ db });
+  // AUTH_KEY_SECRET: adding a user and rotating the signing key need it (as the server does)
+  let auth: ReturnType<typeof createAuth>;
+  try { auth = createAuth({ db, ...(env.AUTH_KEY_SECRET ? { keySecret: env.AUTH_KEY_SECRET } : {}) }); } catch (e) { console.error(e instanceof Error ? e.message : String(e)); await db.close(); return 2; }
   const user = async (n: string | undefined) => {
     const u = n ? await auth.findUser(n) : null;
     if (!u) throw new AuthError(404, 'not_found', `no user ${n ?? ''}`);

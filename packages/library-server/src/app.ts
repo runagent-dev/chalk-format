@@ -211,11 +211,14 @@ export function createLibraryApp(o: LibraryOptions) {
     const denied = requireRole(c, 'author'); if (denied) return denied;
     const b = await body(c, bookAssetsSchema); if (!b.ok) return b.res;
     const book = c.req.param('book'), keys = [...new Set((b.data.keys ?? []).filter(isC1Key))];
-    await db.query('DELETE FROM book_assets WHERE book_id = $1', [book]);
-    // one statement for the whole set: a textbook uses thousands of keys (spec 1.8 §6.3)
-    const known = (await db.query<{ key: string }>(`INSERT INTO book_assets (book_id, key) SELECT $1, key FROM assets WHERE key = ANY($2)
-      ON CONFLICT DO NOTHING RETURNING key`, [book, keys])).map((r) => r.key);
-    return c.json({ book, keys: known.length });
+    // one statement, so one transaction: the set is replaced whole or not at all. A delete that committed before its insert
+    // would leave a book that is being published with nothing recorded (spec 1.8 §6.1). A textbook uses thousands of keys (§6.3).
+    const [row] = await db.query<{ n: number }>(`WITH keep AS (SELECT key FROM assets WHERE key = ANY($2)),
+      gone AS (DELETE FROM book_assets WHERE book_id = $1 AND key NOT IN (SELECT key FROM keep)),
+      put AS (INSERT INTO book_assets (book_id, key) SELECT $1, key FROM keep
+        ON CONFLICT (book_id, key) DO UPDATE SET updated_at = now())
+      SELECT count(*)::int AS n FROM keep`, [book, keys]);
+    return c.json({ book, keys: row?.n ?? 0 });
   });
   app.get('/v1/assets/:key/books', async (c) => {
     const denied = requireRole(c, 'reader'); if (denied) return denied;

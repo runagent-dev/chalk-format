@@ -101,9 +101,14 @@ export async function checkLibrary(url: string, opts: CheckOptions): Promise<Che
       if (!first.ok) return `refresh answered ${first.status}`;
       const next = (await first.json()) as { refresh_token: string };
       if (next.refresh_token === s.refresh_token) return 'the refresh token was not rotated';
+      // the successor used in turn: the first answer arrived, so the first token coming back now is a reuse, even
+      // within a registry's grace window for lost answers
+      const second = await grant({ grant_type: 'refresh_token', refresh_token: next.refresh_token });
+      if (!second.ok) return `refreshing with the new token answered ${second.status}`;
+      const last = (await second.json()) as { refresh_token: string };
       const again = await grant({ grant_type: 'refresh_token', refresh_token: s.refresh_token });
-      const after = await grant({ grant_type: 'refresh_token', refresh_token: next.refresh_token });
-      return again.status === 400 && after.status === 400 ? true : `reuse answered ${again.status}, its successor ${after.status}`;
+      const after = await grant({ grant_type: 'refresh_token', refresh_token: last.refresh_token });
+      return again.status === 400 && after.status === 400 ? true : `reuse answered ${again.status}, the newest token ${after.status}`;
     });
   }
   if (o.adminToken) {

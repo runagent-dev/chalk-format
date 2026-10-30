@@ -19,6 +19,9 @@ const STRINGS = {
     openSnip: 'Open the snip', textPrompt: 'Type your note',
     model3d: '3D model', video: 'Video', audio: 'Sound', image: 'Image',
     notesSaved: 'Your notes were saved as a .chalk file', notesOpened: 'Notes opened', notesFailed: 'These notes could not be opened',
+    signInTitle: 'Sign in to the library', username: 'Username', password: 'Password', signIn: 'Sign in', signingIn: 'Signing in…',
+    signOut: 'Sign out', continueWithout: 'Continue without signing in', signInFailed: 'Could not sign in',
+    wrongPassword: 'The username or password is not right.', tooManyAttempts: 'Too many tries. Wait a minute and try again.',
   },
   bn: {
     loading: 'বইটি খোলা হচ্ছে…', failed: 'বইটি খোলা গেল না', page: 'পৃষ্ঠা', of: '/',
@@ -37,6 +40,9 @@ const STRINGS = {
     openSnip: 'অংশটি খোলো', textPrompt: 'তোমার নোট লেখো',
     model3d: 'ত্রিমাত্রিক মডেল', video: 'ভিডিও', audio: 'শব্দ', image: 'ছবি',
     notesSaved: 'তোমার নোট একটি .chalk ফাইলে সংরক্ষিত হয়েছে', notesOpened: 'নোট খোলা হয়েছে', notesFailed: 'এই নোট খোলা গেল না',
+    signInTitle: 'লাইব্রেরিতে সাইন ইন করো', username: 'ইউজারনেম', password: 'পাসওয়ার্ড', signIn: 'সাইন ইন', signingIn: 'সাইন ইন হচ্ছে…',
+    signOut: 'সাইন আউট', continueWithout: 'সাইন ইন না করে চালিয়ে যাও', signInFailed: 'সাইন ইন করা গেল না',
+    wrongPassword: 'ইউজারনেম বা পাসওয়ার্ড ঠিক নয়।', tooManyAttempts: 'অনেকবার চেষ্টা হয়েছে। এক মিনিট পরে আবার চেষ্টা করো।',
   },
 } as const;
 

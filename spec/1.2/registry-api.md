@@ -91,12 +91,12 @@ record carries its `poster` key so the tool can show thumbnails through the stor
 
 ## 6. Which books use what
 
-- **`PUT v1/books/{bookId}/assets`** `{ "keys": […] }` (up to 20,000) replaces the set of assets the book uses. Authoring tools
-  call it when a book is saved or published.
+- **`PUT v1/books/{bookId}/assets`** `{ "keys": […] }` (up to 20,000) replaces the set of assets the book uses, as one
+  change: a call that fails leaves the old set as it was. Authoring tools call it when a book is saved or published.
 - **`GET v1/assets/{key}/books`** → `{ "items": [{ "bookId", "updatedAt" }], "next"? }`.
 
 A registry MAY delete the bytes of assets that no book has used for a period it chooses, unless they are
-pinned. It MUST NOT delete an asset any book uses.
+pinned. It MUST NOT delete an asset any book uses, nor a current book item (spec 1.8 §6.3).
 
 ## 7. Stores for readers
 
@@ -173,7 +173,12 @@ All are sent as `Authorization: Bearer <credential>`.
 2. **Refresh token** (users): an opaque random string of at least 32 bytes (base64url), valid for 30 days. The
    registry keeps only its SHA-256. Each refresh token can be used **once**: using it returns a new one. If a
    refresh token that was already used comes back, the registry MUST revoke every refresh token descended from the
-   same sign-in (its family), since one of the two holders is not the user.
+   same sign-in (its family), since one of the two holders is not the user. One exception, so that an answer lost
+   on its way does not sign a device out: within a short grace window after the use (at most 60 seconds; the
+   reference server: 30), the registry MAY answer the same token with the **same** successor (and a new access
+   token), as long as that successor has not been used itself; it then keeps the successor only in a form that
+   the used token is needed to read (the reference server: AES-256-GCM under a key derived from it). After the
+   window, or once the successor was used, the reuse revokes the family as above.
 3. **API key** (machines: CI, publishers, an app's server): an opaque string `clk_<random>`, at least 32 random
    bytes. Made by an administrator, shown once, kept as its SHA-256. It has a name and roles, records when it was
    last used, and can be revoked.
@@ -189,7 +194,9 @@ accounts. Other ways of signing in (one-time codes, social sign-in) are later gr
   "grant_types_supported", … }` (the fields of OpenID Connect Discovery that apply).
 - **`GET .well-known/jwks.json`** → `{ "keys": [{ "kty": "OKP", "crv": "Ed25519", "x", "kid", "alg": "EdDSA",
   "use": "sig" }] }`: every key whose tokens may still be valid. When the signing key changes, the old public key
-  stays listed until the last token it signed has expired. Both are public.
+  stays listed until the last token it signed has expired. Both are public. A registry SHOULD keep its private
+  signing keys encrypted at rest, under a secret kept outside the database (the reference server: AES-256-GCM
+  with `AUTH_KEY_SECRET`), so that a copy of the database alone cannot sign tokens.
 
 ### 10.4 Signing in and out
 

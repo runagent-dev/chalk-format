@@ -190,8 +190,8 @@ publisher:
 A publisher MUST NOT do step 4 before 1 to 3 have succeeded. If it stops before step 4, nothing a reader sees has changed:
 the new items are there, recorded, and the next run reuses them (their keys are the same). If it stops after step 5, the
 book is published and everything it names is recorded; the next run repeats steps 6 and 7. Only between steps 4 and 5 is
-the new book item unrecorded, and a library deletes only items that no book has used for a period (registry API §6), which
-an item just added has not reached; a publisher that stops there repeats step 5 on its next run, before anything else.
+the new book item missing from the recorded use, and it does not depend on that: a library never deletes a current book
+item (§6.3), however long the publisher stays down. Everything the item names was recorded in step 3.
 
 **One publisher at a time.** Publishing a book is not atomic: a publisher MUST NOT publish a book while another run is
 publishing the same book (the publishing side holds a lock per slug, or runs one job at a time). Even so, §6.2 never
@@ -235,8 +235,10 @@ revisions, in step 7 the new one, after which the old revision's items that the 
 keys the library records for the book now are found with `GET v1/search?book=<slug>` (registry API §5), or the publisher
 keeps its own list.
 
-A library MUST NOT delete the bytes of an item a book uses; it MAY delete items no book has used for a while (registry
-API §6), so a publisher records the use on every publish. A book's set can be large (a 300-page textbook with its
+A library MUST NOT delete the bytes of an item a book uses, nor those of a book item (`kind:book`) tagged `state:current`,
+whether or not a book's recorded use names it: that is the item readers open, and between steps 4 and 5 of §6.1 it is not
+yet recorded. It MAY delete other items no book has used for a while (registry API §6), so a publisher records the use on
+every publish. A book's set can be large (a 300-page textbook with its
 pictures and questions has thousands of keys): a library MUST accept at least 20,000 keys in one call.
 
 ## 7. Reading

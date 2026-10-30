@@ -129,6 +129,10 @@ describe('the reference library (disk + PGlite)', () => {
     // a textbook's set is thousands of keys (spec 1.8 §6.3); keys the library does not have are left out
     const many = Array.from({ length: 5000 }, (_, i) => `c1:${i.toString(32).padStart(25, 'a').replace(/[0-1]/g, 'a').replace(/[8-9]/g, 'b')}a`);
     expect(await client.setBookAssets(slug, [...two.keys, ...many])).toEqual({ book: slug, keys: two.keys.length });
+    // both revisions, then the new one alone: what the new one does not use leaves the set, what it keeps stays
+    const both = [...new Set([...one.keys, ...two.keys])];
+    expect(await client.setBookAssets(slug, both)).toEqual({ book: slug, keys: both.length });
+    expect((await client.search({ book: slug })).items.map((i) => i.key).sort()).toEqual([...both].sort());
     await client.setBookAssets(slug, two.keys);
     expect((await client.search({ book: slug })).items.map((i) => i.key).sort()).toEqual([...two.keys].sort());
     // and the bytes come back through the delivery store as they went in
