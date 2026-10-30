@@ -170,7 +170,7 @@ for (const pkg of PACKAGES) {
   // every bare import must be a Node builtin or a declared dependency
   const allowed = new Set([...Object.keys(deps), ...Object.keys(peers)]);
   for (const file of walk(dist).filter((f) => /\.(js|mjs)$/.test(f))) {
-    for (const m of readFileSync(file, 'utf8').matchAll(/(?:from\s*|import\s*\(\s*|import\s+)(['"])([^'"]+)\1/g)) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"]+)\1/g)) {
       const spec = m[2];
       if (spec.startsWith('.') || spec.startsWith('node:') || builtinModules.includes(spec.split('/')[0])) continue;
       const name = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
