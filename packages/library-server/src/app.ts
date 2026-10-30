@@ -5,7 +5,7 @@ import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { C1_KEY_PATTERN, c1FromSha256, isC1Key, type StoreDescriptor } from '@chalk-format/model';
-import { checkRequestSchema, registerRequestSchema, uploadRequestSchema, standardPath, matchesType } from '@chalk-format/store';
+import { checkRequestSchema, currentRequestSchema, registerRequestSchema, uploadRequestSchema, standardPath, matchesType } from '@chalk-format/store';
 import { authenticate, requireRole, type AuthVariables } from './auth/guard.js';
 import type { Caller } from './auth/roles.js';
 import { mountAuthRoutes, type AuthRouteOptions } from './auth/routes.js';
@@ -77,8 +77,8 @@ export function createLibraryApp(o: LibraryOptions) {
     return r.success ? { ok: true as const, data: r.data } : { ok: false as const, res: fail(c, 400, 'invalid', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')) };
   };
 
-  const record = async (r: Row, withLocations: boolean) => {
-    const renditions = (await db.query<{ rendition: string }>('SELECT rendition FROM renditions WHERE primary_key = $1', [r.key])).map((x) => x.rendition);
+  const record = async (r: Row, withLocations: boolean, known?: { renditions: string[]; locations: { store: string; path: string }[] }) => {
+    const renditions = known?.renditions ?? (await db.query<{ rendition: string }>('SELECT rendition FROM renditions WHERE primary_key = $1', [r.key])).map((x) => x.rendition);
     const meta = Object.fromEntries(Object.entries({ width: r.width, height: r.height, duration: r.duration, pages: r.pages }).filter(([, v]) => v != null));
     return {
       key: r.key, sha256: r.sha256.trim(), type: r.type, size: Number(r.size),
@@ -86,7 +86,7 @@ export function createLibraryApp(o: LibraryOptions) {
       title: r.title, filename: r.filename, tags: r.tags ?? [], subject: r.subject, license: r.license, poster: r.poster,
       ...(renditions.length ? { renditions } : {}),
       status: r.status, uploadedBy: r.uploaded_by, createdAt: new Date(r.created_at).toISOString(),
-      ...(withLocations ? { locations: (await db.query<{ store: string; path: string }>('SELECT store, path FROM locations WHERE key = $1', [r.key])) } : {}),
+      ...(withLocations ? { locations: known?.locations ?? (await db.query<{ store: string; path: string }>('SELECT store, path FROM locations WHERE key = $1', [r.key])) } : {}),
     };
   };
   const rowOf = async (key: string) => (await db.query<Row>('SELECT * FROM assets WHERE key = $1', [key]))[0] ?? null;
@@ -97,7 +97,7 @@ export function createLibraryApp(o: LibraryOptions) {
   // what this address is, for someone who opens it in a browser
   app.get('/', (c) => c.json({
     name: o.name ?? 'Chalk library', api: 'Chalk registry API v1 (spec/1.2/registry-api.md)',
-    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'POST /v1/auth/token',
+    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/assets/current', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'POST /v1/auth/token',
       'GET /.well-known/openid-configuration', 'GET /healthz'],
   }));
 
@@ -183,6 +183,23 @@ export function createLibraryApp(o: LibraryOptions) {
     const b = await body(c, checkRequestSchema); if (!b.ok) return b.res;
     const rows = await db.query<Row>("SELECT * FROM assets WHERE key = ANY($1) AND status <> 'pending'", [b.data.keys]);
     return c.json({ items: await Promise.all(rows.map((r) => record(r, Boolean(c.get('caller'))))) });
+  });
+
+  // POST /v1/assets/current (registry-api §4.1): the newest available item of each tag, in ONE statement however many tags (the GIN index on
+  // tags answers each `tags @> ARRAY[tag]`; the renditions come in the same statement). Newest created_at wins, the larger key on a tie.
+  app.post('/v1/assets/current', async (c) => {
+    const denied = requireRole(c, 'reader'); if (denied) return denied;
+    const b = await body(c, currentRequestSchema); if (!b.ok) return b.res;
+    const tags = [...new Set(b.data.tags)], need = [...new Set(b.data.require ?? ['state:current'])];
+    const rows = await db.query<Row & { want: string; renditions_of: string[] | null; locations_of: { store: string; path: string }[] }>(
+      `SELECT DISTINCT ON (t.tag) t.tag AS want, a.*, (SELECT array_agg(r.rendition) FROM renditions r WHERE r.primary_key = a.key) AS renditions_of,
+               (SELECT coalesce(json_agg(json_build_object('store', l.store, 'path', l.path)), '[]'::json) FROM locations l WHERE l.key = a.key) AS locations_of
+         FROM unnest($1::text[]) AS t(tag)
+         JOIN assets a ON a.tags @> ARRAY[t.tag]::text[] AND a.tags @> $2::text[] AND a.status = 'available' AND ($3::text IS NULL OR a.type = $3)
+        ORDER BY t.tag, a.created_at DESC, a.key DESC`, [tags, need, b.data.type ?? null]);
+    const items: Record<string, unknown> = Object.fromEntries(tags.map((t) => [t, null]));
+    for (const r of rows) items[r.want] = await record(r, Boolean(c.get('caller')), { renditions: r.renditions_of ?? [], locations: r.locations_of });
+    return c.json({ items });
   });
 
   // ---- §5 search: trigram similarity, any script; newest first without words ----

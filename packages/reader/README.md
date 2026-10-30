@@ -144,8 +144,12 @@ until the book is whole). `openStreamedBook(url)` gives the same book outside th
 library, fetched by key from the library's store (or, for what that store does not have, from the stores the book suggests) and checked
 against the key. The book item is checked as a book item before anything is drawn. `onBookLinks` hands the host the book's links item
 (which sentences of which pages have questions, by question key), checked, with only the links whose role this version knows (spec 1.8
-§3.4: `answers_from`, `tests_concept`, `formula_source`, `uses_figure`), for "questions for this line". `loadQuestion(book.library, key)`
-fetches one of those questions (spec 1.7), checked. `openLibraryStreamedBook(source)` gives the same book outside the component, and
+§3.4: `answers_from`, `tests_concept`, `formula_source`, `uses_figure`), for "questions for this line". A link may carry the question's lasting
+`questionId`: `resolveQuestions(book.library, ids)` gives the **current** version of each id (one `POST v1/assets/current` per 500 ids,
+every manifest checked against its key and cached; an id the library does not know, or a library without that endpoint, falls back to
+the link's own `question` key), so a corrected question shows without the links item being published again. `loadQuestion(book.library, keyOrId)`
+fetches one question (spec 1.7), checked; given the key of a link that has a `questionId`, it gives the current version.
+The links item is found by its tags (`book:<slug>`, `kind:links`, `state:current`; the key the book names is the fallback). `openLibraryStreamedBook(source)` gives the same book outside the component, and
 `book.library` its book item, revision and keys.
 
 **Signing in to a library.** A library that keeps its books private (`PUBLIC_READ=false`) needs a token: a fixed one (an API key), or a

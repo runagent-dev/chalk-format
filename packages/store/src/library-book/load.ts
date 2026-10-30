@@ -1,5 +1,5 @@
 import { QUESTION_MANIFEST_TYPE, questionAssetKeys, questionManifestSchema, resolutionKey, streamIndexSchema, verifyAssetBytes, type QuestionManifest, type StoreDescriptor, type StreamIndex, type StreamPage } from '@chalk-format/model';
-import { createRegistryClient, type AssetRecord } from '../registry.js';
+import { createRegistryClient, RegistryError, type AssetRecord, type RegistryClient } from '../registry.js';
 import { apiUrl, derivedUrl, hashPart, matchesType } from '../urls.js';
 import { fetchWithToken, resolveToken, type TokenSource } from '../auth/token.js';
 import {
@@ -87,22 +87,37 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 /** How many pages of search results are read at most while looking for the current book item. */
 const MAX_SEARCH_PAGES = 10;
 
-/** The current book item of a slug: tagged `state:current`; of two current ones, the newest `createdAt` (contract "Discovery"). */
-export async function findCurrentBookItem(o: OpenLibraryBookOptions): Promise<AssetRecord | null> {
-  const c = createRegistryClient(o.library, { ...(o.token ? { token: o.token } : {}), ...(o.fetch ? { fetch: o.fetch } : {}) });
+/** Search results, all pages (a few at most), for tags. */
+async function searchAll(c: RegistryClient, tag: string[]): Promise<AssetRecord[]> {
   const found: AssetRecord[] = [];
   let cursor: string | undefined;
   for (let i = 0; i < MAX_SEARCH_PAGES; i++) {
-    const page = await c.search({ tag: [`book:${o.slug}`, 'kind:book', 'state:current'], limit: 100, ...(cursor ? { cursor } : {}) });
+    const page = await c.search({ tag, limit: 100, ...(cursor ? { cursor } : {}) });
     found.push(...page.items);
     if (!page.next) break;
     cursor = page.next;
   }
-  const items = found.filter((r) => r.status === 'available' && r.type === LIBRARY_BOOK_TYPE);
-  // later createdAt first; the same time, the larger key (spec 1.8, as pickCurrentBook)
+  return found;
+}
+
+/** The newest of the available items of a media type: later `createdAt` first; the same time, the larger key (spec 1.8 §5, as `pickCurrentBook`). */
+function newestOf(found: AssetRecord[], type: string): AssetRecord | null {
+  const items = found.filter((r) => r.status === 'available' && r.type === type);
   const time = (r: AssetRecord) => { const t = Date.parse(r.createdAt); return Number.isNaN(t) ? -Infinity : t; };
   items.sort((a, b) => time(b) - time(a) || (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
   return items[0] ?? null;
+}
+
+const clientOf = (o: OpenLibraryBookOptions) => createRegistryClient(o.library, { ...(o.token ? { token: o.token } : {}), ...(o.fetch ? { fetch: o.fetch } : {}) });
+
+/** The current book item of a slug: tagged `state:current`; of two current ones, the newest `createdAt` (contract "Discovery"). */
+export async function findCurrentBookItem(o: OpenLibraryBookOptions): Promise<AssetRecord | null> {
+  return newestOf(await searchAll(clientOf(o), [`book:${o.slug}`, 'kind:book', 'state:current']), LIBRARY_BOOK_TYPE);
+}
+
+/** The current links item of a slug (spec 1.8 §3.4): `book:<slug>`, `kind:links`, `state:current`, the same rule as the book item. Null if the library has none. */
+export async function findCurrentLinksItem(o: OpenLibraryBookOptions): Promise<AssetRecord | null> {
+  return newestOf(await searchAll(clientOf(o), [`book:${o.slug}`, 'kind:links', 'state:current']), LIBRARY_LINKS_TYPE);
 }
 
 /** A store this loader can address: derived or api (an indexed store needs its index, a bundle is not a store to fetch from by key). */
@@ -142,11 +157,32 @@ const LEARN = Symbol('learn types');
 type Learning = { [LEARN]?: (types: Iterable<readonly [string, string]>, mustCheck?: boolean) => void };
 const learn = (book: OpenedLibraryBook, types: Iterable<readonly [string, string]>, mustCheck?: boolean) => (book as OpenedLibraryBook & Learning)[LEARN]?.(types, mustCheck);
 
+/** What the question functions remember about an opened book: the client, the keys links name for an id, the manifests already fetched. */
+type BookState = {
+  client: RegistryClient;
+  /** question id -> the `question` key of a link that names it (set by `loadBookLinks`): where to fall back to. */
+  fallback: Map<string, string>;
+  /** the other way round: a link's `question` key -> its id. */
+  idOfKey: Map<string, string>;
+  /** manifests fetched and checked, by key (a key is immutable: kept for the life of the book). */
+  manifests: Map<string, QuestionManifest>;
+  /** The library answered 404/405 to `POST v1/assets/current` (an older server): it is not asked again. */
+  noCurrentEndpoint: boolean;
+};
+const bookStates = new WeakMap<object, BookState>();
+const stateOf = (book: OpenedLibraryBook): BookState => {
+  const s = bookStates.get(book);
+  if (!s) throw new Error('not a book opened with openLibraryBook');
+  return s;
+};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Finds, fetches and checks the current book item of `slug`, and returns it as a streamed book whose files are library items. */
 export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<OpenedLibraryBook> {
   const doFetch = o.fetch ?? globalThis.fetch.bind(globalThis);
-  const c = createRegistryClient(o.library, { ...(o.token ? { token: o.token } : {}), ...(o.fetch ? { fetch: o.fetch } : {}) });
-  const [record, stores] = await Promise.all([findCurrentBookItem(o), c.stores().then((r) => r.items)]);
+  const c = clientOf(o);
+  // the links item is found by its tags too (spec 1.8 §3.4); the key the book names is the fallback when the search finds none or fails
+  const [record, stores, currentLinks] = await Promise.all([findCurrentBookItem(o), c.stores().then((r) => r.items), findCurrentLinksItem(o).catch(() => null)]);
   if (!record) throw new Error(`the library has no current book "${o.slug}"`);
 
   // the library's own stores first (the host's, spec 1.8 §7 step 1): everything is read from the library asked for, even when the book names
@@ -206,7 +242,8 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     delete entry.key;
     return entry as StreamPage;
   };
-  const { links, text: textItem, ...rest } = item;
+  const { links: namedLinks, text: textItem, ...rest } = item;
+  const links = currentLinks?.key ?? namedLinks;
   if (textItem) files.set(`items/${hashPart(textItem.key)}.json`, { key: textItem.key, type: LIBRARY_TEXT_TYPE });
   const index = streamIndexSchema.parse({
     ...rest,
@@ -220,6 +257,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   const typeOf = (id: string) => types.get(id) ?? 'application/octet-stream';
   const checked = new Set<string>();
 
+  const state: BookState = { client: c, fallback: new Map(), idOfKey: new Map(), manifests: new Map(), noCurrentEndpoint: false };
   const book: OpenedLibraryBook & Learning = {
     library: o.library, slug: o.slug, key: record.key, record, item, index, bytes,
     revision: (() => { const t = record.tags?.find((x) => x.startsWith('book-revision:')); const n = t ? Number(t.slice('book-revision:'.length)) : NaN; return Number.isInteger(n) ? n : null; })(),
@@ -241,6 +279,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
     mustCheck: (id) => checked.has(id),
     [LEARN]: (learned, mustCheck) => { for (const [id, type] of learned) { if (!types.has(id)) types.set(id, type); if (mustCheck) checked.add(id); } },
   };
+  bookStates.set(book, state);
   return book;
 }
 
@@ -258,20 +297,100 @@ export async function loadBookLinks(book: OpenedLibraryBook, init?: { signal?: A
   const links = r.data.links.filter((l) => isKnownLinkRole(l.role));
   const linked = new Set(links.map((l) => l.sentence));
   learn(book, links.map((l) => [l.question, QUESTION_MANIFEST_TYPE] as const));
+  const st = stateOf(book);
+  for (const l of links) if (l.questionId) { const id = l.questionId.toLowerCase(); if (!st.fallback.has(id)) st.fallback.set(id, l.question); st.idOfKey.set(l.question, id); }
   return { ...r.data, sentences: r.data.sentences.filter((s) => linked.has(s.id)), links };
 }
 
-/**
- * A question manifest (spec 1.7) of the library by its key (a `question` of the links item), fetched as `application/vnd.chalk.question+json`,
- * checked against its key and against `questionManifestSchema`. Its pictures are then fetched with `book.fetchItem` like any other id (their
- * type is `image/*`: the manifest lists their keys only). A kind this version does not know is not refused (1.7); `checkQuestion` says what
- * else may be wrong with it.
- */
-export async function loadQuestion(book: OpenedLibraryBook, key: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
+/** A question manifest by its key, fetched, checked against the key and `questionManifestSchema`; the pictures it lists are learned (must be checked). Kept for the life of the book. */
+async function manifestByKey(book: OpenedLibraryBook, key: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
+  const st = stateOf(book);
+  const kept = st.manifests.get(key);
+  if (kept) return kept;
   const r = questionManifestSchema.safeParse(JSON.parse(dec.decode(await book.fetchItem(key, { ...init, type: QUESTION_MANIFEST_TYPE }))));
   if (!r.success) throw new Error(`${key} is not a question manifest (${QUESTION_MANIFEST_TYPE}): ${issues(r.error)}`);
   learn(book, [[key, QUESTION_MANIFEST_TYPE]]);
   // spec 1.7 §4: a question's picture is checked against its key before it is shown, even one the book's pages also use
   learn(book, [...(r.data.assets ?? []), ...questionAssetKeys(r.data)].map((k) => [k, 'image/*'] as const), true);
+  st.manifests.set(key, r.data);
   return r.data;
+}
+
+/** One question as `resolveQuestions` answers it. */
+export type ResolvedQuestion = {
+  /** The question's lasting id. */
+  id: string;
+  /** The key of the manifest that was used. */
+  key: string;
+  manifest: QuestionManifest;
+  /** `current`: the library's current version of the id. `link`: the key a link of the book names (the library had no answer for the id, or could not be asked). */
+  source: 'current' | 'link';
+};
+
+/** How many ids go in one `POST v1/assets/current` (the most the endpoint takes). */
+const CURRENT_BATCH = 500;
+/** How many manifests are fetched at once. */
+const FETCH_AT_ONCE = 8;
+
+/**
+ * The questions with these lasting ids (spec 1.8 §3.4, "Current version by id"): for each id the library's **current** version, found with
+ * `POST v1/assets/current` (tags `question:<id>`, in batches of 500), fetched and checked against its key. The links item need not change
+ * when a question is corrected. For an id the library has no current version of, when the library lacks the endpoint (404/405: an older
+ * server, remembered for this book) or cannot be asked, and when the current manifest cannot be fetched or checked, the key of the link that
+ * names the id is used instead (`loadBookLinks` must have read the links, or give `fallback`: id -> key). An id with neither, or whose
+ * fallback fails too, is in `failed`. Manifests are cached by key.
+ */
+export async function resolveQuestions(book: OpenedLibraryBook, ids: readonly string[], init?: { signal?: AbortSignal; fallback?: Readonly<Record<string, string>> }):
+  Promise<{ resolved: Map<string, ResolvedQuestion>; failed: Map<string, Error> }> {
+  const st = stateOf(book);
+  const signal = init?.signal;
+  const want = [...new Set(ids.map((x) => x.toLowerCase()))];
+  const currentKey = new Map<string, string>();
+  if (!st.noCurrentEndpoint) {
+    for (let i = 0; i < want.length; i += CURRENT_BATCH) {
+      const batch = want.slice(i, i + CURRENT_BATCH);
+      try {
+        const r = await st.client.current(batch.map((id) => `question:${id}`), { type: QUESTION_MANIFEST_TYPE });
+        for (const id of batch) { const rec = r.items[`question:${id}`]; if (rec) currentKey.set(id, rec.key); }
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        // an older server: remember it. Any other failure (offline, 5xx): this call falls back, the next one asks again
+        if (e instanceof RegistryError && (e.status === 404 || e.status === 405)) { st.noCurrentEndpoint = true; break; }
+      }
+    }
+  }
+  const resolved = new Map<string, ResolvedQuestion>(), failed = new Map<string, Error>();
+  const one = async (id: string) => {
+    const linkKey = init?.fallback?.[id] ?? st.fallback.get(id);
+    let first: unknown;
+    const cur = currentKey.get(id);
+    if (cur) {
+      try { resolved.set(id, { id, key: cur, manifest: await manifestByKey(book, cur, signal ? { signal } : undefined), source: 'current' }); return; }
+      catch (e) { if (signal?.aborted) throw e; first = e; }
+    }
+    if (linkKey) {
+      try { resolved.set(id, { id, key: linkKey, manifest: await manifestByKey(book, linkKey, signal ? { signal } : undefined), source: 'link' }); return; }
+      catch (e) { if (signal?.aborted) throw e; first ??= e; }
+    }
+    failed.set(id, first instanceof Error ? first : new Error(`no question with id ${id}: the library has no current version and no link names a key`));
+  };
+  for (let i = 0; i < want.length; i += FETCH_AT_ONCE) await Promise.all(want.slice(i, i + FETCH_AT_ONCE).map(one));
+  return { resolved, failed };
+}
+
+/**
+ * A question manifest (spec 1.7) of the library, fetched as `application/vnd.chalk.question+json`, checked against its key and against
+ * `questionManifestSchema`. `keyOrId`: a question's lasting id (a UUID), or the `question` key of a link. A key that a link with a `questionId` names
+ * (once `loadBookLinks` has read them) gives the question's **current** version through `resolveQuestions`, falling back to that key as
+ * the spec says; any other key is fetched as it is. Its pictures are then fetched with `book.fetchItem` like any other id (their type is
+ * `image/*`: the manifest lists their keys only). A kind this version does not know is not refused (1.7); `checkQuestion` says what else
+ * may be wrong with it.
+ */
+export async function loadQuestion(book: OpenedLibraryBook, keyOrId: string, init?: { signal?: AbortSignal }): Promise<QuestionManifest> {
+  const id = UUID.test(keyOrId) ? keyOrId.toLowerCase() : stateOf(book).idOfKey.get(keyOrId);
+  if (!id) return manifestByKey(book, keyOrId, init);
+  const { resolved, failed } = await resolveQuestions(book, [id], init);
+  const got = resolved.get(id);
+  if (got) return got.manifest;
+  throw failed.get(id) ?? new Error(`no question with id ${id}`);
 }

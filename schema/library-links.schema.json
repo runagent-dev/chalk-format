@@ -100,6 +100,10 @@
             "type": "string",
             "pattern": "^c1:[a-z2-7]{25}[aeimquy4]$"
           },
+          "questionId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
           "role": {
             "type": "string",
             "minLength": 1,

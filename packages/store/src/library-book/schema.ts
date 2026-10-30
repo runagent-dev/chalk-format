@@ -79,10 +79,15 @@ export const linksSentenceSchema = z.looseObject({
 export const LINK_ROLES = ['answers_from', 'tests_concept', 'formula_source', 'uses_figure'] as const;
 export type LinkRole = (typeof LINK_ROLES)[number];
 
+/** A UUID in its textual form (any version). */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const linksLinkSchema = z.looseObject({
   sentence: z.string().min(1).max(200),
   /** The key of the question's manifest (spec 1.7) in the library. */
   question: c1,
+  /** The question's lasting id (a UUID string, the `question:<id>` tag of its manifests): readers that can ask the library use its current version (§3.4). */
+  questionId: z.string().regex(UUID_PATTERN).optional(),
   role: z.string().min(1).max(40),
 });
 

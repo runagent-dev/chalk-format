@@ -71,6 +71,22 @@ Registering the same key again with the same `sha256` is not an error: it update
 - **`POST v1/assets/batch`** `{ "keys": […] }` (up to 1,000) → `{ "items": [record, …] }` (unknown keys are
   left out). For an authoring tool opening a book.
 
+### 4.1 The current item of a tag
+
+**`POST v1/assets/current`** `{ "tags": ["question:<id>", …], "require"?: ["state:current"], "type"?: "<media type>" }`
+(role `reader`, the same access as search). `tags` has 1 to 500 entries (more: `invalid`, 400). For each tag the registry
+looks among the items that carry that tag **and** every tag of `require` (default `["state:current"]`; `[]` asks for
+none), that are `available` and, when `type` is given, of that exact media type, and answers the one with the latest
+`createdAt`; two with the same time: the larger key (the rule of spec 1.8 §5, so every reader picks the same one).
+
+→ `{ "items": { "<tag>": <the asset record of `GET v1/assets/{key}`> | null, … } }`: one entry per tag asked, `null` for a
+tag no such item carries. Pending and withdrawn items are never answered.
+
+An app that holds a lasting id (a question's `question:<uuid>`) uses this to get the current version of what the id names
+with one request for a whole page of ids, instead of one search each. A registry that lacks it answers 404 or 405 and the
+app falls back to the keys it was given. The reference server answers all tags in one statement (a join over the tags
+index), whatever their number.
+
 ## 5. Searching the library
 
 **`GET v1/search`** with query parameters:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assetKeyAndSha256, QUESTION_MANIFEST_TYPE } from '@chalk-format/model';
-import { loadBookLinks, loadQuestion, openLibraryBook } from './load.js';
+import { loadBookLinks, loadQuestion, openLibraryBook, resolveQuestions } from './load.js';
 import { hashPart } from '../urls.js';
 
 const enc = new TextEncoder();
@@ -40,7 +40,7 @@ async function publish(o: { revision?: number; title?: string; createdAt?: strin
 }
 
 /** A fake library: the registry API (search, stores) and its store, with an optional token for reading. */
-function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores?: unknown[]; mirror?: Item[]; mirrorTamper?: string } = {}) {
+function fakeLibrary(items: Item[], o: { current?: 'off' | 'missing-405' | 'fail'; token?: string; tamper?: string; stores?: unknown[]; mirror?: Item[]; mirrorTamper?: string } = {}) {
   const calls: string[] = [];
   const fetch = (async (url: string, init?: RequestInit) => {
     const u = new URL(String(url));
@@ -50,6 +50,18 @@ function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores
     if (u.host === 'lib.example') {
       if (o.token && auth !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
       if (u.pathname === '/v1/stores') return json({ items: o.stores ?? [STORE] });
+      if (u.pathname === '/v1/assets/current' && init?.method === 'POST') {
+        calls.push('POST current');
+        if (o.current === 'off') return json({ error: { code: 'not_found', message: 'no' } }, 404);
+        if (o.current === 'missing-405') return json({ error: { code: 'method', message: 'no' } }, 405);
+        if (o.current === 'fail') return json({ error: { code: 'internal', message: 'boom' } }, 500);
+        const b = JSON.parse(String(init.body)) as { tags: string[]; require?: string[]; type?: string };
+        const need = b.require ?? ['state:current'];
+        return json({ items: Object.fromEntries(b.tags.map((t) => {
+          const best = items.filter((i) => i.tags.includes(t) && need.every((n) => i.tags.includes(n)) && (!b.type || i.type === b.type)).sort((x, y) => y.createdAt.localeCompare(x.createdAt) || (x.key < y.key ? 1 : -1))[0];
+          return [t, best ? { key: best.key, sha256: best.sha256, type: best.type, size: best.bytes.byteLength, tags: best.tags, status: 'available', createdAt: best.createdAt } : null];
+        })) });
+      }
       if (u.pathname === '/v1/search') {
         const tags = u.searchParams.getAll('tag');
         const hits = items.filter((i) => tags.every((t) => i.tags.includes(t))).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -297,5 +309,109 @@ describe('openLibraryBook (books in a library)', () => {
     const bad = await item({ format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: 'x', title: 'x', locale: 'en', createdAt: '', updatedAt: '', pages: [{ id: 'p1', file: 'pages/1.json' }], assets: [] },
       'application/vnd.chalk.book+json', ['book:demo', 'kind:book', 'state:current']);
     await expect(openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([bad]).fetch })).rejects.toThrow(/not a valid book item: pages\.0\.key/);
+  });
+});
+
+describe('questions by lasting id (spec 1.8 §3.4)', () => {
+  const ID = '2f6c0b1e-5d1a-4c52-9d0e-3b8a7a1c9e11', ID2 = '9a1d2c3e-0000-4000-8000-000000000002';
+  const manifest = (stem: string) => ({ format: 'chalk.question', manifestVersion: 1, id: 'q1', version: '1', kind: 'short_answer', stem });
+  async function setup(opts: { token?: string } = {}) {
+    const v1 = await item(manifest('old stem'), QUESTION_MANIFEST_TYPE, [`question:${ID}`, 'state:superseded'], '2026-10-01T00:00:00Z');
+    const v2 = await item(manifest('new stem'), QUESTION_MANIFEST_TYPE, [`question:${ID}`, 'state:current'], '2026-10-02T00:00:00Z');
+    const other = await item(manifest('other stem'), QUESTION_MANIFEST_TYPE, [`question:${ID2}`, 'state:current']);
+    const p = await publish({ sentences: ['s1', 's2'], links: [
+      { sentence: 's1', question: v1.key, questionId: ID, role: 'answers_from' }, { sentence: 's2', question: other.key, questionId: ID2, role: 'tests_concept' },
+      { sentence: 's2', question: v1.key, role: 'future_role', questionId: ID },
+    ] as never });
+    return { v1, v2, other, p, items: [p.book, p.linksItem, v1, v2, other] };
+  }
+
+  it('loadBookLinks keeps questionId; unknown roles are still filtered', async () => {
+    const t = await setup();
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items).fetch });
+    const links = await loadBookLinks(book);
+    expect(links!.links.map((l) => [l.question, l.questionId, l.role])).toEqual([[t.v1.key, ID, 'answers_from'], [t.other.key, ID2, 'tests_concept']]);
+  });
+
+  it('resolves the CURRENT version of an id in one request, and checks it against its key', async () => {
+    const t = await setup();
+    const lib = fakeLibrary(t.items);
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    await loadBookLinks(book);
+    const { resolved, failed } = await resolveQuestions(book, [ID, ID2, ID]);
+    expect([...failed]).toEqual([]);
+    expect(resolved.get(ID)).toMatchObject({ key: t.v2.key, source: 'current' });
+    expect(resolved.get(ID)!.manifest.stem).toBe('new stem');
+    expect(resolved.get(ID2)).toMatchObject({ key: t.other.key, source: 'current' });
+    expect(lib.calls.filter((c) => c === 'POST current')).toHaveLength(1);
+    // loadQuestion by the link's old key gives the current version too; and by the id
+    expect((await loadQuestion(book, t.v1.key)).stem).toBe('new stem');
+    expect((await loadQuestion(book, ID)).stem).toBe('new stem');
+    // cached by key: the manifest bytes are fetched once
+    const fetched = lib.calls.filter((c) => c === `cdn.example${new URL(at(t.v2.key)).pathname}`).length;
+    expect(fetched).toBe(1);
+  });
+
+  it('a tampered current manifest is refused and the link\'s key is used; the same for an id the library does not know', async () => {
+    const t = await setup();
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items, { tamper: t.v2.key }).fetch });
+    await loadBookLinks(book);
+    const { resolved } = await resolveQuestions(book, [ID]);
+    expect(resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
+    const lone = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([t.p.book, t.p.linksItem, t.v1]).fetch });
+    await loadBookLinks(lone);
+    expect((await resolveQuestions(lone, [ID])).resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
+    // no link, no current version: failed, and loadQuestion says so
+    const r = await resolveQuestions(lone, ['11111111-1111-4111-8111-111111111111']);
+    expect(r.resolved.size).toBe(0);
+    expect([...r.failed.keys()]).toEqual(['11111111-1111-4111-8111-111111111111']);
+    await expect(loadQuestion(lone, '11111111-1111-4111-8111-111111111111')).rejects.toThrow(/no question/);
+  });
+
+  it.each(['off', 'missing-405', 'fail'] as const)('an older or failing server (%s): every id falls back to its link key', async (mode) => {
+    const t = await setup();
+    const lib = fakeLibrary(t.items, { current: mode });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    await loadBookLinks(book);
+    const { resolved, failed } = await resolveQuestions(book, [ID, ID2]);
+    expect(failed.size).toBe(0);
+    expect(resolved.get(ID)).toMatchObject({ key: t.v1.key, source: 'link' });
+    expect(resolved.get(ID2)).toMatchObject({ key: t.other.key, source: 'link' });
+    // a missing endpoint is remembered; a failure is asked again
+    await resolveQuestions(book, [ID]);
+    expect(lib.calls.filter((c) => c === 'POST current')).toHaveLength(mode === 'fail' ? 2 : 1);
+  });
+
+  it('batches of 500 ids', async () => {
+    const t = await setup();
+    const lib = fakeLibrary(t.items);
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    const ids = Array.from({ length: 1001 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+    const { resolved } = await resolveQuestions(book, [...ids, ID]);
+    expect(lib.calls.filter((c) => c === 'POST current')).toHaveLength(3);
+    expect([...resolved.keys()]).toEqual([ID]);
+  });
+
+  it('works with a token (a string or a function) in a library that needs one', async () => {
+    const t = await setup();
+    for (const token of ['tok', () => 'tok'] as const) {
+      const lib = fakeLibrary(t.items, { token: 'tok' });
+      const book = await openLibraryBook({ library: LIB, slug: 'demo', token, fetch: lib.fetch });
+      await loadBookLinks(book);
+      expect((await resolveQuestions(book, [ID])).resolved.get(ID)).toMatchObject({ key: t.v2.key, source: 'current' });
+      expect(lib.calls).toContain('lib.example/v1/assets/current (token)');
+    }
+  });
+
+  it('the links item is found by its tags (newest wins; the key the book names is the fallback)', async () => {
+    const t = await setup();
+    const fresh = await item({ ...JSON.parse(new TextDecoder().decode(t.p.linksItem.bytes)), bookRevision: 9, links: [{ sentence: 's1', question: t.v2.key, questionId: ID, role: 'answers_from' }], sentences: [{ id: 's1', page: 1, pageId: 'p1', rects: [], text: 'x' }] },
+      'application/vnd.chalk.links+json', ['book:demo', 'kind:links', 'state:current'], '2026-10-05T00:00:00Z');
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([...t.items, fresh]).fetch });
+    expect(book.links).toBe(fresh.key);
+    expect((await loadBookLinks(book))!.links.map((l) => l.question)).toEqual([t.v2.key]);
+    // no tagged links item: the one the book item names
+    const plain = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary(t.items).fetch });
+    expect(plain.links).toBe(t.p.linksItem.key);
   });
 });

@@ -141,6 +141,58 @@ describe('the reference library (disk + PGlite)', () => {
     expect(libraryBookSchema.parse(await got.json()).pages[0]!.key).toBe(two.keys[1]);
   });
 
+  it('POST /v1/assets/current: the newest available item of each tag (spec 1.2 §4.1)', async () => {
+    const { createRegistryClient, RegistryError } = await import('@chalk-format/store');
+    const client = createRegistryClient(BASE, { token: 't-1', fetch: fetchApp });
+    const enc = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));
+    const tag = `question:cur-${Math.random().toString(36).slice(2, 8)}`, other = `question:oth-${Math.random().toString(36).slice(2, 8)}`;
+    const add = (n: string, tags: string[]) => client.add(enc({ n, tag }), { type: 'application/vnd.chalk.question+json', tags, title: n });
+    const at = (key: string, iso: string) => db.query('UPDATE assets SET created_at = $2 WHERE key = $1', [key, iso]);
+    const a = await add('a', [tag, 'state:current']), b = await add('b', [tag, 'state:current', other]);
+    await at(a.key, '2026-01-01T00:00:00Z'); await at(b.key, '2026-01-02T00:00:00Z');
+    expect((await client.current([tag, other, 'question:nope'])).items).toEqual({ [tag]: expect.objectContaining({ key: b.key, status: 'available' }), [other]: expect.objectContaining({ key: b.key }), 'question:nope': null });
+    // the record is the one GET /v1/assets/{key} gives
+    expect((await client.current([tag])).items[tag]).toEqual(await client.get(b.key));
+    // same time: the larger key wins, whichever was added first
+    await at(a.key, '2026-01-02T00:00:00Z');
+    expect((await client.current([tag])).items[tag]!.key).toBe(a.key > b.key ? a.key : b.key);
+    // superseded items are not current (the default requirement); `require` can ask for them
+    await at(a.key, '2026-01-03T00:00:00Z');
+    await fetchApp(`${BASE}/v1/assets`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify({ key: a.key, sha256: a.sha256, type: a.type, size: a.size, tags: [tag, 'state:superseded'] }) });
+    expect((await client.current([tag])).items[tag]!.key).toBe(b.key);
+    expect((await client.current([tag], { require: ['state:superseded'] })).items[tag]!.key).toBe(a.key);
+    expect((await client.current([tag], { type: 'image/png' })).items[tag]).toBeNull();
+    // pending and withdrawn items are not answered
+    const pendingBytes = enc({ pending: tag }), { assetKeyAndSha256 } = await import('@chalk-format/model'), pk = await assetKeyAndSha256(pendingBytes);
+    await fetchApp(`${BASE}/v1/uploads`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify({ ...pk, type: 'application/vnd.chalk.question+json', size: pendingBytes.byteLength }) });
+    await db.query("UPDATE assets SET tags = $2, created_at = '2030-01-01T00:00:00Z' WHERE key = $1", [pk.key, [tag, 'state:current']]);
+    expect((await client.current([tag])).items[tag]!.key).toBe(b.key);
+    await fetchApp(`${BASE}/v1/assets/${encodeURIComponent(b.key)}/withdraw`, { method: 'POST', headers: { Authorization: 'Bearer a-1', 'Content-Type': 'application/json' }, body: '{}' });
+    expect((await client.current([tag])).items[tag]).toBeNull();
+    // 1..500 tags
+    expect((await client.current(Array.from({ length: 500 }, (_, i) => `question:none-${i}`))).items).toHaveProperty('question:none-499', null);
+    const post = (body: unknown) => fetchApp(`${BASE}/v1/assets/current`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    expect((await post({ tags: Array.from({ length: 501 }, (_, i) => `question:none-${i}`) })).status).toBe(400);
+    expect((await post({ tags: [] })).status).toBe(400);
+    expect(await client.current(['question:x']).catch((e) => e)).not.toBeInstanceOf(RegistryError);
+    expect(((await (await fetchApp(`${BASE}/`)).json()) as { endpoints: string[] }).endpoints).toContain('POST /v1/assets/current');
+  });
+
+  it('POST /v1/assets/current runs one SQL statement however many tags, and uses the tags index', async () => {
+    const seen: string[] = [];
+    const counting: Db = { query: (sql, params) => { seen.push(sql); return db.query(sql, params); }, close: async () => {} };
+    const app2 = createLibraryApp({ db: counting, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1') });
+    seen.length = 0;
+    const res = await app2.fetch(new Request(`${BASE}/v1/assets/current`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: Array.from({ length: 300 }, (_, i) => `question:n-${i}`) }) }));
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(1);
+    // the planner may prefer a scan on a tiny table; with scans off it must be able to use the GIN index on tags
+    await db.query('SET enable_seqscan = off');
+    const plan = (await db.query<{ 'QUERY PLAN': string }>(`EXPLAIN SELECT a.key FROM unnest(ARRAY['question:x']::text[]) AS t(tag) JOIN assets a ON a.tags @> ARRAY[t.tag]::text[] AND a.tags @> ARRAY['state:current']::text[] AND a.status = 'available'`)).map((r) => r['QUERY PLAN']).join('\n');
+    await db.query('RESET enable_seqscan');
+    expect(plan).toContain('assets_tags');
+  });
+
   it('a private library: reading needs a token too', async () => {
     const priv = createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1'), publicRead: false });
     expect((await priv.fetch(new Request(`${BASE}/v1/search?q=x`))).status).toBe(401);
@@ -152,6 +204,12 @@ describe('the reference library (disk + PGlite)', () => {
     expect((await priv.fetch(new Request(find))).status).toBe(401);
     const found = await (await priv.fetch(new Request(find, { headers: { Authorization: 'Bearer t-1' } }))).json() as { items: { type: string }[] };
     expect(found.items.map((i) => i.type)).toEqual(['application/vnd.chalk.book+json']);
+    // POST /v1/assets/current is a reader's call: no token, no answer
+    const cur = (headers: Record<string, string>) => priv.fetch(new Request(`${BASE}/v1/assets/current`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ tags: ['kind:book'], require: [] }) }));
+    expect((await cur({})).status).toBe(401);
+    const got = await cur({ Authorization: 'Bearer t-1' });
+    expect(got.status).toBe(200);
+    expect(((await got.json()) as { items: Record<string, { type: string } | null> }).items['kind:book']?.type).toBe('application/vnd.chalk.book+json');
   });
 
   it('scans a bucket that already has media: adopted once, found by its file name', async () => {
