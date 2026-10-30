@@ -23,7 +23,7 @@ const PRESET = env.VITE_CHALK_LIBRARY_URL
   ? [{ url: env.VITE_CHALK_LIBRARY_URL, ...(env.VITE_CHALK_LIBRARY_NAME ? { name: env.VITE_CHALK_LIBRARY_NAME } : {}), ...(env.VITE_CHALK_LIBRARY_TOKEN ? { token: env.VITE_CHALK_LIBRARY_TOKEN } : {}) }]
   : [];
 
-// a book in a library (spec 1.7): `?library=<server>&book=<slug>[&token=<token>]` opens the current revision of that book from the library
+// a book in a library (spec 1.8): `?library=<server>&book=<slug>[&token=<token>]` opens the current revision of that book from the library
 const query = new URLSearchParams(location.search);
 const FROM_LIBRARY: LibrarySource | null = query.get('library') && query.get('book')
   ? { library: query.get('library')!, slug: query.get('book')!, ...(query.get('token') ? { token: query.get('token')! } : {}) }

@@ -39,7 +39,7 @@ async function publish(o: { revision?: number; title?: string; createdAt?: strin
 }
 
 /** A fake library: the registry API (search, stores) and its store, with an optional token for reading. */
-function fakeLibrary(items: Item[], o: { token?: string; tamper?: string } = {}) {
+function fakeLibrary(items: Item[], o: { token?: string; tamper?: string; stores?: unknown[] } = {}) {
   const calls: string[] = [];
   const fetch = (async (url: string, init?: RequestInit) => {
     const u = new URL(String(url));
@@ -48,7 +48,7 @@ function fakeLibrary(items: Item[], o: { token?: string; tamper?: string } = {})
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
     if (u.host === 'lib.example') {
       if (o.token && auth !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-      if (u.pathname === '/v1/stores') return json({ items: [STORE] });
+      if (u.pathname === '/v1/stores') return json({ items: o.stores ?? [STORE] });
       if (u.pathname === '/v1/search') {
         const tags = u.searchParams.getAll('tag');
         const hits = items.filter((i) => tags.every((t) => i.tags.includes(t))).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -94,6 +94,25 @@ describe('openLibraryBook (books in a library)', () => {
     const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
     expect(book.index.title).toBe('New');
     expect(book.revision).toBe(2);
+  });
+
+  it('of two current items made at the same time, the larger key wins', async () => {
+    const a = await publish({ title: 'A', createdAt: '2026-10-20T00:00:00Z' });
+    const b = await publish({ title: 'B', createdAt: '2026-10-20T00:00:00Z' });
+    const [, larger] = [a, b].sort((x, y) => (x.book.key < y.book.key ? -1 : 1));
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: fakeLibrary([a.book, b.book]).fetch });
+    expect(book.key).toBe(larger!.book.key);
+  });
+
+  it('reads each type from the first store that takes it (an image-only store listed first is skipped for the book)', async () => {
+    const p = await publish();
+    const images = { id: 'pictures', kind: 'derived', template: 'https://img.example/{h}', media: ['image/*'] };
+    const lib = fakeLibrary([p.book, p.pageItem, p.picture], { stores: [images, STORE] });
+    const book = await openLibraryBook({ library: LIB, slug: 'demo', fetch: lib.fetch });
+    expect(book.urlOf(p.picture.key)).toBe(`https://img.example/${hashPart(p.picture.key)}`);
+    expect(book.keyOf(book.index.pages[0]!.file)).toBe(p.pageItem.key);
+    expect(lib.calls.some((c) => c.startsWith('img.example'))).toBe(false);
+    await book.read(book.index.pages[0]!.file);
   });
 
   it('a superseded or other book is not opened', async () => {

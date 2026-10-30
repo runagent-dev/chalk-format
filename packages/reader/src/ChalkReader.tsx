@@ -42,7 +42,7 @@ import type { StreamText } from '@chalk-format/model';
 
 export type ChalkReaderProps = {
   /**
-   * The book: bytes, a File/Blob or a URL; or a book in a library, `{ library, slug, token? }` (spec 1.7, "Books in a library": found by its
+   * The book: bytes, a File/Blob or a URL; or a book in a library, `{ library, slug, token? }` (spec 1.8, "Books in a library": found by its
    * tags, its pages and media fetched from the library as they are needed). Or pass an already opened `book`.
    */
   source?: BookSource | LibrarySource;

@@ -1,6 +1,6 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
 import { resolutionKey, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
-import { openLibraryBook, type LibraryBook } from '@chalk-format/store';
+import { openLibraryBook, type OpenedLibraryBook } from '@chalk-format/store';
 import type { AssetResolver, Book } from './book.js';
 
 /**
@@ -36,7 +36,7 @@ export type StreamedBook = Book & {
   /** Called whenever pages arrive (`lesson` is then a new object). */
   subscribe(fn: () => void): () => void;
   /** Set for a book opened from a library (`openLibraryStreamedBook`): the book item, its key and revision, and where its items are. */
-  readonly library?: LibraryBook;
+  readonly library?: OpenedLibraryBook;
 };
 
 export const isStreamed = (b: Book): b is StreamedBook => (b as Partial<StreamedBook>).streamed === true;
@@ -67,7 +67,7 @@ export async function openStreamedBook(source: string | URL, o: { resolveAsset?:
   }, { ...o, fetch: doFetch });
 }
 
-/** Where a book in a library is (spec 1.7, "Books in a library"): the library server, the book's slug, and a token if the library needs one. */
+/** Where a book in a library is (spec 1.8, "Books in a library"): the library server, the book's slug, and a token if the library needs one. */
 export type LibrarySource = { library: string; slug: string; token?: string | undefined };
 export const isLibrarySource = (s: unknown): s is LibrarySource =>
   typeof s === 'object' && s !== null && !(s instanceof URL) && typeof (s as LibrarySource).library === 'string' && typeof (s as LibrarySource).slug === 'string';
@@ -90,9 +90,11 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
     // needs the token cannot be named by a bare URL (an <img> sends no header), and one that asks to be verified always must be: those
     // media are fetched, checked against their id, and drawn from a blob
     async assetUrl(id, signal) {
-      if (!resolutionKey(id)) return null;
-      if (!Object.keys(lib.headers).length && lib.store.verify !== 'always') return lib.urlOf(id);
-      return new Blob([(await lib.fetchItem(id, { signal })) as BlobPart], { type: lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream' });
+      const type = lib.index.assets.find((a) => a.id === id)?.type ?? 'application/octet-stream';
+      const store = resolutionKey(id) ? lib.storeFor(type) : null;
+      if (!store) return null;
+      if (!Object.keys(lib.headersFor(type)).length && store.verify !== 'always') return lib.urlOf(id, type);
+      return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     async assetBytes(id, signal) {
       return resolutionKey(id) ? (await lib.fetchItem(id, { signal })).slice().buffer as ArrayBuffer : undefined;
@@ -115,7 +117,7 @@ type StreamFiles = {
   assetUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
   /** External media's bytes, fetched and checked by the source; undefined for an id it cannot name. */
   assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | undefined>;
-  library?: LibraryBook;
+  library?: OpenedLibraryBook;
 };
 
 function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch?: typeof fetch }): StreamedBook {

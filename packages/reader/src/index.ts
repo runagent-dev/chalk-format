@@ -15,6 +15,6 @@ export type { IconName, Presentation, ResolvedPresentation } from '@chalk-format
 export { ICON_NAMES } from '@chalk-format/model';
 export { openStreamedBook, isStreamed, windowAround, type StreamedBook } from './stream.js';
 export { openLibraryStreamedBook, isLibrarySource, type LibrarySource } from './stream.js';
-export { loadBookLinks, type LibraryBook, type LibraryBookLinks } from '@chalk-format/store';
+export { loadBookLinks, type OpenedLibraryBook, type LibraryBookLinks } from '@chalk-format/store';
 export { useSavedLibraries } from './saved-libraries.js';
 export type { Library, LibraryItem, LibraryConnection } from '@chalk-format/store';

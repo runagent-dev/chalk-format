@@ -1,4 +1,4 @@
-// A book that lives in a library (spec 1.7, "Books in a library"), opened in a real browser with nothing but the library. Publishes the
+// A book that lives in a library (spec 1.8, "Books in a library"), opened in a real browser with nothing but the library. Publishes the
 // streamed physics sample into a library as the contract's items (every media file, a page item per page, the text item, a links item
 // pointing at a question, two book items: revision 1, then revision 2, both `state:current`), then opens it in the showcase with
 // `?library=…&book=…` and checks: the newest current revision opens, pages are drawn, pictures come from the library's store, search reads

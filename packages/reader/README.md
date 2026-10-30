@@ -138,7 +138,7 @@ of the book first (up to 12 requests at a time, with a counter, "Loading the boo
 until the book is whole). `openStreamedBook(url)` gives the same book outside the component. Publish with
 `tools/chalk-stream.ts publish book.chalk out/`.
 
-**A book in a library** (spec 1.7, "Books in a library"): `source={{ library: 'https://library.example.org/', slug: 'physics-9-10-bn' }}`
+**A book in a library** (spec 1.8, "Books in a library"): `source={{ library: 'https://library.example.org/', slug: 'physics-9-10-bn' }}`
 (add `token` for a library that needs one to read) opens the current revision of that book (the book item tagged `book:<slug>`,
 `kind:book`, `state:current`; the newest if two are) and reads it like a streamed book: its pages, text layer and media are items of the
 library, fetched by key from the library's store and checked against the key. `onBookLinks` hands the host the book's links item (which

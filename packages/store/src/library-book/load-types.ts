@@ -1,13 +1,15 @@
 import type { StoreDescriptor, StreamAsset } from '@chalk-format/model';
 
 /**
- * The few shapes the loader needs from "Books in a library" (spec 1.7): the book item, the links item and their media types. They mirror the
+ * The few shapes the loader needs from "Books in a library" (spec 1.8): the book item, the links item and their media types. They mirror the
  * shared contract exactly and are kept minimal on purpose: the full schemas and tag helpers live beside this file (`schema.ts`, `tags.ts`)
  * and can replace these once both are in.
  */
 
-export const BOOK_ITEM_MEDIA_TYPE = 'application/vnd.chalk.book+json';
-export const LINKS_ITEM_MEDIA_TYPE = 'application/vnd.chalk.links+json';
+export const LIBRARY_BOOK_TYPE = 'application/vnd.chalk.book+json';
+export const LIBRARY_PAGE_TYPE = 'application/vnd.chalk.page+json';
+export const LIBRARY_TEXT_TYPE = 'application/vnd.chalk.text+json';
+export const LIBRARY_LINKS_TYPE = 'application/vnd.chalk.links+json';
 
 /** A page entry of a book item: a spec 1.4 page entry whose bytes are the library item `key` (a `file` may still be there; it is not used). */
 export type BookItemPage = {
