@@ -35,7 +35,7 @@ import { Search } from './panels/Search.js';
 import { Thumbnails } from './panels/Thumbnails.js';
 import { searchBook } from './search.js';
 import { isLibrarySource, isStreamSource, isStreamed, openLibraryStreamedBook, openStreamedBook, windowAround, type LibrarySource, type StreamedBook } from './stream.js';
-import { loadBookLinks, type LibraryBookLinks } from '@chalk-format/store';
+import { loadBookLinks, type LibraryBookLinks, type TokenRequest, type TokenSource } from '@chalk-format/store';
 import { newLookup, resetLookup, withLibraries } from './libraries.js';
 import type { Library } from '@chalk-format/store';
 import type { StreamText } from '@chalk-format/model';
@@ -117,9 +117,12 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
   const config = useMemo(() => resolveConfig(props.config), [props.config]);
   const [opened, setOpened] = useState<{ book: Book | null; error: string | null }>({ book: props.book ?? null, error: null });
 
-  // a library source is an object a host may write inline: it is the same book while its fields are the same
+  // a library source is an object a host may write inline: it is the same book while its fields are the same. A token given as a function
+  // (a sign-in) does not reopen the book when it is a new function: the newest one is asked each time
   const source = props.source;
-  const sourceKey = isLibrarySource(source) ? JSON.stringify([source.library, source.slug, source.token ?? null]) : source;
+  const tokenOf = useRef<TokenSource | undefined>(undefined);
+  tokenOf.current = isLibrarySource(source) ? source.token : undefined;
+  const sourceKey = isLibrarySource(source) ? JSON.stringify([source.library, source.slug, typeof source.token === 'function' ? 'function' : source.token ?? null]) : source;
   useEffect(() => {
     if (props.book) { setOpened({ book: props.book, error: null }); return; }
     if (!source) return;
@@ -127,7 +130,8 @@ export const ChalkReader = forwardRef<ReaderHandle, ChalkReaderProps>(function C
     setOpened({ book: null, error: null });
     const o = props.resolveAsset ? { resolveAsset: props.resolveAsset } : {};
     // a book in a library; a streamed book (spec 1.4), named by its index or its directory; anything else is a .chalk
-    (isLibrarySource(source) ? openLibraryStreamedBook(source, o) : isStreamSource(source) ? openStreamedBook(source, o) : openBook(source, o)).then(
+    const latestToken = (r?: TokenRequest) => { const t = tokenOf.current; return typeof t === 'function' ? t(r) : t; };
+    (isLibrarySource(source) ? openLibraryStreamedBook(typeof source.token === 'function' ? { ...source, token: latestToken } : source, o) : isStreamSource(source) ? openStreamedBook(source, o) : openBook(source, o)).then(
       (b) => { if (live) { mine = b; setOpened({ book: b, error: null }); } else b.dispose(); },
       (e: unknown) => { if (live) setOpened({ book: null, error: e instanceof Error ? e.message : String(e) }); },
     );

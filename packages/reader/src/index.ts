@@ -17,4 +17,6 @@ export { openStreamedBook, isStreamed, windowAround, type StreamedBook } from '.
 export { openLibraryStreamedBook, isLibrarySource, type LibrarySource } from './stream.js';
 export { loadBookLinks, type OpenedLibraryBook, type LibraryBookLinks } from '@chalk-format/store';
 export { useSavedLibraries } from './saved-libraries.js';
+export { LibrarySignIn, useLibraryAuth, type LibrarySignInProps } from './LibrarySignIn.js';
+export { libraryAuth, webStorage, memoryStorage, LibraryAuthError, type LibraryAuth, type LibraryUser, type AuthStorage, type TokenSource } from '@chalk-format/store';
 export type { Library, LibraryItem, LibraryConnection } from '@chalk-format/store';
