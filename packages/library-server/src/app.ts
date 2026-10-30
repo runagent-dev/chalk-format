@@ -11,7 +11,8 @@ import type { Caller } from './auth/roles.js';
 import { mountAuthRoutes, type AuthRouteOptions } from './auth/routes.js';
 import { createAuth, type AuthOptions } from './auth/service.js';
 import type { Db } from './db.js';
-import type { DiskStorage, Storage } from './storage.js';
+import { registerDelivery } from './delivery.js';
+import { servedType, type DiskStorage, type Storage } from './storage.js';
 
 /**
  * The registry API (spec/1.2/registry-api.md): what authoring tools talk to. Readers never do; they fetch bytes from
@@ -48,16 +49,6 @@ const UPLOAD_SECONDS = 15 * 60;
 /** The set of keys a book uses: larger than a check, since a textbook uses thousands (spec 1.8 §6.3). */
 const bookAssetsSchema = z.object({ keys: z.array(z.string().regex(C1_KEY_PATTERN)).max(20_000).optional() });
 
-/**
- * Code is stored as plain bytes: a public bucket must never serve a lab's HTML or a library's script as a web page.
- * The registered type is normalised first (" TEXT/HTML; x" is HTML), and anything that is not one plain media type
- * is plain bytes too.
- */
-const storedType = (type: string) => {
-  const t = type.split(';')[0]!.trim().toLowerCase();
-  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(t)) return 'application/octet-stream';
-  return /^(text\/(html|javascript|ecmascript|xml|xsl)|application\/(javascript|ecmascript|x-javascript|xhtml\+xml|xml|xslt\+xml))$/.test(t) ? 'application/octet-stream' : t;
-};
 
 type Row = {
   key: string; sha256: string; type: string; size: string | number; width: number | null; height: number | null; duration: number | null; pages: number | null;
@@ -76,7 +67,8 @@ export function createLibraryApp(o: LibraryOptions) {
   const issuer = (c: Context) => (o.issuer ?? new URL(c.req.url).origin).replace(/\/+$/, '');
 
   const fail = (c: Context, status: number, code: string, message: string) => c.json({ error: { code, message } }, status as never);
-  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
+  // Range: a reader with a token asks /v1/files for part of a file (a suffix range is not a CORS-safelisted header)
+  app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type', 'Range'], exposeHeaders: ['Content-Length', 'Content-Range'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
   // every route asks requireRole(c, 'reader' | 'author' | 'admin'); the caller is a bootstrap token, an API key or a user
   app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)) }));
   mountAuthRoutes(app, auth, { issuer, ...o.auth });
@@ -105,10 +97,11 @@ export function createLibraryApp(o: LibraryOptions) {
   // what this address is, for someone who opens it in a browser
   app.get('/', (c) => c.json({
     name: o.name ?? 'Chalk library', api: 'Chalk registry API v1 (spec/1.2/registry-api.md)',
-    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'POST /v1/auth/token',
+    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'POST /v1/auth/token',
       'GET /.well-known/openid-configuration', 'GET /healthz'],
   }));
 
+  registerDelivery(app, o); // file bytes for signed-in readers (§7.1); registered first: a private library's /v1/stores and /files/* are its own
   // ---- §7 stores for readers: public, cacheable ----
   app.get('/v1/stores', (c) => { c.header('Cache-Control', 'public, max-age=300'); return c.json({ items: [delivery] }); });
 
@@ -132,7 +125,7 @@ export function createLibraryApp(o: LibraryOptions) {
     if (existing?.status === 'available') return c.json({ exists: true, asset: await record(existing, true) });
     await ensureStore();
     if (!existing) await db.query("INSERT INTO assets (key, sha256, type, size, filename, status, uploaded_by) VALUES ($1, $2, $3, $4, $5, 'pending', $6) ON CONFLICT (key) DO NOTHING", [key, sha256, type, size, b.data.filename ?? null, c.get('caller')!.user]);
-    const up = await storage.presignPut(standardPath(key), storedType(type), size, UPLOAD_SECONDS);
+    const up = await storage.presignPut(standardPath(key), servedType(type), size, UPLOAD_SECONDS);
     return c.json({ upload: { url: up.url, method: 'PUT', headers: up.headers, expiresAt: new Date(Date.now() + UPLOAD_SECONDS * 1000).toISOString() }, store: 'library' });
   });
 
@@ -256,7 +249,7 @@ export function createLibraryApp(o: LibraryOptions) {
     if (!file) return c.body(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
     const size = statSync(file).size, range = /bytes=(\d*)-(\d*)/.exec(c.req.header('range') ?? '');
     const headers: Record<string, string> = {
-      'Content-Type': storedType(row!.type), 'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes',
+      'Content-Type': servedType(row!.type), 'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes',
       'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': 'sandbox',
     };
     if (range && (range[1] || range[2])) {

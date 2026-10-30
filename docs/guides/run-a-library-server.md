@@ -58,10 +58,11 @@ starting point. Never commit the real `.env`.
 | `S3_VIRTUAL_HOSTED` | `false` | `true` puts the bucket in the host name (AWS virtual-hosted style). R2 and MinIO use the path style (`false`). |
 | `DISK_DIR` | `./library` | `STORAGE=disk`: where the files go. |
 | `UPLOAD_SECRET` | random at start | `STORAGE=disk`: signs upload links. Set it if you run more than one instance, or if uploads must survive a restart. |
+| `FILE_LINK_SECRET` | derived from `UPLOAD_SECRET` | `STORAGE=disk` with `PUBLIC_READ=false`: signs file links (`/files/…?exp=&sig=`). Not set: derived from `UPLOAD_SECRET`, so random at start when neither is set (links, which last 15 minutes, then end with a restart). Set one of them if you run more than one instance. |
 | `PUBLIC_URL` | `<SERVER_URL>/files/` | Where readers fetch the bytes: the bucket's public domain or CDN. With disk storage the server serves them itself at `/files/`. |
-| `SERVER_URL` | `http://localhost:<PORT>` | This server's own public address, e.g. `https://library.example.org`. Disk storage puts it in upload links, and it is the `iss` of every access token, so set it in production and do not change it casually (tokens issued under the old value stop working). |
+| `SERVER_URL` | `http://localhost:<PORT>` | This server's own public address, e.g. `https://library.example.org`. Disk storage puts it in upload links, and it is the `iss` of every access token, so set it in production and do not change it casually (tokens issued under the old value stop working). With `PUBLIC_READ=false` the store at `GET /v1/stores` names it; not set, the address the request reached is used (with `X-Forwarded-Proto`), and the answer is not shared-cacheable. |
 | `TOKENS` | none | Bootstrap tokens: `name:token,name:token`. A plain name is an author (reads and writes), a name ending in `!` an administrator (`admin!:…`). Compared in constant time. See [Users, sign-in and API keys](#users-sign-in-and-api-keys). |
-| `PUBLIC_READ` | `true` | `false`: searching and reading records needs a token too (any signed-in user or key). Writing always needs one. |
+| `PUBLIC_READ` | `true` | `false`: searching, reading records **and the files' bytes** need a token too (any signed-in user or key; see [A private library](#a-private-library-public_readfalse)). Writing always needs one. |
 | `ACCESS_TOKEN_TTL` | `900` | Seconds an access token lasts. |
 | `REFRESH_TOKEN_TTL` | `2592000` (30 days) | Seconds a refresh token lasts (each use gives a new one). |
 | `REFRESH_TOKEN_GRACE` | `30` | Seconds after a refresh token was used during which sending it again gives the same new token (an answer lost on the way does not sign the device out). `0` turns this off; at most `60`. |
@@ -132,6 +133,67 @@ What the bucket needs:
 
 A bucket that already holds media can be adopted: `scan` hashes each object, copies it (server side) to its
 standard path, and records it with a title from its file name.
+
+## A private library (`PUBLIC_READ=false`)
+
+With `PUBLIC_READ=false` nothing in the library is readable without a token, the bytes included. The server
+then does three things differently ([registry API §7.1](../../spec/1.2/registry-api.md#71-a-private-librarys-files)):
+
+- `GET /v1/stores` names `<SERVER_URL>/v1/files/{h}` with `"auth": "bearer"` instead of `PUBLIC_URL`. Readers
+  that know `auth: "bearer"` send their token there.
+- `GET /v1/files/{key}` with a token: on S3 storage a `302` to a pre-signed URL of the bucket, valid 5 minutes
+  (the browser follows it, and does not send the token on); on disk storage the bytes, with ranges.
+- `GET /v1/assets/{key}/link` with a token gives `{ url, expiresAt }`, a URL that works without a header for
+  15 minutes, for an `<img>`, a `<video>` or a lab's frame. On disk storage `/files/` then serves only these
+  signed links (`403` for anything else, `410` for a withdrawn key).
+
+HTML, JavaScript and XML documents (`…+xml` other than SVG) are served as `application/octet-stream` (on S3
+the type is part of the signature), and an S3 link to an SVG downloads it instead of opening it (an `<img>` still
+shows it), so no link can make stored code run on the library's or the bucket's domain.
+
+**The setting does not make the bucket private.** As long as the bucket, or a CDN in front of it, answers
+anonymous requests, anyone with a key can still fetch the bytes there. The owner does that part, by hand, in
+this order:
+
+1. **Readers first.** Deploy the apps that read the library (reader, dashboard) with sign-in and bearer support,
+   then set `PUBLIC_READ=false`, `SERVER_URL` and `AUTH_KEY_SECRET` on the library (it does not start private without
+   `AUTH_KEY_SECRET`). Check that books open. Books whose items name
+   the old public store (`assetSources`) still work: readers try the host's stores (the bearer one) first.
+2. **Bucket CORS.** Readers now reach the bucket through a redirect, which the browser sends with
+   `Origin: null`, so `GET`/`HEAD` must be allowed from any origin (the signature is the credential; uploads
+   can stay limited to the editors' origins):
+
+   ```json
+   { "CORSRules": [
+     { "AllowedOrigins": ["*"], "AllowedMethods": ["GET", "HEAD"], "AllowedHeaders": ["Range"],
+       "ExposeHeaders": ["Content-Length", "Content-Range", "ETag"], "MaxAgeSeconds": 86400 },
+     { "AllowedOrigins": ["https://editor.example.org"], "AllowedMethods": ["PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 86400 }
+   ] }
+   ```
+3. **Stop the public address** (for the reference deployment: `assets.pathshalax.com`).
+   - **Cloudflare R2:** bucket → Settings → *Public access*: under *Custom domains* disconnect the domain
+     (`assets.pathshalax.com`), and under *R2.dev subdomain* make sure it is *Disallowed*. Then purge the zone's
+     cache for that host (Caching → Configuration → *Custom purge* → hostname), or Cloudflare keeps answering
+     cached objects. Check that no Worker or other route still serves the bucket on that host.
+   - **Garage:** `garage bucket website --deny <bucket>` (anonymous reads in Garage go only through website
+     mode), check with `garage bucket info <bucket>` that website access is off, and take the bucket's host out
+     of the reverse proxy or CDN in front of Garage's web port (then purge that CDN's cache).
+   - **AWS S3:** turn on *Block Public Access* for the bucket, delete any bucket policy statement that allows
+     `s3:GetObject` to `"*"`, and disable or delete a CloudFront distribution serving it (or restrict it with
+     origin access control and drop public behaviours), then invalidate `/*`.
+   - **MinIO and other S3-compatible services:** remove the anonymous policy (`mc anonymous set none
+     <alias>/<bucket>`) and any proxy or CDN in front of it.
+4. **Verify** with a key you know is there:
+
+   ```bash
+   curl -sI https://assets.example.org/c1/ab/cd/<h> | head -1                        # no longer 200 (or the name no longer resolves)
+   curl -sI <S3_ENDPOINT>/<bucket>/c1/ab/cd/<h> | head -1                            # 403: the bucket refuses unsigned requests
+   curl -sI -H "Authorization: Bearer $TOKEN" <SERVER_URL>/v1/files/<h> | head -1     # 302 (S3) or 200 (disk)
+   chalk-library check <SERVER_URL> --token "$TOKEN"                                  # all ok
+   ```
+
+What was fetched while the bucket was public (browser caches, downloads) is not taken back. The server's key
+needs `GetObject` on the bucket, which it already has (it reads uploads back to verify them).
 
 ## The command line
 
@@ -291,6 +353,7 @@ Any Docker host or platform (Coolify, Fly.io, Railway, Render, a VM with Docker)
 - **Code is never served as a page.** A lab's HTML and a library's script are stored as
   `application/octet-stream`, so a public bucket cannot serve them as a web page or script on its own domain. Disk
   delivery (`/files/`) also sends `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
+  Pre-signed and signed links of a private library keep these types (on S3 the type is fixed by the signature).
 - **Tokens.**
   - Only the SHA-256 of each bootstrap token is kept in memory, and they are compared in constant time. Refresh
     tokens and API keys are stored only as SHA-256, passwords only as scrypt hashes; none is ever logged.

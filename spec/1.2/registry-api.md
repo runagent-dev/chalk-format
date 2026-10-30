@@ -104,6 +104,33 @@ pinned. It MUST NOT delete an asset any book uses, nor a current book item (spec
 this registry's assets, in order. Apps fetch this when they start and pass it to their reader as its host
 stores. It is public and cacheable.
 
+### 7.1 A private library's files
+
+A registry whose bytes are not public (its bucket is private) serves them only to callers with a token, and
+names that in its store:
+
+```json
+{ "items": [{ "id": "library", "kind": "derived", "template": "https://library.example.org/v1/files/{h}", "auth": "bearer" }] }
+```
+
+- **`GET v1/files/{key}`** (a token that may read; `{key}` is `c1:…` or the hash part `{h}`) answers with the
+  bytes (200, with `Range` support), or `302` to a pre-signed URL of the bucket valid for **5 minutes**, sent with
+  `Cache-Control: private, max-age=240`. Readers send `Authorization: Bearer <token>` and follow the redirect;
+  fetch does not send the header on to the bucket's origin, and the URL itself carries no token. `404` for an
+  unknown key, `410` for a withdrawn one.
+- **`GET v1/assets/{key}/link`** (a token that may read) → `{ "url", "expiresAt" }`: a URL that needs no
+  header, for places that cannot send one (an `<img>` or `<video>` source, a lab's frame). It is pre-signed by
+  the bucket or signed by the registry (`…?exp=&sig=`), valid for 5 to 15 minutes (the reference: 15), and
+  answered with `Cache-Control: no-store`. A changed, moved or expired link gets `403`.
+- Neither may let stored code run as a page: HTML, JavaScript and XML document types (`…+xml`, except SVG) are
+  served as `application/octet-stream` (on a pre-signed URL the type is part of the signature,
+  `response-content-type`); a pre-signed SVG is sent with `Content-Disposition: attachment`, so it shows in an
+  `<img>` but is not opened as a page; and the registry's own answers add `Content-Security-Policy: sandbox` and
+  `X-Content-Type-Options: nosniff`.
+- `GET v1/stores` stays public: it names where the bytes are, not the bytes.
+
+How tokens are issued is in §10; a token "may read" when it has the `reader` role (§10.1).
+
 ## 8. Withdrawing an asset
 
 **`POST v1/assets/{key}/withdraw`** `{ "reason" }` (privileged) sets `status: "withdrawn"`. From then on the
@@ -210,4 +237,4 @@ credential, `401` without one.
 
 A registry MAY require a token for reading too (the reference server: `PUBLIC_READ=false`). It then names, at
 `GET v1/stores`, a store with `"auth": "bearer"` (1.2 §5.1) for the bytes, and readers send the same bearer
-credential to it. `GET v1/stores` itself and the discovery documents of §10.3 stay public.
+credential to it (§7.1). `GET v1/stores` itself and the discovery documents of §10.3 stay public.
