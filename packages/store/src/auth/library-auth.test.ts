@@ -151,6 +151,30 @@ describe('libraryAuth: refreshing', () => {
     expect(s.liveRefreshTokens()).toEqual([]);
   });
 
+  it('another tab signing in (as someone else) while this one refreshes: the other sign-in is kept, not overwritten', async () => {
+    const s = server();
+    const area = fakeArea();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow = (async (i: string | URL | Request, init?: RequestInit) => { const r = await s.fetch(i, init); if (String(init?.body ?? '').includes('"grant_type":"refresh_token"')) await gate; return r; }) as typeof fetch;
+    const a = libraryAuth({ library: BASE, fetch: slow, now, storage: webStorage(area) });
+    await a.signIn('rahim', 'correct horse battery');
+    const b = libraryAuth({ library: BASE, fetch: s.fetch, now, storage: webStorage(area) });
+    await b.ready;
+    clock += 890 * 1000;
+    const pending = a.token();
+    await new Promise((r) => setTimeout(r, 5));
+    await b.signIn('karim', 'another long one');
+    release();
+    const t = await pending;
+    expect(tokenClaims(t!)?.name).toBe('karim');
+    expect(a.user()?.name).toBe('karim');
+    expect((JSON.parse(area.map.get(`chalk-library-auth:${BASE}`)!) as { access: string }).access).toBe(t);
+    // rahim's rotated token from the dropped refresh is revoked; only karim's sign-in is live
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.liveRefreshTokens()).toHaveLength(1);
+  });
+
   it('a rotated refresh token that could not be stored is not swapped back for the spent one in storage', async () => {
     const s = server();
     const area = fakeArea();

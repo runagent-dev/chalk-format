@@ -196,11 +196,17 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
       }
       // signed out or in again while this was on its way: the new refresh token belongs to nobody
       if (gen !== generation) { void revoke(next.refresh); return session?.access; }
-      // another tab signed out while this was on its way (what it had stored is gone): its sign-out holds here too
-      if (stored && !(await read())) {
-        if (gen === generation) { generation++; void set(null); }
-        void revoke(next.refresh);
-        return undefined;
+      // another tab signed out, or signed in (perhaps as someone else), while this was on its way: what it stored wins over this refresh
+      if (stored) {
+        const after = await read();
+        if (!after || after.refresh !== stored.refresh) {
+          void revoke(next.refresh);
+          if (gen !== generation) return session?.access;
+          generation++;
+          if (!after || spent.has(after.refresh)) { void set(null); return undefined; }
+          void set(after);
+          return after.access;
+        }
       }
       if (gen !== generation) { void revoke(next.refresh); return session?.access; }
       await set(next);
