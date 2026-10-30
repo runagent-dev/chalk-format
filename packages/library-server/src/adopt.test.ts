@@ -313,6 +313,28 @@ describe('adopting: off by default, and a private library', () => {
     } finally { rmSync(data, { recursive: true, force: true }); }
   }, 60_000);
 
+  it('a register that finishes while adopt removes the standard copy: that copy is marked gone; readers and the index use the adopted path', async () => {
+    const bytes = new TextEncoder().encode('registered mid-adopt'), k = await assetKeyAndSha256(bytes), path = 'chalk-books/race2/a.png', std = standardPath(k.key);
+    mkdirSync(join(dir, 'chalk-books', 'race2'), { recursive: true }); writeFileSync(join(dir, ...path.split('/')), bytes);
+    let app: ReturnType<typeof createLibraryApp> | null = null;
+    const call = (p: string, body: object) => app!.fetch(new Request(`${BASE}${p}`, { method: 'POST', headers: { ...json, ...bearer() }, body: JSON.stringify(body) }));
+    const disk = diskStorage(dir, { uploadBase: BASE });
+    const storage = new Proxy(disk, { get: (t, key) => (key === 'remove' ? async (p: string) => {
+      // a register that read the key as pending and verified the standard copy records it right now (its last statement)
+      if (p === std) await db.query("INSERT INTO locations (key, store, path, verified_at) VALUES ($1, 'library', $2, now())", [k.key, std]);
+      return t.remove(p);
+    } : Reflect.get(t, key)) }) as typeof disk;
+    app = createLibraryApp({ db, storage, publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1'), adoptPrefixes: ['chalk-books/'] });
+    const up = (await (await call('/v1/uploads', { ...k, type: 'image/png', size: bytes.byteLength })).json()) as { upload: { url: string } };
+    expect((await app.fetch(new Request(up.upload.url, { method: 'PUT', body: bytes }))).status).toBe(200);
+    expect((await call('/v1/assets/adopt', { ...k, type: 'image/png', size: bytes.byteLength, path })).status).toBe(200);
+    expect(existsSync(join(dir, ...std.split('/')))).toBe(false);
+    expect(await db.query("SELECT path, missing FROM locations WHERE key = $1 ORDER BY path", [k.key])).toEqual([{ path: std, missing: true }, { path, missing: false }]);
+    const shard = (await (await app.fetch(new Request(`${BASE}/index/${k.key.slice(3, 5)}.json`))).json()) as { entries: Record<string, { p: string }> };
+    expect(shard.entries[k.key.slice(3)]!.p).toBe(`${BASE}/files/${path}`);
+    expect(text(await (await app.fetch(new Request(`${BASE}/v1/files/${k.key}`))).arrayBuffer())).toBe(text(bytes));
+  });
+
   it('ADOPT_PREFIXES: each made a folder, never the library\'s own layout or a path outside the bucket', async () => {
     expect(adoptPrefixes(' chalk-books , media/old/ ')).toEqual(['chalk-books/', 'media/old/']);
     expect(adoptPrefixes(undefined)).toEqual([]);

@@ -162,7 +162,12 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
       // an upload that was started (pending) may have left unverified bytes at the standard path, the library's own
       // copy: removed, so the derived store 404s and readers find the key where it was adopted
       // (unless a register of that upload just made the standard path one of its locations)
-      if (row?.status === 'pending' && !(await locationsOf(db, a.key)).some((l) => l.path === standardPath(a.key))) await storage.remove(standardPath(a.key));
+      if (row?.status === 'pending' && !(await locationsOf(db, a.key)).some((l) => l.path === standardPath(a.key))) {
+        await storage.remove(standardPath(a.key));
+        // a register that finished between that look and the removal recorded a copy that is now gone: say so, so no
+        // read path serves it (one that records it after this is found gone by locate's next check)
+        await db.query("UPDATE locations SET missing = true, checked_at = $3 WHERE key = $1 AND store = 'library' AND path = $2", [a.key, standardPath(a.key), new Date()]);
+      }
     }
     await d.describe(a);
     return c.json(await d.recordOf(a.key));
@@ -174,17 +179,19 @@ export function registerAdopt(app: Hono<{ Variables: AuthVariables }>, d: Deps) 
     const h0 = /^([a-z2-7]{2})\.json$/.exec(c.req.param('shard'))?.[1];
     // a private library names no index (its readers' store redirects through the location); a shard is not served either
     if (!h0 || !d.publicRead) return c.text('not found', 404, { 'Access-Control-Allow-Origin': '*' });
-    // keys with no copy at the standard path (the derived store has those), each with its location's paths, best first
+    // keys with a copy at a path of their own (an adopted one), each with its location's paths; one also at the standard
+    // path is left to the derived store unless that copy is gone
     const rows = await db.query<{ key: string; size: string | number; type: string; paths: string[] }>(`SELECT a.key, a.size, a.type,
         array_agg(l.path ORDER BY l.missing, l.verified_at DESC NULLS LAST, l.path) AS paths
       FROM locations l JOIN assets a ON a.key = l.key
       WHERE l.store = 'library' AND a.status = 'available' AND substr(a.key, 4, 2) = $1
-      GROUP BY a.key, a.size, a.type HAVING bool_and(l.path NOT LIKE 'c1/%') ORDER BY a.key`, [h0]);
+      GROUP BY a.key, a.size, a.type HAVING bool_or(l.path NOT LIKE 'c1/%') ORDER BY a.key`, [h0]);
     const entries: Record<string, { p: string; s: number; t: string }> = {};
     for (const r of rows) {
       if (!isC1Key(r.key)) continue;
       // a key in several books: the copy that is still there (checked as locate does, at most once in a while)
       const path = r.paths.length > 1 ? await locate(db, storage, r.key) : r.paths[0]!;
+      if (path === standardPath(r.key)) continue;
       entries[r.key.slice(3)] = { p: filesBase + path.split('/').map(encodeURIComponent).join('/'), s: Number(r.size), t: r.type };
     }
     const headers = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' };
