@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -5,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { serve, type ServerType } from '@hono/node-server';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { assetKeyAndSha256, storeDescriptorSchema, type StoreDescriptor } from '@chalk-format/model';
-import { createRegistryClient, createResolver, registryLibrary, standardPath } from '@chalk-format/store';
+import { createRegistryClient, createResolver, openLibraryBook, registryLibrary, standardPath } from '@chalk-format/store';
 import { adoptPrefixes, checkLibrary, createLibraryApp, diskStorage, libraryFromEnv, openDb, s3Storage, tokenCallers, type Db, type Storage } from './index.js';
 
 // Files adopted in place (registry-api §3.1): a book written into the library's own bucket by another tool
@@ -18,6 +19,48 @@ const IMG = new TextEncoder().encode('\x89PNG not really, but bytes all the same
 const json = { 'Content-Type': 'application/json' };
 const bearer = (t = 't-1') => ({ Authorization: `Bearer ${t}` });
 const text = (b: ArrayBuffer | Uint8Array) => new TextDecoder().decode(b);
+/**
+ * A book as the dashboard writes it into the library's bucket (chalk-books/<slug>/pages/…, text-…, assets/…), every item adopted where it is,
+ * and only the book item uploaded (spec 1.8): then opened with openLibraryBook, which must read every page, the text and every asset.
+ */
+async function adoptedBook(o: { base: string; slug: string; pages: number; assets: number; write: (path: string, bytes: Uint8Array, type: string) => void; f?: typeof fetch }) {
+  const enc = new TextEncoder(), client = createRegistryClient(o.base, { token: 't-1', ...(o.f ? { fetch: o.f } : {}) });
+  const adopt = async (bytes: Uint8Array, type: string, path: string) => {
+    const k = await assetKeyAndSha256(bytes);
+    o.write(path, bytes, type);
+    await client.adopt({ ...k, type, size: bytes.byteLength, path, tags: [`book:${o.slug}`] });
+    return k.key;
+  };
+  const assets: { id: string; type: string; size: number; bytes: Uint8Array }[] = [];
+  for (let i = 0; i < o.assets; i++) {
+    const bytes = enc.encode(`\x89PNG asset ${i} of ${o.slug}`), id = (await assetKeyAndSha256(bytes)).key;
+    await adopt(bytes, 'image/png', `chalk-books/${o.slug}/assets/${id.replace(':', '-')}`);
+    assets.push({ id, type: 'image/png', size: bytes.byteLength, bytes });
+  }
+  const pages = [];
+  for (let i = 0; i < o.pages; i++) {
+    const used = [assets[i % assets.length]!.id];
+    const bytes = enc.encode(JSON.stringify({ id: `p${i}`, title: `Page ${i}`, width: 800, height: 600, background: { type: 'image', assetId: used[0] }, objects: [] }));
+    const key = await adopt(bytes, 'application/vnd.chalk.page+json', `chalk-books/${o.slug}/pages/${i}-${createHashHex(bytes).slice(0, 8)}.json`);
+    pages.push({ id: `p${i}`, key, title: `Page ${i}`, width: 800, height: 600, bytes: bytes.byteLength, assets: used, page: bytes });
+  }
+  const text = enc.encode(JSON.stringify({ v: 1, pages: Object.fromEntries(pages.map((p) => [p.id, [{ text: `word ${p.id}`, x: 1, y: 1, width: 40, fontSize: 12 }]])) }));
+  const textKey = await adopt(text, 'application/vnd.chalk.text+json', `chalk-books/${o.slug}/text-${createHashHex(text).slice(0, 8)}.json`);
+  const book = enc.encode(JSON.stringify({
+    format: 'chalk.streamed', streamVersion: 1, formatVersion: 11, id: o.slug, title: o.slug, locale: 'bn', createdAt: '2026-10-30T00:00:00Z', updatedAt: '2026-10-30T00:00:00Z',
+    pages: pages.map(({ page: _p, ...p }) => p), assets: assets.map(({ bytes: _b, ...a }) => a), text: { key: textKey, bytes: text.byteLength }, assetSources: (await client.stores()).items.filter((d) => d.kind === 'derived'),
+  }));
+  await client.add(book, { type: 'application/vnd.chalk.book+json', tags: ['origin:chalkbook', `book:${o.slug}`, 'book-revision:1', 'kind:book', 'state:current'] });
+  return { pages, assets, text };
+}
+const createHashHex = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+async function readsEverything(book: Awaited<ReturnType<typeof openLibraryBook>>, want: Awaited<ReturnType<typeof adoptedBook>>) {
+  expect(book.index.pages).toHaveLength(want.pages.length);
+  for (const [i, p] of book.index.pages.entries()) expect(text(await book.read(p.file))).toBe(text(want.pages[i]!.page));
+  expect(text(await book.read(book.index.text!.file))).toBe(text(want.text));
+  for (const a of want.assets) expect(text(await book.fetchItem(a.id))).toBe(text(a.bytes));
+}
+
 type Rec = { key: string; status: string; title: string | null; tags: string[]; locations?: { store: string; path: string }[] };
 
 /** Count the reads a storage does (verification reads the object; a second adopt must not). */
@@ -220,6 +263,17 @@ describe('adopting a file in place: a public disk library', () => {
     const shard = await f(`${BASE}/index/${img.key.slice(3, 5)}.json`);
     if (shard.status === 200) expect(((await shard.json()) as { entries: Record<string, unknown> }).entries[img.key.slice(3)]).toBeUndefined();
     expect((await adopt({ ...img, type: 'image/png', size: IMG.byteLength, path: IMG_PATH })).status).toBe(410);
+  });
+
+  it('a book adopted in place, only its book item uploaded: openLibraryBook reads every page, the text and every asset', async () => {
+    const seen: string[] = [];
+    const counted = ((u: RequestInfo | URL, i?: RequestInit) => { seen.push(String(u)); return f(u, i); }) as typeof fetch;
+    const want = await adoptedBook({ base: BASE, slug: 'big-book', pages: 60, assets: 80, write: (path, bytes) => put(path, bytes), f });
+    const book = await openLibraryBook({ library: BASE, slug: 'big-book', fetch: counted });
+    await readsEverything(book, want);
+    expect(await book.urlFor(want.assets[0]!.id)).toBe(`${BASE}/files/chalk-books/big-book/assets/${want.assets[0]!.id.replace(':', '-')}`);
+    // the adopted items came from their paths, never from a derived URL that 404s
+    expect(seen.filter((u) => u.includes('/files/c1/') && !u.endsWith(standardPath(book.key)))).toEqual([]);
   });
 
   it('still passes the conformance checks', async () => {
@@ -465,6 +519,13 @@ describe('adopting on S3: a public library behind a CDN, and a private one', () 
     expect(text((await reader.resolve(s.key, 'image/png'))!.bytes)).toBe(text(bytes));
     vi.useRealTimers();
   });
+
+  it('a book adopted in place on S3 behind the CDN: openLibraryBook reads every page, the text and every asset', async () => {
+    const want = await adoptedBook({ base: LIB, slug: 's3-book', pages: 40, assets: 50, write: (path, bytes, type) => { objects.set(path, bytes); types.set(path, type); } });
+    const book = await openLibraryBook({ library: LIB, slug: 's3-book' });
+    await readsEverything(book, want);
+    expect(await book.urlFor(want.assets[3]!.id)).toBe(`${CDN}/chalk-books/s3-book/assets/${want.assets[3]!.id.replace(':', '-')}`);
+  }, 60_000);
 
   it('withdrawing deletes only the standard path, never the adopted object', async () => {
     log.length = 0;

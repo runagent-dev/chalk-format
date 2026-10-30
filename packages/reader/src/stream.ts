@@ -100,7 +100,7 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       if (!store) return null;
       const unknownFormat = type.endsWith('/*');
       // a question's picture is checked before it is shown (spec 1.7 §4), even one the pages also draw
-      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat && !lib.mustCheck(id)) return lib.urlOf(id, type);
+      if (store.auth !== 'bearer' && store.verify !== 'always' && !unknownFormat && !lib.mustCheck(id)) return lib.urlFor(id, type, { signal });
       const bytes = await lib.fetchItem(id, { signal, type });
       // a picture whose format is not known gets the type its bytes show, among the formats a book's pictures take (spec 1.0: png, jpeg, webp,
       // gif, avif). Never image/svg+xml from a guess: an SVG in a blob: URL of this origin runs its scripts if the URL is opened
