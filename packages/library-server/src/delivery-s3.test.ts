@@ -83,6 +83,8 @@ describe('presignGet on S3 storage', () => {
     expect(u.searchParams.get('response-cache-control')).toBe('private');
     expect(Date.parse(u.searchParams.get('response-expires')!)).toBe(Math.floor(Date.parse(expiresAt) / 1000) * 1000);
     // an SVG is never opened as a page on the bucket's origin
+    const other = new URL((await s.presignGet('x', 60, { contentType: 'image/x-test+xml' })).url).searchParams;
+    expect(other.get('response-content-type')).toBe('application/octet-stream');
     const svg = new URL((await s.presignGet('x', 60, { contentType: 'image/svg+xml' })).url).searchParams;
     expect([svg.get('response-content-type'), svg.get('response-content-disposition')]).toEqual(['image/svg+xml', 'attachment']);
     expect(new URL((await s.presignGet('x', 60, { contentType: 'image/svg+xml', filename: 'a.svg' })).url).searchParams.get('response-content-disposition')).toBe("attachment; filename*=UTF-8''a.svg");
@@ -95,6 +97,9 @@ describe('presignGet on S3 storage', () => {
     expect(servedType('Video/MP4')).toBe('video/mp4');
     expect(servedType('application/vnd.chalk.book+json')).toBe('application/vnd.chalk.book+json');
     expect(servedType(' text/javascript')).toBe('application/octet-stream');
+    // any XML document type can run script when opened; only SVG is kept (and made a download on S3)
+    for (const t of ['image/x-test+xml', 'application/xhtml+xml', 'application/xslt+xml', 'application/rss+xml', 'Image/X-SVG+XML; x=1']) expect(servedType(t)).toBe('application/octet-stream');
+    expect(servedType('IMAGE/SVG+XML; charset=utf-8')).toBe('image/svg+xml');
     expect(servedType('text/html\r\nX-Evil: 1')).toBe('application/octet-stream');
   });
 });

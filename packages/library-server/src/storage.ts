@@ -40,7 +40,10 @@ export type GetOptions = { contentType: string; filename?: string };
 export function servedType(type: string): string {
   const t = type.split(';')[0]!.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(t)) return 'application/octet-stream';
-  return /^(text\/(html|javascript|ecmascript|xml|xsl)|application\/(javascript|ecmascript|x-javascript|xhtml\+xml|xml|xslt\+xml))$/.test(t) ? 'application/octet-stream' : t;
+  if (/^(text\/(html|javascript|ecmascript|xml|xsl)|application\/(javascript|ecmascript|x-javascript|xml))$/.test(t)) return 'application/octet-stream';
+  // every XML type a browser renders as a document (…+xml, e.g. image/x-foo+xml) can carry script; SVG stays an image
+  // (a pre-signed URL makes it a download, see presignGet; disk answers send CSP: sandbox)
+  return t.endsWith('+xml') && t !== 'image/svg+xml' ? 'application/octet-stream' : t;
 }
 /** `inline` with the file name, RFC 6266 / 5987 (any script). */
 export const contentDisposition = (filename: string) => `inline; filename*=UTF-8''${encodeURIComponent(filename.replace(/[\r\n"\\/]/g, '_'))}`;

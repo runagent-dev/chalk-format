@@ -122,9 +122,11 @@ names that in its store:
   header, for places that cannot send one (an `<img>` or `<video>` source, a lab's frame). It is pre-signed by
   the bucket or signed by the registry (`…?exp=&sig=`), valid for 5 to 15 minutes (the reference: 15), and
   answered with `Cache-Control: no-store`. A changed, moved or expired link gets `403`.
-- Neither may let stored code run as a page: HTML and JavaScript are served as `application/octet-stream`
-  (on a pre-signed URL the type is part of the signature, `response-content-type`), and the registry's own
-  answers add `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
+- Neither may let stored code run as a page: HTML, JavaScript and XML document types (`…+xml`, except SVG) are
+  served as `application/octet-stream` (on a pre-signed URL the type is part of the signature,
+  `response-content-type`); a pre-signed SVG is sent with `Content-Disposition: attachment`, so it shows in an
+  `<img>` but is not opened as a page; and the registry's own answers add `Content-Security-Policy: sandbox` and
+  `X-Content-Type-Options: nosniff`.
 - `GET v1/stores` stays public: it names where the bytes are, not the bytes.
 
 How tokens are issued is in §10; a token "may read" when it has the `reader` role (§10.1).

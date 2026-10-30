@@ -147,8 +147,9 @@ then does three things differently ([registry API §7.1](../../spec/1.2/registry
   15 minutes, for an `<img>`, a `<video>` or a lab's frame. On disk storage `/files/` then serves only these
   signed links (`403` for anything else, `410` for a withdrawn key).
 
-HTML and JavaScript are still served as `application/octet-stream` (on S3 the type is part of the
-signature), so no link can make a lab's page run on the library's or the bucket's domain.
+HTML, JavaScript and XML documents (`…+xml` other than SVG) are served as `application/octet-stream` (on S3
+the type is part of the signature), and an S3 link to an SVG downloads it instead of opening it (an `<img>` still
+shows it), so no link can make stored code run on the library's or the bucket's domain.
 
 **The setting does not make the bucket private.** As long as the bucket, or a CDN in front of it, answers
 anonymous requests, anyone with a key can still fetch the bytes there. The owner does that part, by hand, in
