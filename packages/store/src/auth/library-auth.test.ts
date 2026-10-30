@@ -130,6 +130,43 @@ describe('libraryAuth: refreshing', () => {
     expect(b.user()?.name).toBe('rahim');
   });
 
+  it('another tab signing out while this one refreshes: the refresh is dropped, not written back', async () => {
+    const s = server();
+    const area = fakeArea();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow = (async (i: string | URL | Request, init?: RequestInit) => { const r = await s.fetch(i, init); if (String(init?.body ?? '').includes('"grant_type":"refresh_token"')) await gate; return r; }) as typeof fetch;
+    const a = libraryAuth({ library: BASE, fetch: slow, now, storage: webStorage(area) });
+    await a.signIn('rahim', 'correct horse battery');
+    const b = libraryAuth({ library: BASE, fetch: s.fetch, now, storage: webStorage(area) });
+    await b.ready;
+    clock += 890 * 1000;
+    const pending = a.token();        // the library has rotated, the answer is on its way
+    await new Promise((r) => setTimeout(r, 5));
+    await b.signOut();
+    release();
+    expect(await pending).toBeUndefined();
+    expect(a.user()).toBeNull();
+    expect(area.map.size).toBe(0);
+    expect(s.liveRefreshTokens()).toEqual([]);
+  });
+
+  it('a rotated refresh token that could not be stored is not swapped back for the spent one in storage', async () => {
+    const s = server();
+    const area = fakeArea();
+    let full = false;
+    const storage = webStorage({ getItem: (k) => area.getItem(k), setItem: (k, v) => { if (full) throw new Error('quota'); area.setItem(k, v); }, removeItem: (k) => area.removeItem(k) });
+    const auth = libraryAuth({ library: BASE, fetch: s.fetch, now, storage });
+    await auth.signIn('rahim', 'correct horse battery');
+    full = true;
+    clock += 890 * 1000;
+    await auth.token();               // rotated; storage still holds the spent one
+    clock += 890 * 1000;
+    expect(await auth.token()).toBeTruthy();
+    expect(s.grants.filter((g) => g.grant === 'refresh_token')).toEqual([{ grant: 'refresh_token', ok: true }, { grant: 'refresh_token', ok: true }]);
+    expect(auth.user()?.name).toBe('rahim');
+  });
+
   it('a refresh the library refuses (invalid_grant) signs out and says so', async () => {
     const s = server();
     const area = fakeArea();

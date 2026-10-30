@@ -165,6 +165,9 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
 
   const revoke = (refresh: string) => post('v1/auth/revoke', { refresh_token: refresh }).then((r) => { void r.body?.cancel().catch(() => {}); }, () => {});
 
+  /** Refresh tokens this instance has used (they are spent: using one again would end the sign-in everywhere). */
+  const spent = new Set<string>();
+
   const refresh = (force: boolean): Promise<string | undefined> => {
     if (refreshing) return refreshing;
     const gen = generation;
@@ -172,7 +175,8 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
       // another tab or instance on the same storage may have refreshed (its refresh token replaced ours) or signed in again: take that
       const stored = await read();
       if (gen !== generation) return session?.access;
-      if (stored && session && stored.refresh !== session.refresh) {
+      // (never one this instance already spent: storage still holding it means our write of the rotated one did not land)
+      if (stored && session && stored.refresh !== session.refresh && !spent.has(stored.refresh)) {
         await set(stored);
         // a different grant, so not the token that was rejected
         if (stored.expiresAt - now() > REFRESH_MARGIN_MS) return stored.access;
@@ -181,6 +185,7 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
       if (!old) return undefined;
       let next: Session;
       try {
+        spent.add(old.refresh);
         next = await grant({ grant_type: 'refresh_token', refresh_token: old.refresh });
       } catch (e) {
         if (gen !== generation) return session?.access;
@@ -190,6 +195,13 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
         throw e;
       }
       // signed out or in again while this was on its way: the new refresh token belongs to nobody
+      if (gen !== generation) { void revoke(next.refresh); return session?.access; }
+      // another tab signed out while this was on its way (what it had stored is gone): its sign-out holds here too
+      if (stored && !(await read())) {
+        if (gen === generation) { generation++; void set(null); }
+        void revoke(next.refresh);
+        return undefined;
+      }
       if (gen !== generation) { void revoke(next.refresh); return session?.access; }
       await set(next);
       return next.access;
@@ -220,7 +232,9 @@ export function libraryAuth(o: LibraryAuthOptions): LibraryAuth {
       const old = session;
       generation++;
       refreshing = null;
-      await set(null);
+      const cleared = set(null);
+      // under the refresh lock too: a refresh another tab has on its way writes its session before this removes it, not after
+      await (lock ? lock(key, async () => { await cleared; try { await storage.remove(key); } catch { /* nothing to remove */ } }) : cleared);
       if (old) await revoke(old.refresh);
     },
     token: async (request) => {
