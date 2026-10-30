@@ -198,6 +198,11 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     await db.query("UPDATE auth_refresh_tokens SET rotated_at = now() - interval '31 seconds' WHERE token_hash = $1", [hashOf(late.refresh_token)]);
     expect((await refresh(late.refresh_token)).status).toBe(400);
     expect((await refresh(next.refresh_token)).status).toBe(400);
+    // a successor that has expired meanwhile (a refresh lifetime shorter than the window) is not given again
+    const brief = await tokensOf('arun', PW.arun);
+    const gone = (await (await refresh(brief.refresh_token)).json()) as Tokens;
+    await db.query("UPDATE auth_refresh_tokens SET expires_at = now() - interval '1 second' WHERE token_hash = $1", [hashOf(gone.refresh_token)]);
+    expect((await refresh(brief.refresh_token)).status).toBe(400);
     // signing out within the window ends it too
     const out = await tokensOf('arun', PW.arun);
     await refresh(out.refresh_token);

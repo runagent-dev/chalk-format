@@ -74,6 +74,7 @@ describe('AUTH_KEY_SECRET', { timeout: 30_000 }, () => {
   });
 
   it('the server from the environment: refuses PUBLIC_READ=false without it, starts with it', async () => {
+    await expect(libraryFromEnv({ REFRESH_TOKEN_GRACE: '61' })).rejects.toThrow(/0 to 60/);
     await expect(libraryFromEnv({ DATABASE_URL: 'pglite:', PUBLIC_READ: 'false', DISK_DIR: join(tmpdir(), 'chalk-library-unused') })).rejects.toThrow(/AUTH_KEY_SECRET/);
     const o = await libraryFromEnv({ DATABASE_URL: 'pglite:', PUBLIC_READ: 'false', AUTH_KEY_SECRET: SECRET, REFRESH_TOKEN_GRACE: '0', DISK_DIR: join(tmpdir(), 'chalk-library-unused') });
     open.push(o.db);

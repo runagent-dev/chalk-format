@@ -20,7 +20,7 @@ import type { Caller } from './auth/roles.js';
  *   PUBLIC_READ      true | false                    (search and read without a token; default true)
  *   ACCESS_TOKEN_TTL 900                             (seconds an access token lasts)
  *   REFRESH_TOKEN_TTL 2592000                        (seconds a refresh token lasts: 30 days)
- *   REFRESH_TOKEN_GRACE 30                           (seconds a used refresh token still gives the same successor; 0: never)
+ *   REFRESH_TOKEN_GRACE 30                           (seconds a used refresh token still gives the same successor; 0 to 60, 0: never)
  *   AUTH_KEY_SECRET  at least 32 characters          (encrypts the token signing keys; needed once there are users or PUBLIC_READ=false)
  *   AUTH_RATE_LIMIT  10                              (token requests per minute and username; per process)
  *   AUTH_RATE_LIMIT_IP 60                            (token requests per minute and address; per process)
@@ -35,7 +35,9 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   const need = (k: string) => { const v = env[k]; if (!v) throw new Error(`${k} is not set`); return v; };
   const port = Number(env.PORT ?? 8080);
   const positive = (k: string) => { const n = Number(env[k]); if (!Number.isInteger(n) || n <= 0) throw new Error(`${k} must be a whole number above 0`); return n; };
-  const natural = (k: string) => { const n = Number(env[k]); if (!Number.isInteger(n) || n < 0) throw new Error(`${k} must be a whole number, 0 or more`); return n; };
+  // spec §10.2: a grace window of at most 60 seconds
+  const grace = () => { const n = Number(env.REFRESH_TOKEN_GRACE); if (!Number.isInteger(n) || n < 0 || n > 60) throw new Error('REFRESH_TOKEN_GRACE must be a whole number from 0 to 60'); return n; };
+  const refreshGrace = env.REFRESH_TOKEN_GRACE ? grace() : undefined;
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
   const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   let storage: Storage;
@@ -59,7 +61,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
     auth: {
       ...(env.ACCESS_TOKEN_TTL ? { accessTtl: positive('ACCESS_TOKEN_TTL') } : {}),
       ...(env.REFRESH_TOKEN_TTL ? { refreshTtl: positive('REFRESH_TOKEN_TTL') } : {}),
-      ...(env.REFRESH_TOKEN_GRACE ? { refreshGrace: natural('REFRESH_TOKEN_GRACE') } : {}),
+      ...(refreshGrace !== undefined ? { refreshGrace } : {}),
       ...(keySecret ? { keySecret } : {}),
       rateLimit: { ...(env.AUTH_RATE_LIMIT ? { perUser: positive('AUTH_RATE_LIMIT') } : {}), ...(env.AUTH_RATE_LIMIT_IP ? { perAddress: positive('AUTH_RATE_LIMIT_IP') } : {}) },
       trustProxy: env.TRUST_PROXY === 'true',

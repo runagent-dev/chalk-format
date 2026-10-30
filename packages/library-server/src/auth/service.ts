@@ -23,7 +23,7 @@ export type AuthOptions = {
   userCacheMs?: number;
   /**
    * Seconds after a refresh token was used during which sending it again gives the same successor instead of
-   * ending the sign-in (default 30; 0: never). Covers an answer lost on its way to the client.
+   * ending the sign-in (default 30; 0: never; the spec allows at most 60). Covers an answer lost on its way to the client.
    */
   refreshGrace?: number;
   /** AUTH_KEY_SECRET: seals the private signing keys (at least 32 characters). */
@@ -224,8 +224,8 @@ export function createAuth(o: AuthOptions) {
       const again = async (r: Row): Promise<TokenResponse | null> => {
         const next = r.in_grace && r.successor ? openSuccessor(token, r.id, r.successor) : null;
         // the successor is stored in the same statement that marked this token used, so it exists here; used in
-        // turn, its answer arrived: whoever sends the old token now is not that client
-        const usable = next ? (await db.query('SELECT 1 FROM auth_refresh_tokens WHERE token_hash = $1 AND rotated_at IS NULL', [sha256(next)])).length > 0 : false;
+        // turn, its answer arrived: whoever sends the old token now is not that client. Expired: nothing to give
+        const usable = next ? (await db.query('SELECT 1 FROM auth_refresh_tokens WHERE token_hash = $1 AND rotated_at IS NULL AND expires_at > now()', [sha256(next)])).length > 0 : false;
         const u = usable ? await userById(r.user_id) : null;
         if (!next || !usable || !u || u.disabled) { await revokeFamily(r.family_id); return null; }
         return stillValid(u, r.family_id, await respond(u, issuer, next));
