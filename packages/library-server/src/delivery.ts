@@ -106,7 +106,8 @@ export function registerDelivery<E extends Env>(app: Hono<E>, o: LibraryOptions 
     const file = row?.status === 'available' ? disk.file(path) : null;
     if (!file) return c.text(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
     return serveFile(c, file, row!.type, {
-      'Cache-Control': 'private, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*',
+      // kept no longer than the link is valid
+      'Cache-Control': `private, max-age=${Math.max(0, Number(c.req.query('exp')) - Math.floor(Date.now() / 1000))}`, 'Access-Control-Allow-Origin': '*',
       ...(signed.filename ? { 'Content-Disposition': contentDisposition(signed.filename) } : {}),
     });
   });

@@ -31,8 +31,17 @@ export interface Storage {
 
 export type GetOptions = { contentType: string; filename?: string };
 
-/** Code is served as plain bytes: a lab's HTML or a library's script must never run as a page or script on a domain of ours. */
-export const servedType = (type: string) => (/^(text\/html|text\/javascript|application\/javascript)/i.test(type) ? 'application/octet-stream' : type);
+/**
+ * The type a file is served as. Code is served as plain bytes: a lab's HTML or a library's script must never run
+ * as a page or script on a domain of ours (or the bucket's). The type comes from a record anyone with a token
+ * registered, so it is normalised first (" TEXT/HTML; x" is HTML), and anything that is not one plain media type
+ * is plain bytes too.
+ */
+export function servedType(type: string): string {
+  const t = type.split(';')[0]!.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(t)) return 'application/octet-stream';
+  return /^(text\/(html|javascript|ecmascript|xml|xsl)|application\/(javascript|ecmascript|x-javascript|xhtml\+xml|xml|xslt\+xml))$/.test(t) ? 'application/octet-stream' : t;
+}
 /** `inline` with the file name, RFC 6266 / 5987 (any script). */
 export const contentDisposition = (filename: string) => `inline; filename*=UTF-8''${encodeURIComponent(filename.replace(/[\r\n"\\/]/g, '_'))}`;
 /** S3 accepts 1 s to 7 days for a pre-signed URL. */
@@ -77,6 +86,8 @@ export function s3Storage(o: S3Options): Storage {
       const seconds = clampSeconds(expiresSeconds), u = new URL(objectUrl(path));
       u.searchParams.set('X-Amz-Expires', String(seconds));
       u.searchParams.set('response-content-type', servedType(g.contentType));
+      // a browser keeps the bytes no longer than the URL is valid (the bucket's own Cache-Control may say a year)
+      u.searchParams.set('response-cache-control', `private, max-age=${seconds}`);
       if (g.filename) u.searchParams.set('response-content-disposition', contentDisposition(g.filename));
       const signed = await aws.sign(new Request(u, { method: 'GET' }), { aws: { signQuery: true } });
       return { url: signed.url, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };

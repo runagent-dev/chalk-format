@@ -3,7 +3,7 @@ import { serve, type ServerType } from '@hono/node-server';
 import { AwsClient } from 'aws4fetch';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRegistryClient } from '@chalk-format/store';
-import { createLibraryApp, openDb, s3Storage, tokenCallers, type Db } from './index.js';
+import { createLibraryApp, openDb, s3Storage, servedType, tokenCallers, type Db } from './index.js';
 
 // A private S3 bucket and a private library, both real HTTP servers on this machine, used with Node's own fetch
 // (so redirects are followed as a reader's fetch follows them). The bucket checks every pre-signed URL's
@@ -79,6 +79,17 @@ describe('presignGet on S3 storage', () => {
     expect(Math.abs(Date.parse(expiresAt) - Date.now() - 300_000)).toBeLessThan(2000);
     expect(new URL((await s.presignGet('x', 10 ** 9, { contentType: 'image/png' })).url).searchParams.get('X-Amz-Expires')).toBe('604800');
     expect(new URL((await s.presignGet('x', 60, { contentType: 'image/png' })).url).searchParams.get('response-content-type')).toBe('image/png');
+    expect(u.searchParams.get('response-cache-control')).toBe('private, max-age=300');
+    // a type registered with odd spelling is still code
+    for (const t of [' text/html', 'TEXT/HTML; charset=utf-8', 'text/html ', 'application/xhtml+xml', 'text/xml', 'application/javascript', 'not a type', ''])
+      expect(new URL((await s.presignGet('x', 60, { contentType: t })).url).searchParams.get('response-content-type'), t).toBe('application/octet-stream');
+  });
+
+  it('servedType keeps media types, normalised, and turns code into plain bytes', () => {
+    expect(servedType('Video/MP4')).toBe('video/mp4');
+    expect(servedType('application/vnd.chalk.book+json')).toBe('application/vnd.chalk.book+json');
+    expect(servedType(' text/javascript')).toBe('application/octet-stream');
+    expect(servedType('text/html\r\nX-Evil: 1')).toBe('application/octet-stream');
   });
 });
 

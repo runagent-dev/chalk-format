@@ -101,6 +101,10 @@ describe('a private library on disk (PUBLIC_READ=false)', () => {
     expect(r.status).toBe(200);
     expectNeverAPage(r);
     expect(r.headers.get('access-control-allow-origin')).toBe('*');
+    // a browser keeps it no longer than the link lasts
+    const maxAge = Number(/^private, max-age=(\d+)$/.exec(r.headers.get('cache-control') ?? '')?.[1]);
+    expect(maxAge).toBeGreaterThan(14 * 60);
+    expect(maxAge).toBeLessThanOrEqual(15 * 60);
     expect(await r.text()).toBe(LAB);
     const part = await get(priv, l.url, { Range: 'bytes=2-8' });
     expect(part.status).toBe(206);
