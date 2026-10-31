@@ -57,7 +57,7 @@ export function VideoEmbed({ book, o, label, onOpen, notFound }: { book: Book; o
   usePlayWhileVisible(el, Boolean(src) && playing && p.autoplay && !tapped);
   if (!playing) return <EmbedCard book={book} o={o} label={label} notFound={notFound} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
   const R = pr.renderers.video;
-  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, ...pr.env })}</Box>;
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, onLoad: media.onLoad, ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>
       {/* browsers start a video by itself only without sound; a tap is the student asking, so then it plays as authored */}
@@ -88,7 +88,7 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const poster = useAssetUrl(book, o.poster);
   // whether it can be played at all: null is "no book or library has it"
   const avail = useAssetUrl(book, R ? undefined : o.assetId);
-  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, ...pr.env })}</Box>;
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, onLoad: media.onLoad, ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-audio ${avail === null && o.assetId ? 'is-missing' : ''}`} label={p.label} id={o.id}>
       {avail === null && o.assetId && <span className="chalk-card-missing">{t.notFound}</span>}
@@ -131,7 +131,7 @@ export function ModelViewer({ book, o, style, where = 'page' }: { book: Book; o:
   useEffect(() => { if (R) return; let live = true; void import('@google/model-viewer').then(() => { if (live) setLoaded(true); }); return () => { live = false; }; }, [R]);
   return (
     <div className="chalk-live chalk-model" style={style} aria-label={p.label}>
-      {R && R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where, onError: media.onError, ...pr.env })}
+      {R && R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where, onError: media.onError, onLoad: media.onLoad, ...pr.env })}
       {!R && loaded && src && (
         <model-viewer ref={viewer} src={src} poster={poster ?? undefined} camera-controls="" touch-action="pan-y" shadow-intensity="0.7" exposure="1.05"
           environment-image="neutral" interaction-prompt="none" {...(p.autoRotate ? { 'auto-rotate': '' } : {})} style={{ width: '100%', height: '100%', background: 'transparent' }} />

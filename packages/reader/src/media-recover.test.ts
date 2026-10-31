@@ -3,7 +3,7 @@ import type { Lesson } from '@chalk-format/model';
 import type { Library } from '@chalk-format/store';
 import { bookFrom, type Book } from './book.js';
 import { newLookup, withLibraries } from './libraries.js';
-import { mediaRenewer, RENEW_DELAY_MS } from './render/assets.js';
+import { mediaRenewer, RENEW_AGAIN_MS, RENEW_DELAY_MS } from './render/assets.js';
 
 const lesson: Lesson = { id: 'b', title: 'B', locale: 'bn', createdAt: '', updatedAt: '', snipPages: [], pages: [] };
 
@@ -120,10 +120,19 @@ describe('an element whose media failed to load', () => {
     r.failed('https://lib.example/v?sig=1');
     await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS);
     r.loaded();
+    await vi.advanceTimersByTimeAsync(RENEW_AGAIN_MS);
     r.failed('https://lib.example/v?sig=2');
     await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS);
     expect(renewUrl).toHaveBeenCalledTimes(2);
     expect(set.mock.calls).toEqual([['https://lib.example/v?sig=2'], ['https://lib.example/v?sig=3']]);
+  });
+
+  it('media that load and then fail every time are not renewed again and again (a minute between renewals)', async () => {
+    vi.useFakeTimers();
+    const { book, renewUrl } = fakeBook(['https://lib.example/v?sig=2', 'https://lib.example/v?sig=3', 'https://lib.example/v?sig=4']);
+    const r = mediaRenewer(book, 'c1:video', vi.fn());
+    for (let i = 1; i <= 5; i++) { r.failed(`https://lib.example/v?sig=${i}`); await vi.advanceTimersByTimeAsync(RENEW_DELAY_MS); r.loaded(); }
+    expect(renewUrl).toHaveBeenCalledTimes(1);
   });
 
   it('the same URL again changes nothing, and an element that went away is not updated', async () => {

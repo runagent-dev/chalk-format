@@ -150,6 +150,10 @@ describe('the resolver (spec 1.2 §6)', () => {
     files['http://lan/chalk/b/gauge.png'] = PNG;
     r.forget(K.png);
     expect((await r.locate(K.png, 'image/png'))?.url).toBe('http://lan/chalk/b/gauge.png');
+    // asked past the browser's cache, which may keep the old shard a minute
+    const shardCalls = vi.mocked(n.fetch).mock.calls.filter(([u]) => String(u).includes('/index/'));
+    expect(shardCalls).toHaveLength(2);
+    expect((shardCalls[1]![1] as RequestInit).cache).toBe('no-cache');
   });
 
   it('asks only one store at a time, and once per key while a request is open', async () => {

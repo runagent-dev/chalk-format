@@ -41,6 +41,8 @@ export type MediaRendererProps = {
    * more and renders you again with a new `src`. Once per failure, as for its own players.
    */
   onError?: () => void;
+  /** Call when your player has loaded `src`: a later failure (a link that expires again while a long video plays) may then be renewed again. */
+  onLoad?: () => void;
   locale: Locale;
   theme: 'light' | 'dark';
 };

@@ -3,6 +3,12 @@ import type { Book } from '../book.js';
 
 /** How long an element waits after its media failed before asking the book for the asset again (a moment for the library to settle). */
 export const RENEW_DELAY_MS = 400;
+/**
+ * The least time between two renewals of one element, even when the renewed media loaded in between: media that load and then fail
+ * every time (bytes a browser cannot decode, under URLs that change each time) are not asked for again and again. A signed link lasts
+ * minutes (registry-api §7.1: 5 to 15), so one that expires again later is still renewed.
+ */
+export const RENEW_AGAIN_MS = 60_000;
 
 /** The URL to draw an asset with: undefined while resolving, null if it is not available. */
 export function useAssetUrl(book: Book, assetId: string | undefined): string | null | undefined {
@@ -18,21 +24,22 @@ export type AssetSrc = {
    * loaded is not renewed again (no loop).
    */
   onError: () => void;
-  /** The element loaded its media: a later failure (a link that expires while a long video plays) may renew it again. */
+  /** The element loaded its media: a later failure (a link that expires while a long video plays) may renew it again, a minute after the last renewal at the earliest. */
   onLoad: () => void;
 };
 
 /**
  * One element's recovery from media that failed to load: `failed(url)` asks the book for the asset again after `delay`, once, and hands a
- * new answer to `set`; `loaded()` allows the next failure to renew again. A renewed URL that fails before it ever loaded is left as it is
- * (no loop). `stop()` cancels a renewal on its way (the element went away, or draws another asset).
+ * new answer to `set`; `loaded()` allows the next failure to renew again, `again` after the last renewal at the earliest. A renewed URL
+ * that fails before it ever loaded is left as it is (no loop). `stop()` cancels a renewal on its way (the element went away, or draws
+ * another asset).
  */
-export function mediaRenewer(book: Book, assetId: string, set: (url: string | null) => void, delay = RENEW_DELAY_MS) {
-  let budget = true, live = true, timer: ReturnType<typeof setTimeout> | undefined;
+export function mediaRenewer(book: Book, assetId: string, set: (url: string | null) => void, delay = RENEW_DELAY_MS, again = RENEW_AGAIN_MS) {
+  let budget = true, live = true, last = -Infinity, timer: ReturnType<typeof setTimeout> | undefined;
   return {
     failed(url: string | null) {
-      if (!live || !budget || !book.renewUrl) return;
-      budget = false;
+      if (!live || !budget || !book.renewUrl || Date.now() - last < again) return;
+      budget = false; last = Date.now();
       timer = setTimeout(() => {
         void book.renewUrl!(assetId, url).catch(() => null).then((u) => {
           // the same answer again: nothing changes (the element stays as it is)
@@ -82,7 +89,9 @@ export function useResume(onError: () => void, onLoad: () => void) {
   return {
     onError: (e: { currentTarget: HTMLMediaElement }) => {
       const m = e.currentTarget;
-      at.current = { time: m.currentTime, playing: !m.paused || m.autoplay };
+      at.current = { time: m.currentTime, playing: !m.paused };
+      // a paused player stays paused under its new URL: its autoplay (set when it was tapped) would start it again
+      if (m.paused) m.autoplay = false;
       onError();
     },
     onLoadedMetadata: (e: { currentTarget: HTMLMediaElement }) => {

@@ -124,7 +124,7 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
     // a URL the library named failed to draw (the library moved an adopted key to another copy): where it is is asked again
-    forget: (id) => lib.forgetUrl(id),
+    forget: (id) => lib.forgetUrl?.(id),
     library: lib,
   }, o);
 }

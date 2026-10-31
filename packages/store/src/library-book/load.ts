@@ -78,7 +78,7 @@ export type OpenedLibraryBook = {
    * the next time (`urlFor`, `fetchItem`). For a URL that failed to draw: the library moves an adopted key to another copy when one is
    * deleted, or when it finds another (registry-api §3.1), and an open book must see that.
    */
-  forgetUrl(id: string): void;
+  forgetUrl?(id: string): void;
   /**
    * The library's store for a type: the first of `GET /v1/stores` (derived or api) whose `media` take it. Items and media come from these first;
    * the book's suggested stores only when the library's fails (`fetchItem`).
