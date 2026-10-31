@@ -107,10 +107,10 @@ asked.length = 0;
 await p.click('.chalk-card');
 await p.waitForFunction((other) => { const v = document.querySelector<HTMLVideoElement>('.chalk-video video'); return !!v && v.src.endsWith(other) && v.readyState >= 1; }, video.copies[0]!, { timeout: 15000 }).catch(() => {});
 await p.waitForTimeout(1000);
-const v = await p.evaluate(() => { const e = document.querySelector<HTMLVideoElement>('.chalk-video video'); return e ? { src: e.src, ready: e.readyState, error: e.error?.code ?? null } : null; });
+const v = await p.evaluate(() => { const e = document.querySelector<HTMLVideoElement>('.chalk-video video'); return e ? { src: e.src, ready: e.readyState, error: e.error?.code ?? null, playing: !e.paused } : null; });
 check('the video first tried the URL it had, which is gone', askedFor(video.copies[1]!).some((a) => a.status === 404), JSON.stringify(askedFor(video.copies[1]!)));
 check('the reader asked the library\'s index again', asked.some((a) => a.url.includes('/index/') && a.status === 200));
-check('the video plays from the other copy', !!v && v.src.endsWith(video.copies[0]!) && v.ready >= 1 && v.error === null && askedFor(video.copies[0]!).some((a) => a.status < 300), JSON.stringify(v));
+check('the video plays from the other copy (the tap still counts)', !!v && v.src.endsWith(video.copies[0]!) && v.ready >= 1 && v.error === null && v.playing && askedFor(video.copies[0]!).some((a) => a.status < 300), JSON.stringify(v));
 check('the old URL was not asked again and again', askedFor(video.copies[1]!).length <= 2, String(askedFor(video.copies[1]!).length));
 if (SHOTS) await p.screenshot({ path: `${SHOTS}/recover-video.png` });
 

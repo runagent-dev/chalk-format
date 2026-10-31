@@ -181,7 +181,8 @@ export function createResolver(o: ResolverOptions = {}) {
   };
 }
 
-export type Resolver = ReturnType<typeof createResolver>;
+// `forget` is optional in the type: a resolver written before it (a host's own, a mock) still is one
+export type Resolver = Omit<ReturnType<typeof createResolver>, 'forget'> & { forget?(id: string): void };
 
 /** Kinds this resolver knows; others are skipped (spec 1.2 §5.1). */
 function known(d: StoreDescriptor): boolean {

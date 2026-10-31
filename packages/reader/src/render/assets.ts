@@ -89,9 +89,11 @@ export function useResume(onError: () => void, onLoad: () => void) {
   return {
     onError: (e: { currentTarget: HTMLMediaElement }) => {
       const m = e.currentTarget;
-      at.current = { time: m.currentTime, playing: !m.paused };
-      // a paused player stays paused under its new URL: its autoplay (set when it was tapped) would start it again
-      if (m.paused) m.autoplay = false;
+      // playing, or asked to play (a tap sets autoplay) and failed before it started; a player paused after it played stays paused under
+      // its new URL, so its autoplay is cleared (it would start it again)
+      const playing = !m.paused || (m.autoplay && m.played.length === 0);
+      at.current = { time: m.currentTime, playing };
+      if (!playing) m.autoplay = false;
       onError();
     },
     onLoadedMetadata: (e: { currentTarget: HTMLMediaElement }) => {
