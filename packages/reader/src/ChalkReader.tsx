@@ -921,7 +921,7 @@ function MediaInModal({ book, o, locale, theme, storage, onClose, fill }: { book
   // opened by a tap: the student asked, so it plays (with sound unless the author muted it)
   const R = pr.renderers.video;
   if (o.embed === 'video' && R) return <div className={fill ? 'chalk-window-custom-media' : 'chalk-modal-custom'}>{R({ object: o, src: url ?? null, poster: null, presentation: p, where: 'popup', onError, onLoad, ...pr.env })}</div>;
-  if (o.embed === 'video') return url ? <video className={mediaClass} src={url} controls autoPlay playsInline loop={p.loop} muted={p.muted} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} /> : null;
+  if (o.embed === 'video') return url ? <video className={mediaClass} src={url} controls autoPlay playsInline loop={p.loop} muted={p.muted} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} onPlay={resume.onPlay} onPause={resume.onPause} /> : null;
   if (o.embed === 'audio') return <ModalAudio book={book} o={o} locale={locale} />;
   return null;
 }

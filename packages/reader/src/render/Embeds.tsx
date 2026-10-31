@@ -62,7 +62,7 @@ export function VideoEmbed({ book, o, label, onOpen, notFound }: { book: Book; o
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>
       {/* browsers start a video by itself only without sound; a tap is the student asking, so then it plays as authored */}
       {src && <video ref={el} src={src} poster={poster ?? undefined} controls playsInline preload="metadata"
-        autoPlay={tapped} loop={p.loop} muted={p.muted || (p.autoplay && !tapped)} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} />}
+        autoPlay={tapped} loop={p.loop} muted={p.muted || (p.autoplay && !tapped)} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} onPlay={resume.onPlay} onPause={resume.onPause} />}
     </Box>
   );
 }
@@ -102,7 +102,7 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
       </div>
       {src && (
         <audio ref={el} src={src} preload="metadata" loop={p.loop}
-          onPlay={() => setState((s) => ({ ...s, playing: true }))} onPause={() => setState((s) => ({ ...s, playing: false }))}
+          onPlay={() => { resume.onPlay(); setState((s) => ({ ...s, playing: true })); }} onPause={() => { resume.onPause(); setState((s) => ({ ...s, playing: false })); }}
           onTimeUpdate={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, time: a.currentTime })); }}
           onError={resume.onError}
           onLoadedMetadata={(e) => { resume.onLoadedMetadata(e); const a = e.currentTarget; setState((s) => ({ ...s, duration: a.duration })); }} />

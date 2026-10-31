@@ -86,12 +86,16 @@ export function useAssetSrc(book: Book, assetId: string | undefined): AssetSrc {
  */
 export function useResume(onError: () => void, onLoad: () => void) {
   const at = useRef<{ time: number; playing: boolean } | null>(null);
+  // the student paused it (a `pause` event, the browser's controls included); playing again clears it
+  const paused = useRef(false);
   return {
+    onPlay: () => { paused.current = false; },
+    onPause: () => { paused.current = true; },
     onError: (e: { currentTarget: HTMLMediaElement }) => {
       const m = e.currentTarget;
-      // playing, or asked to play (a tap sets autoplay) and failed before it started; a player paused after it played stays paused under
-      // its new URL, so its autoplay is cleared (it would start it again)
-      const playing = !m.paused || (m.autoplay && m.played.length === 0);
+      // playing, or asked to play (a tap sets autoplay) and failed before it started; a player the student paused stays paused under its
+      // new URL, so its autoplay is cleared (it would start it again)
+      const playing = !m.paused || (m.autoplay && !paused.current);
       at.current = { time: m.currentTime, playing };
       if (!playing) m.autoplay = false;
       onError();
