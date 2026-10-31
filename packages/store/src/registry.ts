@@ -48,9 +48,18 @@ export const searchQuerySchema = z.object({
   minDuration: z.number().optional(), maxDuration: z.number().optional(), minWidth: z.number().optional(),
   limit: z.number().int().min(1).max(100).optional(), cursor: z.string().optional(),
 });
+/** `POST v1/assets/current` (registry API §4.1): the newest available item for each of 1..500 tags. */
+export const currentRequestSchema = z.object({
+  tags: z.array(z.string().min(1)).min(1).max(500),
+  require: z.array(z.string().min(1)).max(20).optional(),
+  type: z.string().optional(),
+});
+export type CurrentRequest = z.infer<typeof currentRequestSchema>;
+
 export const pageOf = <T extends z.ZodType>(item: T) => z.object({ items: z.array(item), next: z.string().optional() });
 export const searchResponseSchema = pageOf(assetRecordSchema);
 export const storesResponseSchema = z.object({ items: z.array(storeDescriptorSchema) });
+export const currentResponseSchema = z.object({ items: z.record(z.string(), assetRecordSchema.nullable()) });
 export const errorSchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
 export type AssetRecord = z.infer<typeof assetRecordSchema>;
@@ -92,6 +101,9 @@ export function createRegistryClient(base: string, o: {
       }
       return call(`v1/search?${p}`, searchResponseSchema);
     },
+    /** The newest available item of each tag (`state:current` too, unless `require` says otherwise); null for a tag with none. Answers 404/405 from a library without the endpoint (RegistryError). */
+    current: (tags: string[], { signal, ...o }: { require?: string[]; type?: string; signal?: AbortSignal } = {}) =>
+      call('v1/assets/current', currentResponseSchema, { method: 'POST', body: JSON.stringify(currentRequestSchema.parse({ tags, ...o })), ...(signal ? { signal } : {}) }),
     stores: () => call('v1/stores', storesResponseSchema),
     setBookAssets: (bookId: string, keys: string[]) => call(`v1/books/${encodeURIComponent(bookId)}/assets`, z.unknown(), { method: 'PUT', body: JSON.stringify({ keys }) }),
     /** Hash, check, upload if missing, register: the record of the asset (new or existing). */

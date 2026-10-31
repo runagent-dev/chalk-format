@@ -51,6 +51,7 @@ npx tsx tools/reader-library-e2e.mjs [url] [shots]   # libraries: gallery, uploa
 node tools/reader-stream-e2e.mjs [url] [shots]       # a streamed 60-page book: what is fetched, and when
 npx tsx tools/reader-library-book-e2e.ts <library> <token> [url] [--read-token t]   # a book published into a (test) library, opened from it
 npx tsx tools/reader-library-auth-e2e.ts [url] [--port 4923]   # signing in to a private library (a fake one in-process), refresh, sign-out
+npx tsx tools/question-current-e2e.ts <library> <token> [--read-token t]   # a corrected question reaches readers with no new links item (test library: writes)
 node tools/reader-insert-menu-e2e.mjs [url]          # author mode's right-click menu: what is added lands where you clicked
 node tools/reader-save-e2e.mjs [url]                 # author mode's Save: the filled button, Ctrl+S, onDirtyChange, the ref's save()
 node tools/reader-window-e2e.mjs [url] [shots]       # the floating window (open: window): author UI, the window, side panel, sheet, host chrome

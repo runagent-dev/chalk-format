@@ -113,7 +113,7 @@ highlight the sentences a question comes from:
       "text": "সরল দোলকের দোলনকাল এর কার্যকর দৈর্ঘ্যের বর্গমূলের সমানুপাতিক।" }
   ],
   "links": [
-    { "sentence": "s-0412", "question": "c1:74muxikui3encd3z42uf2jg7ma", "role": "answers_from" },
+    { "sentence": "s-0412", "question": "c1:74muxikui3encd3z42uf2jg7ma", "questionId": "2f6c0b1e-5d1a-4c52-9d0e-3b8a7a1c9e11", "role": "answers_from" },
     { "sentence": "s-0412", "question": "c1:nmtgoett6ffbndlzndtjbir7di", "role": "answers_from" }
   ]
 }
@@ -129,7 +129,8 @@ highlight the sentences a question comes from:
 | `sentences[].pageId` | required | The `id` of the page entry in the book item: the page the sentence is on |
 | `sentences[].rects` | required | Where the sentence is on that page: `[x, y, width, height]`, each a fraction of the page's width or height (0 to 1). One rectangle per line. Empty when the place is not known: the reader shows the link without a highlight |
 | `sentences[].text` | required | The sentence, as on the page |
-| `links[]` | required | `sentence` (an `id` of `sentences`), `question` (the key of a question manifest, 1.7, that is in the library) and `role` |
+| `links[]` | required | `sentence` (an `id` of `sentences`), `question` (the key of a question manifest, 1.7, that is in the library), `role`, and optionally `questionId` |
+| `links[].questionId` | optional | The question's lasting id: a UUID string, the one in the manifest's `question:<id>` tag (1.7). `question` is the version published when the links item was made; `questionId` names the question whatever its version |
 
 The roles this version knows:
 
@@ -139,6 +140,23 @@ The roles this version knows:
 | `tests_concept` | states the idea the question tests |
 | `formula_source` | gives a formula the question uses |
 | `uses_figure` | is about a figure the question uses |
+
+**Current version by id.** A question is corrected by publishing a new version of it: a new manifest with a new key, the
+same lasting id, tagged `state:current`, the old one `state:superseded`. A link that has a `questionId` points at the
+question, not at one version: a reader that can ask the library uses the **current** version of that id, and the links
+item need not be published again when a question changes. It asks `POST v1/assets/current` with the tags
+`question:<questionId>` (registry API §4.1; the default requirement is `state:current`, the media type is
+`application/vnd.chalk.question+json`), many ids in one request, and checks each manifest it gets against its key as any
+item (§7 step 3). For an id the library answers `null` for, for a library without that endpoint (404 or 405), or when it
+cannot ask (offline), the reader uses the link's `question` key. A link without `questionId` (every links item made
+before this field) uses its `question` key, as before. A publisher writes `questionId` whenever it knows the id, and
+`question` always. Writers keep a `questionId` they do not understand; a reader that does not know the field ignores it
+(the item is an open object) and shows the version named by `question`.
+
+**The links item is found by tag.** Like the book item (§5), the links item that is current is found by searching
+`book:<slug>`, `kind:links`, `state:current` (§4), the newest `createdAt` winning, a tie going to the larger key. The key
+the book item names in `links` is the fallback: a reader uses it when the search finds none or cannot be made. This lets
+a publisher publish the links alone (a new links item, the book item untouched) and readers see them at once.
 
 A reader MUST skip a link whose role it does not know, and does not show a sentence left with no link it knows. A link appears once. Questions without a key in the library are left out by the
 publisher. Like the other items, the links item is an open object: writers keep fields they do not know.
@@ -180,11 +198,11 @@ Between the moment a publisher adds a book item and the moment it supersedes the
 already picks the new one.
 
 A reader then fetches the book item by its key (§7), and everything else by the keys the book item holds. **The book
-item is the only thing a reader looks up by tag.** It never searches for page, text or links items: their tags are for
-people and for tools that tidy a library, and a page shared by two revisions carries the tags of the last one that
-published it.
+item and the links item (§3.4) are what a reader looks up by tag**, and a question's current version by its id (§3.4).
+It never searches for page or text items: their tags are for people and for tools that tidy a library, and a page shared
+by two revisions carries the tags of the last one that published it.
 
-The search is the only request that changes answer over time. Everything else is immutable, so a reader caches it by key
+The searches (and `POST v1/assets/current`) are the only requests that change answer over time. Everything else is immutable, so a reader caches it by key
 for ever (1.2 §6.5), and SHOULD remember the last current book item's key, to open the book without a network.
 
 ## 6. Publishing
@@ -273,7 +291,7 @@ A reader is given a library (its base URL) and, when the library needs one, a to
    Page items, the text item and the links item MUST be checked against their keys before they are used, from any store:
    the book item names them by key, so this is what makes a book item a promise about every page.
 4. **Media.** As 1.4 §5 step 7 and 1.2 §6: every asset is external.
-5. **Questions.** The links item names question manifests by key; the reader fetches them through the stores, as 1.7 says,
+5. **Questions.** The links item names question manifests by key, and, when a link has a `questionId`, by the question's lasting id (§3.4: the current version is asked for with `POST v1/assets/current`, and checked against its key); the reader fetches them through the stores, as 1.7 says,
    when it shows them (media type `application/vnd.chalk.question+json`, which picks the store), and their pictures the
    same way (images; the manifest gives their keys, not their formats).
 
@@ -317,6 +335,6 @@ are the same.
   (`packages/library-server`, its tests).
 - Refused: a book item with a page `file`, an asset `path`, a `text.file`, no `assetSources`, an item key (§3.1) that is
   not a c1 key, or an asset id that is not a content id; a links item whose `format` is not `chalk-links`, or a rectangle
-  outside 0 to 1.
-- Accepted: a book item whose asset ids are `sha256:` ids (the example above names one); a links item with a role this
+  outside 0 to 1, a `questionId` that is not a UUID string.
+- Accepted: a link with a `questionId` (a UUID string), and a links item without it; a book item whose asset ids are `sha256:` ids (the example above names one); a links item with a role this
   version does not know (a reader skips that link, §3.4).
