@@ -49,7 +49,7 @@ export async function checkLibrary(url: string, opts: CheckOptions): Promise<Che
   await step('writing needs a token', async () => (await err(anon.add(bytes, { type: 'image/png', title: word })))?.status === 401);
   let record: Awaited<ReturnType<typeof client.add>> | null = null;
   await step('add: upload to the pre-signed URL, register, verified', async () => {
-    record = await client.add(bytes, { type: 'image/png', title: `${word} কন্ডিশন পরীক্ষা`, tags: ['conformance'], filename: `${word}.png` });
+    record = await client.add(bytes, { type: 'image/png', title: `${word} কন্ডিশন পরীক্ষা`, tags: ['conformance', `chk:${word}`, 'state:current'], filename: `${word}.png` });
     return record.key === key && record.status === 'available' ? true : JSON.stringify(record);
   });
   await step('check: now present', async () => (await client.check([key])).present.includes(key));
@@ -58,6 +58,14 @@ export async function checkLibrary(url: string, opts: CheckOptions): Promise<Che
     return ((await r.json()) as { exists?: boolean }).exists === true;
   });
   await step('GET v1/assets/{key}', async () => (await client.get(key)).sha256 === sha256);
+  await step('POST v1/assets/current: the newest available item of a tag, null for an unknown tag, over 500 tags refused', async () => {
+    const r = await client.current([`chk:${word}`, `chk:nothing-${word}`]);
+    if (r.items[`chk:${word}`]?.key !== key || r.items[`chk:nothing-${word}`] !== null) return JSON.stringify(r);
+    const none = await client.current([`chk:${word}`], { require: ['state:superseded'] });
+    if (none.items[`chk:${word}`] !== null) return 'require was not applied';
+    const many = await f(`${url.replace(/\/?$/, '/')}v1/assets/current`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${o.token}` }, body: JSON.stringify({ tags: Array.from({ length: 501 }, (_, i) => `chk:${i}`) }) });
+    return many.status === 400 ? true : `501 tags answered ${many.status}`;
+  });
   await step('search finds it by a word of its title', async () => (await client.search({ q: word })).items.some((i) => i.key === key));
   await step('search finds it by a Bengali word', async () => (await client.search({ q: 'কন্ডিশন' })).items.some((i) => i.key === key));
   await step('search filters by type', async () => !(await client.search({ q: word, type: ['video/*'] })).items.some((i) => i.key === key));
@@ -71,6 +79,12 @@ export async function checkLibrary(url: string, opts: CheckOptions): Promise<Che
     const r = await f(`${url.replace(/\/?$/, '/')}v1/uploads`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${o.token}` },
       body: JSON.stringify({ key: 'c1:' + 'a'.repeat(25) + 'a', sha256, type: 'image/png', size: bytes.byteLength }) });
     return r.status === 400;
+  });
+  // §3.1 is optional (404/405: not offered; 403: not enabled), but no registry may adopt a path outside its bucket
+  await step('adopting never takes a path outside the bucket', async () => {
+    const r = await f(`${url.replace(/\/?$/, '/')}v1/assets/adopt`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${o.token}` },
+      body: JSON.stringify({ key, sha256, type: 'image/png', size: bytes.byteLength, path: '../outside' }) });
+    return [400, 403, 404, 405].includes(r.status) ? true : `answered ${r.status}`;
   });
   await step('bytes that are not what the key names are refused, and removed', async () => {
     const real = new TextEncoder().encode(`announced ${word}`), fake = new TextEncoder().encode(`different ${word}`);

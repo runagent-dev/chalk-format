@@ -118,6 +118,24 @@ describe('the resolver (spec 1.2 §6)', () => {
     expect(n.calls.filter((c) => c.includes('/index/'))).toHaveLength(1);
   });
 
+  it('asks the index again after a path it named fails (the store moved the key)', async () => {
+    const lan: StoreDescriptor = { id: 'lan', kind: 'indexed', base: 'http://lan/chalk/' };
+    const files: Record<string, Uint8Array | object> = {
+      [`http://lan/chalk/index/${shardOf(K.png)}.json`]: { v: 1, entries: { [K.png.slice(3)]: { p: 'a/gauge.png' } } },
+      'http://lan/chalk/a/gauge.png': PNG,
+    };
+    const n = net(files);
+    const r = createResolver({ hostStores: [lan], fetch: n.fetch });
+    expect((await r.resolve(K.png, 'image/png'))?.from).toBe('lan');
+    // book a's copy is deleted; the store now names book b's
+    delete files['http://lan/chalk/a/gauge.png'];
+    files[`http://lan/chalk/index/${shardOf(K.png)}.json`] = { v: 1, entries: { [K.png.slice(3)]: { p: 'b/gauge.png' } } };
+    files['http://lan/chalk/b/gauge.png'] = PNG;
+    expect(await r.resolve(K.png, 'image/png')).toBeNull();   // this attempt still had the old shard
+    expect((await r.resolve(K.png, 'image/png'))?.from).toBe('lan');
+    expect(n.calls.filter((c) => c.includes('/index/'))).toHaveLength(2);
+  });
+
   it('asks only one store at a time, and once per key while a request is open', async () => {
     const n = net({ [at(cdn, K.png)]: PNG });
     const r = createResolver({ hostStores: [cdn], fetch: n.fetch });

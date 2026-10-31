@@ -107,6 +107,21 @@ describe('the links item (spec 1.8 §3.4)', () => {
     expect(ok({ ...l, sentences: [{ ...l.sentences[0], rects: [] }], links: [{ ...l.links[0], role: 'explains' }] })).toBe(true);
   });
 
+  it('a link may carry the question\'s lasting id (a UUID string); links without it stay valid', () => {
+    const ok = (x: unknown) => libraryLinksSchema.safeParse(x).success;
+    const l = links(), id = '2f6c0b1e-5d1a-4c52-9d0e-3b8a7a1c9e11';
+    expect(ok(l)).toBe(true);
+    expect(ok({ ...l, links: [{ ...l.links[0], questionId: id }] })).toBe(true);
+    expect(libraryLinksSchema.parse({ ...l, links: [{ ...l.links[0], questionId: id }] }).links[0]!.questionId).toBe(id);
+    expect(ok({ ...l, links: [{ ...l.links[0], questionId: 'q-17' }] })).toBe(false);
+    expect(ok({ ...l, links: [{ ...l.links[0], questionId: 7 }] })).toBe(false);
+    expect(checkLinks(libraryLinksSchema.parse({ ...l, links: [{ ...l.links[0], questionId: id }] }))).toEqual([]);
+    // the spec names the field and the two rules
+    expect(spec).toContain('`links[].questionId`');
+    expect(spec).toContain('**Current version by id.**');
+    expect(spec).toContain('**The links item is found by tag.**');
+  });
+
   it('reports sentences without a link or listed twice, links to unlisted sentences, repeated links, rects off the page, unknown pages', () => {
     const l = links();
     const s = l.sentences[0]!;

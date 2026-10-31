@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.js';
 import { diskStorage, s3Storage, type Storage } from './storage.js';
+import { adoptPrefixes } from './adopt.js';
 import { checkKeySetup } from './auth/service.js';
 import type { LibraryOptions } from './app.js';
 import type { Caller } from './auth/roles.js';
@@ -28,6 +29,7 @@ import type { DeliveryOptions } from './delivery.js';
  *   TRUST_PROXY      false                           (true: the caller's address is the last X-Forwarded-For entry)
  *   ORIGINS          https://app.example.org,…       (browsers allowed to call; default any)
  *   MAX_BYTES        536870912
+ *   ADOPT_PREFIXES   chalk-books/,…                  (where in its own bucket the library adopts files in place; default none: off)
  *   PORT             8080
  *   NAME             what tools show for this library (default "Chalk library")
  *   UPLOAD_SECRET    signs disk upload tickets (STORAGE=disk; default: random, so tickets end with a restart)
@@ -41,6 +43,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   // spec §10.2: a grace window of at most 60 seconds
   const grace = () => { const n = Number(env.REFRESH_TOKEN_GRACE); if (!Number.isInteger(n) || n < 0 || n > 60) throw new Error('REFRESH_TOKEN_GRACE must be a whole number from 0 to 60'); return n; };
   const refreshGrace = env.REFRESH_TOKEN_GRACE ? grace() : undefined;
+  const adopt = adoptPrefixes(env.ADOPT_PREFIXES); // checked before anything is opened
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
   const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   let storage: Storage;
@@ -72,6 +75,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       trustProxy: env.TRUST_PROXY === 'true',
     },
     ...(env.MAX_BYTES ? { maxBytes: Number(env.MAX_BYTES) } : {}),
+    ...(adopt.length ? { adoptPrefixes: adopt } : {}),
     ...(env.ORIGINS ? { origins: env.ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
     ...(env.NAME ? { name: env.NAME } : {}),
     // only when set: the default (localhost) would be wrong in a private library's store; the request's address is used instead

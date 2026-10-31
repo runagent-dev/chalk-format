@@ -1,8 +1,8 @@
-import type { StoreDescriptor } from '@chalk-format/model';
+import { indexShardSchema, type IndexShard, type StoreDescriptor } from '@chalk-format/model';
 import type { Library, LibraryItem } from './library.js';
 import { RegistryError, createRegistryClient, type AssetRecord } from './registry.js';
 import { fetchWithToken, type TokenSource } from './auth/token.js';
-import { apiUrl, derivedUrl } from './urls.js';
+import { apiUrl, derivedUrl, hashPart, shardOf, shardUrl } from './urls.js';
 
 /**
  * A library server (registry API, spec/1.2/registry-api.md) as a library: search, upload and facts through the
@@ -30,6 +30,19 @@ export function registryLibrary(o: {
   const deliveryStore = async () => (await allStores()).find((d) => (d.auth ?? 'none') === 'none' && addressable(d)) ?? null;
   const tokenStore = async () => (await allStores()).find((d) => d.auth === 'bearer' && addressable(d)) ?? null;
   const at = (s: StoreDescriptor, key: string) => (s.kind === 'derived' ? derivedUrl(s, key) : apiUrl(s, key));
+  // files the library adopted in place (registry-api §3.1) are not at the derived path: its public indexed store
+  // (spec 1.2 §5.3) says where they are. A shard is kept a minute, as the library's own Cache-Control says.
+  const shards = new Map<string, { at: number; shard: Promise<IndexShard | null> }>();
+  const indexed = async (key: string) => {
+    for (const s of (await allStores()).filter((d) => d.kind === 'indexed' && (d.auth ?? 'none') === 'none' && d.base)) {
+      const id = `${s.id}|${shardOf(key)}`, hit = shards.get(id);
+      const shard = hit && Date.now() - hit.at < 60_000 ? hit.shard : doFetch(shardUrl(s, key)).then(async (r) => (r.ok ? indexShardSchema.parse(await r.json()) : null)).catch(() => null);
+      if (shard !== hit?.shard) shards.set(id, { at: Date.now(), shard });
+      const e = (await shard)?.entries[hashPart(key)];
+      if (e) return /^[a-z][a-z0-9+.-]*:/i.test(e.p) ? e.p : s.base + e.p;
+    }
+    return null;
+  };
   const toItem = (r: AssetRecord): LibraryItem => ({
     key: r.key, type: r.type, size: r.size,
     ...(r.title ? { title: r.title } : {}), ...(r.filename ? { filename: r.filename } : {}), ...(r.tags?.length ? { tags: r.tags } : {}),
@@ -49,13 +62,15 @@ export function registryLibrary(o: {
     },
     async url(key) {
       const s = await deliveryStore();
-      return s ? at(s, key) : null;
+      return s ? (await indexed(key)) ?? at(s, key) : null;
     },
     async get(key) {
       const pub = await deliveryStore();
       const s = pub ?? (o.token ? await tokenStore() : null);
       if (!s) return null;
-      const r = pub ? await doFetch(at(s, key)) : await fetchWithToken(doFetch, o.token, at(s, key));
+      // an adopted key: where the index says, before the derived path (which may hold an unverified upload's bytes)
+      const u = pub ? (await indexed(key)) ?? at(s, key) : null;
+      const r = u ? await doFetch(u) : await fetchWithToken(doFetch, o.token, at(s, key));
       if (!r.ok) return null;
       return { bytes: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') ?? 'application/octet-stream' };
     },

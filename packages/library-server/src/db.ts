@@ -67,6 +67,13 @@ async function migrate(db: Db, exec: (sql: string) => Promise<void>) {
   // step 3: a rotated refresh token keeps its successor, sealed with the rotated token itself, so that sending it
   // again within the grace window gives the same successor (a lost answer does not sign the device out)
   if (!done.has(3)) await exec('ALTER TABLE auth_refresh_tokens ADD COLUMN IF NOT EXISTS successor text;\nINSERT INTO chalk_library_schema (version) VALUES (3);');
+  // step 4: files adopted in place (registry-api §3.1). A key may be at several paths of one store (two books that
+  // hold the same file, each its own copy), and a path is checked now and then: when it was, and whether it was gone.
+  if (!done.has(4)) await exec(`ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_pkey;
+ALTER TABLE locations ADD PRIMARY KEY (key, store, path);
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS checked_at timestamptz;
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS missing boolean NOT NULL DEFAULT false;
+INSERT INTO chalk_library_schema (version) VALUES (4);`);
 }
 
 /**
