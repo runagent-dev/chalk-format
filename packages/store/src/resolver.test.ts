@@ -136,6 +136,22 @@ describe('the resolver (spec 1.2 §6)', () => {
     expect(n.calls.filter((c) => c.includes('/index/'))).toHaveLength(2);
   });
 
+  it('a URL locate gave that failed later: forget(id) makes the next locate ask the index again', async () => {
+    const lan: StoreDescriptor = { id: 'lan', kind: 'indexed', base: 'http://lan/chalk/' };
+    const files: Record<string, Uint8Array | object> = {
+      [`http://lan/chalk/index/${shardOf(K.png)}.json`]: { v: 1, entries: { [K.png.slice(3)]: { p: 'a/gauge.png' } } },
+      'http://lan/chalk/a/gauge.png': PNG,
+    };
+    const n = net(files);
+    const r = createResolver({ hostStores: [lan], fetch: n.fetch });
+    expect((await r.locate(K.png, 'image/png'))?.url).toBe('http://lan/chalk/a/gauge.png');
+    delete files['http://lan/chalk/a/gauge.png'];
+    files[`http://lan/chalk/index/${shardOf(K.png)}.json`] = { v: 1, entries: { [K.png.slice(3)]: { p: 'b/gauge.png' } } };
+    files['http://lan/chalk/b/gauge.png'] = PNG;
+    r.forget(K.png);
+    expect((await r.locate(K.png, 'image/png'))?.url).toBe('http://lan/chalk/b/gauge.png');
+  });
+
   it('asks only one store at a time, and once per key while a request is open', async () => {
     const n = net({ [at(cdn, K.png)]: PNG });
     const r = createResolver({ hostStores: [cdn], fetch: n.fetch });

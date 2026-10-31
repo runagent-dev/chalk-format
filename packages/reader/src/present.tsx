@@ -36,6 +36,11 @@ export type MediaRendererProps = {
   presentation: ResolvedPresentation;
   /** In the page (sized to the object's box) or in a dialog (sized by the dialog). */
   where: 'page' | 'popup';
+  /**
+   * Call when your player failed to load `src` (the library moved the file, a signed link expired): the reader asks for the media once
+   * more and renders you again with a new `src`. Once per failure, as for its own players.
+   */
+  onError?: () => void;
   locale: Locale;
   theme: 'light' | 'dark';
 };

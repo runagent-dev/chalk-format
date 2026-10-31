@@ -74,6 +74,12 @@ export type OpenedLibraryBook = {
    */
   urlFor(id: string, type?: string, init?: { signal?: AbortSignal }): Promise<string | null>;
   /**
+   * Forgets where the library said an item is: the indexed stores' shard naming it is dropped, and fetched again past the browser's cache
+   * the next time (`urlFor`, `fetchItem`). For a URL that failed to draw: the library moves an adopted key to another copy when one is
+   * deleted, or when it finds another (registry-api §3.1), and an open book must see that.
+   */
+  forgetUrl(id: string): void;
+  /**
    * The library's store for a type: the first of `GET /v1/stores` (derived or api) whose `media` take it. Items and media come from these first;
    * the book's suggested stores only when the library's fails (`fetchItem`).
    */
@@ -213,13 +219,16 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
   // adopted key to another copy when its owner deletes one (registry-api §3.1), and an open book must see that
   const SHARD_MS = 60_000;
   const shards = new Map<string, { at: number; shard: Promise<Map<string, string>> }>();
+  // shards dropped because a URL they named failed: fetched again past the browser's cache (the library lets it keep one a minute)
+  const stale = new Set<string>();
+  const dropShard = (id: string) => { shards.delete(id); stale.add(id); };
   const indexedFor = (type: string) => stores.filter((d) => d.kind === 'indexed' && d.base && takes(d.media, type));
   const inIndex = async (key: string, type: string, signal?: AbortSignal): Promise<{ url: string; store: StoreDescriptor; forget: () => void } | null> => {
     for (const s of indexedFor(type)) {
       const id = `${s.id}|${shardOf(key)}`, kept = shards.get(id);
       let shard = kept && Date.now() - kept.at < SHARD_MS ? kept.shard : undefined;
       if (!shard) {
-        const url = shardUrl(s, key), init = signal ? { signal } : {};
+        const url = shardUrl(s, key), init: RequestInit = { ...(signal ? { signal } : {}), ...(stale.delete(id) ? { cache: 'no-cache' as const } : {}) };
         shard = (s.auth === 'bearer' ? fetchWithToken(doFetch, o.token, url, init) : doFetch(url, init)).then(async (r) => {
           if (r.status === 404) return new Map<string, string>();
           if (!r.ok) throw new Error(`index ${r.status}`);
@@ -231,7 +240,7 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
         shard.catch(() => { if (shards.get(id) === entry) shards.delete(id); });   // a failed shard is asked again next time
       }
       const url = await shard.then((m) => m.get(hashPart(key))).catch(() => undefined);
-      if (url) return { url, store: s, forget: () => shards.delete(id) };
+      if (url) return { url, store: s, forget: () => dropShard(id) };
     }
     return null;
   };
@@ -326,6 +335,10 @@ export async function openLibraryBook(o: OpenLibraryBookOptions): Promise<Opened
       // none (null: fetch the bytes with fetchItem, which checks them)
       if (adopted) return adopted.store.auth !== 'bearer' && adopted.store.verify !== 'always' ? adopted.url : null;
       return book.urlOf(id, t);
+    },
+    forgetUrl(id) {
+      const k = resolutionKey(id);
+      if (k) for (const s of stores) if (s.kind === 'indexed') dropShard(`${s.id}|${shardOf(k)}`);
     },
     storeFor: (type) => storeFor(type),
     storesFor,

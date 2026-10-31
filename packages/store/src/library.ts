@@ -69,6 +69,8 @@ export interface Library {
   get(key: string): Promise<{ bytes: Uint8Array; type: string } | null>;
   /** A URL to draw or stream the item from (no download first), or null. */
   url(key: string): Promise<string | null>;
+  /** Forget what this library said about where an item is, so the next `url` asks again: a URL it gave failed to draw (the item moved). */
+  forget?(key: string): void;
   /** Which of these keys the library has. */
   has(keys: readonly string[]): Promise<Set<string>>;
   /** Add an item; the same bytes give the same key, so adding twice adds once. */

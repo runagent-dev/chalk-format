@@ -12,7 +12,7 @@ import { AudioEmbed, LabFrame, ModelViewer, VideoEmbed, localLabStorage, type La
 import { Modal } from './render/Modal.js';
 import { FloatingWindow } from './render/FloatingWindow.js';
 import { aspectFor, type Box as WindowBox } from './render/windowGeometry.js';
-import { useAssetUrl } from './render/assets.js';
+import { useAssetSrc, useResume } from './render/assets.js';
 import { packOverlay, unpackOverlay, type BookPatch, type MergeReport, type PatchResult } from '@chalk-format/container';
 import type { Overlay } from '@chalk-format/model';
 import { useAnnotations } from './annotate/state.js';
@@ -887,10 +887,10 @@ function tooSmall(el: HTMLElement, lab: boolean): boolean {
 
 /** A full-size image, drawn as HTML so that it can be tapped when its author made it open (spec 1.3). */
 function OpenableImage({ book, o, label, onActivate }: { book: Book; o: Extract<LessonObject, { type: 'image' }>; label: string; onActivate?: ((el: HTMLElement) => void) | undefined }) {
-  const url = useAssetUrl(book, o.assetId);
+  const { url, onError, onLoad } = useAssetSrc(book, o.assetId);
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-image-open" label={label} id={o.id} {...(onActivate ? { onActivate } : {})}>
-      {url ? <img src={url} alt="" draggable={false} /> : <span className="chalk-placeholder" />}
+      {url ? <img src={url} alt="" draggable={false} onError={onError} onLoad={onLoad} /> : <span className="chalk-placeholder" />}
     </Box>
   );
 }
@@ -908,10 +908,11 @@ function SnipView({ book, pageId, renderHtmlObject }: { book: Book; pageId: stri
 
 /** Icon-mode media opened in the dialog, at a comfortable size. */
 function MediaInModal({ book, o, locale, theme, storage, onClose, fill }: { book: Book; o: LessonObject; locale: Locale; theme: 'light' | 'dark'; storage: LabStorage | null; onClose: () => void; fill?: boolean }) {
-  const url = useAssetUrl(book, o.type === 'image' ? o.assetId : o.type === 'embed' ? o.assetId : undefined);
+  const { url, onError, onLoad } = useAssetSrc(book, o.type === 'image' ? o.assetId : o.type === 'embed' ? o.assetId : undefined);
+  const resume = useResume(onError, onLoad);
   const pr = usePresenter();
   const mediaClass = fill ? 'chalk-window-media' : 'chalk-modal-media';
-  if (o.type === 'image') return url ? <img className={mediaClass} src={url} alt={pr.present(o).label ?? ''} /> : null;
+  if (o.type === 'image') return url ? <img className={mediaClass} src={url} alt={pr.present(o).label ?? ''} onError={onError} onLoad={onLoad} /> : null;
   if (o.type !== 'embed') return null;
   const big = fill ? { position: 'relative' as const, width: '100%', height: '100%' } : { position: 'relative' as const, width: '100%', aspectRatio: o.embed === 'model3d' ? '4 / 3' : '16 / 9' };
   if (isLabObject(o)) return <LabFrame book={book} o={o as LabObject} style={fill ? { position: 'relative', width: '100%', height: '100%' } : { position: 'relative', width: '100%', height: '100%', minHeight: 'min(70vh, 560px)' }} locale={locale} theme={theme} storage={storage} onStop={onClose} />;
@@ -919,8 +920,8 @@ function MediaInModal({ book, o, locale, theme, storage, onClose, fill }: { book
   const p = pr.present(o);
   // opened by a tap: the student asked, so it plays (with sound unless the author muted it)
   const R = pr.renderers.video;
-  if (o.embed === 'video' && R) return <div className={fill ? 'chalk-window-custom-media' : 'chalk-modal-custom'}>{R({ object: o, src: url ?? null, poster: null, presentation: p, where: 'popup', ...pr.env })}</div>;
-  if (o.embed === 'video') return url ? <video className={mediaClass} src={url} controls autoPlay playsInline loop={p.loop} muted={p.muted} /> : null;
+  if (o.embed === 'video' && R) return <div className={fill ? 'chalk-window-custom-media' : 'chalk-modal-custom'}>{R({ object: o, src: url ?? null, poster: null, presentation: p, where: 'popup', onError, ...pr.env })}</div>;
+  if (o.embed === 'video') return url ? <video className={mediaClass} src={url} controls autoPlay playsInline loop={p.loop} muted={p.muted} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} /> : null;
   if (o.embed === 'audio') return <ModalAudio book={book} o={o} locale={locale} />;
   return null;
 }

@@ -7,7 +7,7 @@ import type { EmbedObject, LabObject } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import type { Locale } from '../config.js';
 import { num, strings } from '../i18n.js';
-import { useAssetUrl } from './assets.js';
+import { useAssetSrc, useAssetUrl, useResume } from './assets.js';
 import { usePresenter } from '../present.js';
 import { Box, EmbedCard, type Activate } from './Markers.js';
 
@@ -48,7 +48,8 @@ export function VideoEmbed({ book, o, label, onOpen, notFound }: { book: Book; o
   const pr = usePresenter(), p = pr.present(o);
   const [playing, setPlaying] = useState(p.show === 'live');
   const { id, url } = mediaUrl(book, o);
-  const src = useAssetUrl(book, playing ? id : undefined) ?? (playing ? url : undefined);
+  const media = useAssetSrc(book, playing ? id : undefined), resume = useResume(media.onError, media.onLoad);
+  const src = media.url ?? (playing ? url : undefined);
   const poster = useAssetUrl(book, o.poster);
   const el = useRef<HTMLVideoElement>(null);
   const [tapped, setTapped] = useState(false);
@@ -56,12 +57,12 @@ export function VideoEmbed({ book, o, label, onOpen, notFound }: { book: Book; o
   usePlayWhileVisible(el, Boolean(src) && playing && p.autoplay && !tapped);
   if (!playing) return <EmbedCard book={book} o={o} label={label} notFound={notFound} onActivate={onOpen ?? (() => { setTapped(true); setPlaying(true); })} />;
   const R = pr.renderers.video;
-  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-video" label={p.label ?? label} id={o.id}>
       {/* browsers start a video by itself only without sound; a tap is the student asking, so then it plays as authored */}
       {src && <video ref={el} src={src} poster={poster ?? undefined} controls playsInline preload="metadata"
-        autoPlay={tapped} loop={p.loop} muted={p.muted || (p.autoplay && !tapped)} />}
+        autoPlay={tapped} loop={p.loop} muted={p.muted || (p.autoplay && !tapped)} onError={resume.onError} onLoadedMetadata={resume.onLoadedMetadata} />}
     </Box>
   );
 }
@@ -76,17 +77,18 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
   const R = pr.renderers.audio;
   // a host's own player gets the media at once; ours loads it on the first tap
   const [want, setWant] = useState(Boolean(R));
-  const src = useAssetUrl(book, want ? o.assetId : undefined) ?? (want ? o.url : undefined);
+  const media = useAssetSrc(book, want ? o.assetId : undefined), resume = useResume(media.onError, media.onLoad);
+  const src = media.url ?? (want ? o.url : undefined);
   // a tap before the media was loaded: play once it is there (once, so a later pause stays paused)
   const playWhenReady = useRef(false);
-  useEffect(() => { if (src && playWhenReady.current) { playWhenReady.current = false; void el.current?.play(); } }, [src]);
+  useEffect(() => { if (src && playWhenReady.current) { playWhenReady.current = false; void el.current?.play().catch(() => {}); } }, [src]);
   const fmt = (s: number) => num(locale, `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
-  const toggle = () => { const a = el.current; if (!want || !a) { playWhenReady.current = true; setWant(true); return; } if (a.paused) void a.play(); else a.pause(); };
+  const toggle = () => { const a = el.current; if (!want || !a) { playWhenReady.current = true; setWant(true); return; } if (a.paused) void a.play().catch(() => {}); else a.pause(); };   // media that cannot be played (gone): the error event says so
   const style = { '--h': `${o.height}px` } as CSSProperties;
   const poster = useAssetUrl(book, o.poster);
   // whether it can be played at all: null is "no book or library has it"
   const avail = useAssetUrl(book, R ? undefined : o.assetId);
-  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', ...pr.env })}</Box>;
+  if (R) return <Box x={o.x} y={o.y} width={o.width} height={o.height} className="chalk-audio" label={p.label} id={o.id}>{R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where: 'page', onError: media.onError, ...pr.env })}</Box>;
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-audio ${avail === null && o.assetId ? 'is-missing' : ''}`} label={p.label} id={o.id}>
       {avail === null && o.assetId && <span className="chalk-card-missing">{t.notFound}</span>}
@@ -102,7 +104,8 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
         <audio ref={el} src={src} preload="metadata" loop={p.loop}
           onPlay={() => setState((s) => ({ ...s, playing: true }))} onPause={() => setState((s) => ({ ...s, playing: false }))}
           onTimeUpdate={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, time: a.currentTime })); }}
-          onLoadedMetadata={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, duration: a.duration })); }} />
+          onError={resume.onError}
+          onLoadedMetadata={(e) => { resume.onLoadedMetadata(e); const a = e.currentTarget; setState((s) => ({ ...s, duration: a.duration })); }} />
       )}
     </Box>
   );
@@ -110,18 +113,27 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
 
 /** A 3D model in <model-viewer>, loaded on first use: drag to turn, pinch or scroll to zoom. */
 export function ModelViewer({ book, o, style, where = 'page' }: { book: Book; o: EmbedObject; style: CSSProperties; where?: 'page' | 'popup' }) {
-  const src = useAssetUrl(book, o.assetId) ?? o.url;
+  const media = useAssetSrc(book, o.assetId);
+  const src = media.url ?? o.url;
   const poster = useAssetUrl(book, o.poster);
   const pr = usePresenter(), p = pr.present(o);
   const [loaded, setLoaded] = useState(false);
+  // <model-viewer> says a model failed or loaded with its own events (a custom element: listened to on the element)
+  const viewer = useRef<HTMLElement>(null);
+  const { onError: modelError, onLoad: modelLoad } = media;
+  useEffect(() => {
+    const v = viewer.current; if (!v) return;
+    v.addEventListener('error', modelError); v.addEventListener('load', modelLoad);
+    return () => { v.removeEventListener('error', modelError); v.removeEventListener('load', modelLoad); };
+  }, [loaded, src, modelError, modelLoad]);
   const R = pr.renderers.model3d;
   // <model-viewer> (and three.js) only loads when the reader draws the model itself
   useEffect(() => { if (R) return; let live = true; void import('@google/model-viewer').then(() => { if (live) setLoaded(true); }); return () => { live = false; }; }, [R]);
   return (
     <div className="chalk-live chalk-model" style={style} aria-label={p.label}>
-      {R && R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where, ...pr.env })}
+      {R && R({ object: o, src: src ?? null, poster: poster ?? null, presentation: p, where, onError: media.onError, ...pr.env })}
       {!R && loaded && src && (
-        <model-viewer src={src} poster={poster ?? undefined} camera-controls="" touch-action="pan-y" shadow-intensity="0.7" exposure="1.05"
+        <model-viewer ref={viewer} src={src} poster={poster ?? undefined} camera-controls="" touch-action="pan-y" shadow-intensity="0.7" exposure="1.05"
           environment-image="neutral" interaction-prompt="none" {...(p.autoRotate ? { 'auto-rotate': '' } : {})} style={{ width: '100%', height: '100%', background: 'transparent' }} />
       )}
       {!R && !loaded && <span className="chalk-spinner" aria-hidden />}
@@ -142,7 +154,7 @@ export function LabFrame({ book, o, style, locale, theme, storage, onProgress, o
   const wrap = useRef<HTMLDivElement>(null), frameHost = useRef<HTMLDivElement>(null);
   const host = useRef<LabHost | null>(null);
   const [ready, setReady] = useState(false);
-  const poster = useAssetUrl(book, o.poster);
+  const { url: poster, onError: posterError, onLoad: posterLoad } = useAssetSrc(book, o.poster);
   const t = strings(locale);
   const props = useRef({ onProgress, onStop }); props.current = { onProgress, onStop };
 
@@ -201,7 +213,7 @@ export function LabFrame({ book, o, style, locale, theme, storage, onProgress, o
       <div ref={frameHost} className="chalk-lab-frame" />
       {!ready && (
         <div className="chalk-lab-wait" aria-hidden>
-          {poster && <img src={poster} alt="" />}
+          {poster && <img src={poster} alt="" onError={posterError} onLoad={posterLoad} />}
           <span className="chalk-spinner" />
         </div>
       )}

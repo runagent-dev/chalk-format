@@ -155,11 +155,22 @@ export function createResolver(o: ResolverOptions = {}) {
           const url = await urlIn(s, key);
           if (!url) continue;
           const r = await gate(() => doFetch(url, { method: 'HEAD', headers: headersFor(s) }));
+          // a path an index named that is gone: its shard is forgotten (the key moved), as in `resolve`
+          if (!r.ok && s.kind === 'indexed') shards.delete(`${s.id}|${shardOf(key)}`);
           if (r.ok) { const headers = headersFor(s); return Object.keys(headers).length ? { url, from: s.id, headers } : { url, from: s.id }; }
           if (r.status >= 500) markDown(s);
         } catch { markDown(s); }
       }
       return null;
+    },
+
+    /**
+     * Forget where the indexed stores said a key is: a URL `locate` gave failed later (the store moved the key, registry-api §3.1). The
+     * next `resolve` or `locate` asks the index again.
+     */
+    forget(id: string): void {
+      const key = resolutionKey(id);
+      if (key) for (const sk of [...shards.keys()]) if (sk.endsWith(`|${shardOf(key)}`)) shards.delete(sk);
     },
 
     /** The ordered stores for a type (for diagnostics and tests). */

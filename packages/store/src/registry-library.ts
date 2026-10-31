@@ -33,10 +33,12 @@ export function registryLibrary(o: {
   // files the library adopted in place (registry-api §3.1) are not at the derived path: its public indexed store
   // (spec 1.2 §5.3) says where they are. A shard is kept a minute, as the library's own Cache-Control says.
   const shards = new Map<string, { at: number; shard: Promise<IndexShard | null> }>();
+  // shards forgotten because a URL they named failed: fetched again past the browser's cache
+  const stale = new Set<string>();
   const indexed = async (key: string) => {
     for (const s of (await allStores()).filter((d) => d.kind === 'indexed' && (d.auth ?? 'none') === 'none' && d.base)) {
       const id = `${s.id}|${shardOf(key)}`, hit = shards.get(id);
-      const shard = hit && Date.now() - hit.at < 60_000 ? hit.shard : doFetch(shardUrl(s, key)).then(async (r) => (r.ok ? indexShardSchema.parse(await r.json()) : null)).catch(() => null);
+      const shard = hit && Date.now() - hit.at < 60_000 ? hit.shard : doFetch(shardUrl(s, key), stale.delete(id) ? { cache: 'no-cache' } : {}).then(async (r) => (r.ok ? indexShardSchema.parse(await r.json()) : null)).catch(() => null);
       if (shard !== hit?.shard) shards.set(id, { at: Date.now(), shard });
       const e = (await shard)?.entries[hashPart(key)];
       if (e) return /^[a-z][a-z0-9+.-]*:/i.test(e.p) ? e.p : s.base + e.p;
@@ -63,6 +65,9 @@ export function registryLibrary(o: {
     async url(key) {
       const s = await deliveryStore();
       return s ? (await indexed(key)) ?? at(s, key) : null;
+    },
+    forget(key) {
+      for (const id of [...shards.keys()]) if (id.endsWith(`|${shardOf(key)}`)) { shards.delete(id); stale.add(id); }
     },
     async get(key) {
       const pub = await deliveryStore();

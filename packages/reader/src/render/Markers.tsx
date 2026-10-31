@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { MEDIA_ICON_SIZE, SNIP_ICON_SIZE, type EmbedObject, type LessonObject } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { kindOf, usePresenter } from '../present.js';
-import { useAssetUrl } from './assets.js';
+import { useAssetSrc, useAssetUrl } from './assets.js';
 
 /** Called with the activated element, so the reader can see how big it is on screen. */
 export type Activate = (el: HTMLElement) => void;
@@ -26,7 +26,7 @@ export function Box({ x, y, width, height, className, children, label, title, on
 export function EmbedCard({ book, o, caption, onActivate, label, notFound }: { book: Book; o: EmbedObject; caption?: string | undefined; onActivate?: Activate | undefined; label?: string | undefined;
   /** The words for media no library has; given, the card checks for it. */
   notFound?: string | undefined }) {
-  const poster = useAssetUrl(book, o.poster);
+  const { url: poster, onError: posterError, onLoad: posterLoad } = useAssetSrc(book, o.poster);
   // the media itself (a lab: its file): null means no book or library has it
   const main = useAssetUrl(book, notFound ? (o.lab?.entry ?? o.assetId) : undefined);
   const missing = notFound !== undefined && main === null && Boolean(o.lab?.entry ?? o.assetId);
@@ -34,7 +34,7 @@ export function EmbedCard({ book, o, caption, onActivate, label, notFound }: { b
   const disc = Math.min(96, o.width * 0.22, o.height * 0.3);
   return (
     <Box x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-card ${missing ? 'is-missing' : ''}`} label={missing ? `${p.label ?? label ?? ''} · ${notFound}` : (p.label ?? label)} id={o.id} kind={kindOf(o)} style={pr.accent(o)} {...(onActivate && !missing ? { onActivate } : {})}>
-      {poster && <img src={poster} alt="" draggable={false} />}
+      {poster && <img src={poster} alt="" draggable={false} onError={posterError} onLoad={posterLoad} />}
       {missing && <span className="chalk-card-missing">{notFound}</span>}
       <span className="chalk-card-glyph" style={{ width: disc, height: disc }}>{pr.glyph(o, Math.min(44, o.width * 0.1, o.height * 0.14))}</span>
       {(p.label ?? caption) && <span className="chalk-card-caption">{p.label ?? caption}</span>}
