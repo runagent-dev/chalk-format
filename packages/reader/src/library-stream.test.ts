@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string; adopted?: boolean; adoptedStore?: object } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -40,19 +40,28 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
     if (u.host === 'lib.example') {
       if (o.token && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}` && u.pathname !== '/v1/stores') return json({ error: { code: 'unauthorized', message: 'a token is needed' } }, 401);
-      if (u.pathname === '/v1/stores') return json({ items: [...(o.firstStore ? [o.firstStore] : []), { ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) }] });
+      if (u.pathname === '/v1/stores') return json({ items: [...(o.firstStore ? [o.firstStore] : []), { ...book.assetSources[0], ...(o.bearerStore ? { auth: 'bearer' } : {}), ...(o.verifyAlways ? { verify: 'always' } : {}), ...(o.storeMedia ? { media: o.storeMedia } : {}) },
+        ...(o.adopted ? [{ id: 'library-adopted', kind: 'indexed', base: 'https://lib.example/', ...o.adoptedStore }] : [])] });
+      // files adopted in place (registry-api §3.1): everything but the book item, at the book's own paths, named by the index
+      const shard = /^\/index\/([a-z2-7]{2})\.json$/.exec(u.pathname)?.[1];
+      if (shard) {
+        asked.push(`index ${shard}`);
+        const entries = Object.fromEntries([...items].filter(([key]) => o.adopted && key !== bookKey && key.slice(3, 5) === shard).map(([key, i]) => [key.slice(3), { p: adoptedAt(key), t: i.type }]));
+        return Object.keys(entries).length ? json({ v: 1, entries }) : new Response(null, { status: 404 });
+      }
       const tags = u.searchParams.getAll('tag');
       const hits = [...items].filter(([, i]) => tags.every((t) => i.tags.includes(t)));
       return json({ items: hits.map(([key, i]) => ({ key, sha256: '0'.repeat(64), type: i.type, size: i.bytes.byteLength, tags: i.tags, status: 'available', createdAt: '2026-10-30T00:00:00Z' })) });
     }
     if (o.bearerStore && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}`) return new Response(null, { status: 401 });
-    const hit = [...items].find(([key]) => at(key) === u.href);
+    const hit = [...items].find(([key]) => (o.adopted && key !== bookKey ? adoptedAt(key) : at(key)) === u.href);
     asked.push(hit ? (hit[0] === bookKey ? 'book' : hit[1].type.split('/')[1]!.replace('vnd.chalk.', '').replace('+json', '')) : u.href);
     if (hit && hit[0] === o.tamper) return new Response(enc.encode('not the picture') as unknown as BodyInit, { status: 200 });
     return hit ? new Response(hit[1].bytes as unknown as BodyInit, { status: 200, headers: { 'content-type': hit[1].type } }) : new Response(null, { status: 404 });
   }) as unknown as typeof globalThis.fetch;
   return { fetch, asked, pageKey, bookKey, put };
 }
+const adoptedAt = (key: string) => `https://cdn.example/chalk-books/demo/items/${key.slice(3)}`;
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
 describe('books in a library, in the reader', () => {
@@ -88,6 +97,32 @@ describe('books in a library, in the reader', () => {
     // an id the library cannot name goes to the host's resolver
     const withHost = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch, resolveAsset: (id) => `https://host.example/${id}` });
     expect(await withHost.assetUrl('img-1')).toBe('https://host.example/img-1');
+  });
+
+  it('a book whose pages, text and media were adopted in place: read through the library\'s indexed store, never from a derived URL that 404s', async () => {
+    const lib = await library({ adopted: true });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    expect(lib.asked.filter((a) => !a.startsWith('index '))).toEqual(['book']);
+    expect(await b.assetUrl(pictureKey)).toBe(adoptedAt(pictureKey));
+    expect(new Uint8Array((await b.assetBytes(pictureKey))!.bytes)).toEqual(picture);
+    b.want(windowAround(0, 20, 20));
+    // twenty pages: waited for, not a fixed pause (a busy machine runs every package's tests at once)
+    for (let i = 0; i < 200 && !b.lesson.pages.every((p) => b.isLoaded(p.id)); i++) await settle();
+    expect(b.lesson.pages.every((p) => b.isLoaded(p.id))).toBe(true);
+    expect(b.lesson.pages[3]!.objects[0]).toMatchObject({ type: 'image', assetId: pictureKey });
+    // every item from its adopted path; no derived URL was asked (each would 404)
+    expect(lib.asked.filter((a) => a.startsWith('https://'))).toEqual([]);
+    expect(lib.asked.filter((a) => a === 'page')).toHaveLength(20);
+  });
+
+  it('adopted media of an indexed store that asks to be verified always are drawn from checked bytes, not a bare URL', async () => {
+    const lib = await library({ adopted: true, adoptedStore: { verify: 'always' } });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    expect((await b.assetUrl(pictureKey))?.startsWith('blob:')).toBe(true);
+    b.dispose();
+    const bad = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: (await library({ adopted: true, adoptedStore: { verify: 'always' }, tamper: pictureKey })).fetch });
+    expect(await bad.assetUrl(pictureKey)).toBeNull();
+    bad.dispose();
   });
 
   it('leaves media the library has no store for to the host, for their bytes as for their URL', async () => {

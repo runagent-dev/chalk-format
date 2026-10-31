@@ -108,11 +108,14 @@ export function createResolver(o: ResolverOptions = {}) {
       try {
         const url = await urlIn(s, key);
         if (!url) continue;
+        // a path an index named that fails is forgotten with its shard: the store may have moved the key (a library's adopted file whose
+        // owner deleted one copy, registry-api §3.1), and the next resolve asks the index again
+        const stale = () => { if (s.kind === 'indexed') shards.delete(`${s.id}|${shardOf(key)}`); };
         const r = await gate(() => doFetch(url, { headers: headersFor(s) }));
-        if (r.status === 404 || r.status === 410) continue;
-        if (!r.ok) { if (r.status >= 500) markDown(s); continue; }
+        if (r.status === 404 || r.status === 410) { stale(); continue; }
+        if (!r.ok) { if (r.status >= 500) markDown(s); stale(); continue; }
         const bytes = await r.arrayBuffer();
-        if (mustVerify(s, type) && !(await verifyAssetBytes(id, new Uint8Array(bytes)))) continue;   // not what the id names: next store
+        if (mustVerify(s, type) && !(await verifyAssetBytes(id, new Uint8Array(bytes)))) { stale(); continue; }   // not what the id names: next store
         // cached once obtained: verified, or from a store the host trusts (verify 'none')
         await o.cache?.put(key, { bytes, type });
         return { bytes, type, from: s.id };

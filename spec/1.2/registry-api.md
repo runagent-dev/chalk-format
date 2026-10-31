@@ -65,6 +65,56 @@ The author's tool hashes the file once, then:
 Registering the same key again with the same `sha256` is not an error: it updates the descriptive fields
 (title, tags, …) for callers allowed to, and returns the record.
 
+### 3.1 Adopting a file in place
+
+A registry MAY serve a file that is already in its own storage at a path of someone else's choosing (a book written
+into the library's bucket by another tool), instead of a copy at the standard layout. It names the prefixes it
+adopts from (reference server: `ADOPT_PREFIXES`); without any, adopting is off.
+
+**`POST v1/assets/adopt`** (role `author`) `{ "key", "sha256", "type", "size", "path", "title"?, "filename"?,
+"tags"?, "subject"?, "license"?, "poster"?, "meta"? }` → the asset record, `status: "available"`, with the location
+`{ "store": "<the registry's store>", "path" }`.
+
+- `path` is an object path in the registry's own storage: relative (no leading `/`), no empty, `.` or `..` segment,
+  no backslash or control character (`invalid`), and under one of the registry's prefixes (`forbidden`; also
+  `forbidden` when adopting is off). It is never the standard layout's `c1/`.
+- The registry MUST check that `key` is the c1 key of `sha256`, MUST confirm the object exists with the declared
+  size (`conflict` when there is none), and MUST verify its SHA-256 by reading it inside the storage before it
+  records anything; on a mismatch it answers `verification_failed` and records nothing. It never deletes or copies
+  the object.
+- A registry whose storage is public MUST NOT adopt an object it would serve as a page (stored as HTML, JavaScript
+  or an XML document type, §7.1), answering `forbidden`: the storage serves it with the type it was written with.
+- A key may have several locations in one store: two books that hold the same file each have their own copy, and
+  adopting the second path **adds** it (verified once). Idempotent per path: adopting a key at a path it was already
+  verified at updates the descriptive fields like registering again (§3) and does not read the bytes again (the
+  reference server HEADs the path to see it is still there). A key with a copy at the standard path (uploaded) stays
+  there, with nothing read. A withdrawn key is `gone`.
+- Each owner may delete its own copy. The registry serves a location whose object is still there: the reference
+  server serves the best one while it is fresh (its own copy, else the most recently verified) and checks it again
+  with a HEAD once it is older than five minutes (on disk: every time), moving to the next one when it is gone. So
+  readers move to another book's copy within that time, and a bucket sees at most one HEAD per location per five
+  minutes.
+
+The owner of an adopted path never changes the bytes at it; readers verify what they get
+(1.2 §6.4), so a changed object is refused, not served as the key.
+
+Every way the registry gives out bytes (§7, §7.1) finds them at the asset's location, not only at the standard
+path. Readers of a public registry find adopted files through an **indexed store** (1.2 §5.3) the registry names
+in `GET v1/stores` after its derived store: the derived URL answers `404` for an adopted key, and the index names
+it. The reference server serves the index at `GET {server}/index/{h0}.json`, listing only keys whose location is
+not the standard path, each with `p` an absolute URL under its public address, `s` and `t`; `404` for an empty
+shard; `Cache-Control: public, max-age=60` and an `ETag`.
+
+```json
+{ "items": [
+  { "id": "library", "kind": "derived", "template": "https://assets.example.org/c1/{h0}/{h1}/{h}" },
+  { "id": "library-adopted", "kind": "indexed", "base": "https://library.example.org/" }
+] }
+```
+
+A private registry (§7.1) needs no index: its bearer store answers from the location. The reference server
+neither names nor serves an index then.
+
 ## 4. Reading
 
 - **`GET v1/assets/{key}`** → the asset record, or `not_found`.
@@ -152,6 +202,10 @@ How tokens are issued is in §10; a token "may read" when it has the `reader` ro
 **`POST v1/assets/{key}/withdraw`** `{ "reason" }` (privileged) sets `status: "withdrawn"`. From then on the
 registry's API store answers `410 Gone` for the key, and stores it controls SHOULD delete the bytes. The
 record is kept, so the same key cannot be uploaded again by mistake (`gone`).
+
+An adopted file (§3.1) belongs to whoever wrote it: withdrawing removes it from every store and index the registry
+answers for, but the registry MUST NOT delete the object at its adopted path (only a copy it made itself, at the
+standard path). Its owner deletes it if the bytes must go.
 
 ## 9. Versioning
 

@@ -41,6 +41,14 @@ export const registerRequestSchema = z.object({
   subject: z.string().optional(), license: z.string().optional(), filename: z.string().optional(),
   poster: key.optional(), renditions: z.array(key).optional(),
 });
+/**
+ * Adopting a file in place (registry-api §3.1): an object already in the library's own bucket, under a prefix the
+ * library allows; the registry reads it once to verify it and serves it from there. `path` is relative to the
+ * bucket: no leading `/`, no empty, `.` or `..` segment, no backslash or control character.
+ */
+export const adoptPathSchema = z.string().min(1).max(1024)
+  .refine((p) => !p.startsWith('/') && !p.includes('\\') && ![...p].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f) && p.split('/').every((s) => s !== '' && s !== '.' && s !== '..'), 'not a path inside the bucket');
+export const adoptRequestSchema = registerRequestSchema.omit({ renditions: true }).extend({ path: adoptPathSchema });
 
 export const searchQuerySchema = z.object({
   q: z.string().optional(), type: z.array(z.string()).optional(), subject: z.string().optional(), tag: z.array(z.string()).optional(),
@@ -65,6 +73,7 @@ export const errorSchema = z.object({ error: z.object({ code: z.string(), messag
 export type AssetRecord = z.infer<typeof assetRecordSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
+export type AdoptRequest = z.infer<typeof adoptRequestSchema>;
 
 export class RegistryError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) { super(message); this.name = 'RegistryError'; }
@@ -105,6 +114,8 @@ export function createRegistryClient(base: string, o: {
     current: (tags: string[], { signal, ...o }: { require?: string[]; type?: string; signal?: AbortSignal } = {}) =>
       call('v1/assets/current', currentResponseSchema, { method: 'POST', body: JSON.stringify(currentRequestSchema.parse({ tags, ...o })), ...(signal ? { signal } : {}) }),
     stores: () => call('v1/stores', storesResponseSchema),
+    /** Adopt a file already in the library's bucket at `path` (registry-api §3.1): verified by the library, never copied. */
+    adopt: (req: AdoptRequest) => post('v1/assets/adopt', assetRecordSchema, adoptRequestSchema.parse(req)),
     setBookAssets: (bookId: string, keys: string[]) => call(`v1/books/${encodeURIComponent(bookId)}/assets`, z.unknown(), { method: 'PUT', body: JSON.stringify({ keys }) }),
     /** Hash, check, upload if missing, register: the record of the asset (new or existing). */
     async add(bytes: Uint8Array, info: { type: string; filename?: string } & Omit<RegisterRequest, 'key' | 'sha256' | 'size' | 'type'>): Promise<AssetRecord> {

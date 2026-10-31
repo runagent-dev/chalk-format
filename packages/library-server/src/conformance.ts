@@ -80,6 +80,12 @@ export async function checkLibrary(url: string, opts: CheckOptions): Promise<Che
       body: JSON.stringify({ key: 'c1:' + 'a'.repeat(25) + 'a', sha256, type: 'image/png', size: bytes.byteLength }) });
     return r.status === 400;
   });
+  // §3.1 is optional (404/405: not offered; 403: not enabled), but no registry may adopt a path outside its bucket
+  await step('adopting never takes a path outside the bucket', async () => {
+    const r = await f(`${url.replace(/\/?$/, '/')}v1/assets/adopt`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${o.token}` },
+      body: JSON.stringify({ key, sha256, type: 'image/png', size: bytes.byteLength, path: '../outside' }) });
+    return [400, 403, 404, 405].includes(r.status) ? true : `answered ${r.status}`;
+  });
   await step('bytes that are not what the key names are refused, and removed', async () => {
     const real = new TextEncoder().encode(`announced ${word}`), fake = new TextEncoder().encode(`different ${word}`);
     const ks = await assetKeyAndSha256(real);

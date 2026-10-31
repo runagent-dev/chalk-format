@@ -11,7 +11,8 @@ import type { Caller } from './auth/roles.js';
 import { mountAuthRoutes, type AuthRouteOptions } from './auth/routes.js';
 import { createAuth, type AuthOptions } from './auth/service.js';
 import type { Db } from './db.js';
-import { registerDelivery } from './delivery.js';
+import { adoptedStore, adoptPrefixes, assetAt, registerAdopt } from './adopt.js';
+import { baseOf, registerDelivery, type DeliveryOptions } from './delivery.js';
 import { servedType, type DiskStorage, type Storage } from './storage.js';
 
 /**
@@ -41,6 +42,8 @@ export type LibraryOptions = {
   types?: string[];
   /** Browser origins allowed to call the API (authoring tools). Default any. */
   origins?: string[];
+  /** Where in its own bucket the library adopts files in place (ADOPT_PREFIXES, registry-api §3.1). Default none: adopting is off. */
+  adoptPrefixes?: string[];
 };
 
 export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json',
@@ -103,7 +106,12 @@ export function createLibraryApp(o: LibraryOptions) {
 
   registerDelivery(app, o); // file bytes for signed-in readers (§7.1); registered first: a private library's /v1/stores and /files/* are its own
   // ---- §7 stores for readers: public, cacheable ----
-  app.get('/v1/stores', (c) => { c.header('Cache-Control', 'public, max-age=300'); return c.json({ items: [delivery] }); });
+  // after the derived store, the index of files adopted in place (adopt.ts): a reader tries it when the derived path 404s
+  app.get('/v1/stores', async (c) => {
+    const adopted = await adoptedStore(adopting, c);
+    c.header('Cache-Control', adopted && !(o as DeliveryOptions).serverUrl ? 'private, max-age=300' : 'public, max-age=300');
+    return c.json({ items: adopted ? [delivery, adopted] : [delivery] });
+  });
 
   // ---- §3 adding ----
   app.post('/v1/assets/check', async (c) => {
@@ -159,18 +167,24 @@ export function createLibraryApp(o: LibraryOptions) {
       await ensureStore();
       await db.query(`INSERT INTO assets (key, sha256, type, size, status, uploaded_by) VALUES ($1, $2, $3, $4, 'available', $5)
         ON CONFLICT (key) DO UPDATE SET status = 'available', type = EXCLUDED.type, size = EXCLUDED.size`, [d.key, d.sha256, d.type, d.size, c.get('caller')!.user]);
-      await db.query('INSERT INTO locations (key, store, path, verified_at) VALUES ($1, $2, $3, now()) ON CONFLICT (key, store) DO UPDATE SET verified_at = now()', [d.key, 'library', path]);
+      await db.query('INSERT INTO locations (key, store, path, verified_at) VALUES ($1, $2, $3, now()) ON CONFLICT (key, store, path) DO UPDATE SET verified_at = now(), missing = false', [d.key, 'library', path]);
     }
-    // the descriptive fields: set on registering, updated on registering again
+    await describe(d);
+    row = await rowOf(d.key);
+    return c.json(await record(row!, true));
+  });
+  // the descriptive fields: set on registering (or adopting), updated on registering again
+  const describe = async (d: z.infer<typeof registerRequestSchema>) => {
     await db.query(`UPDATE assets SET title = COALESCE($2, title), filename = COALESCE($3, filename), tags = COALESCE($4, tags), subject = COALESCE($5, subject),
       license = COALESCE($6, license), width = COALESCE($7, width), height = COALESCE($8, height), duration = COALESCE($9, duration), pages = COALESCE($10, pages),
       poster = COALESCE($11, poster), updated_at = now() WHERE key = $1`,
     [d.key, d.title ?? null, d.filename ?? null, d.tags ?? null, d.subject ?? null, d.license ?? null, d.meta?.width ?? null, d.meta?.height ?? null, d.meta?.duration ?? null, d.meta?.pages ?? null,
       d.poster && (await rowOf(d.poster)) ? d.poster : null]);
     for (const r of d.renditions ?? []) if (await rowOf(r)) await db.query('INSERT INTO renditions (primary_key, rendition) VALUES ($1, $2) ON CONFLICT DO NOTHING', [d.key, r]);
-    row = await rowOf(d.key);
-    return c.json(await record(row!, true));
-  });
+  };
+  const adopting = { db, storage, prefixes: adoptPrefixes(o.adoptPrefixes), publicUrl: o.publicUrl, publicRead: o.publicRead !== false, maxBytes, types, fail, ensureStore, describe,
+    recordOf: async (key: string) => record((await rowOf(key))!, true), sha256Of, base: (c: Context) => baseOf(c, (o as DeliveryOptions).serverUrl) };
+  registerAdopt(app, adopting);
 
   // ---- §4 reading ----
   app.get('/v1/assets/:key', async (c) => {
@@ -252,7 +266,7 @@ export function createLibraryApp(o: LibraryOptions) {
     const used = await db.query('SELECT 1 FROM book_assets WHERE key = $1 LIMIT 1', [key]);
     const reason = ((await c.req.json().catch(() => ({}))) as { reason?: string }).reason ?? null;
     await db.query("UPDATE assets SET status = 'withdrawn', withdrawn_reason = $2, updated_at = now() WHERE key = $1", [key, reason]);
-    await storage.remove(standardPath(key));
+    await storage.remove(standardPath(key)); // only the library's own copy: a file adopted in place belongs to whoever wrote it (adopt.ts)
     return c.json({ key, status: 'withdrawn', usedByBooks: used.length > 0 });
   });
 
@@ -260,8 +274,8 @@ export function createLibraryApp(o: LibraryOptions) {
   app.get('/files/*', async (c) => {
     if (!disk) return c.notFound();
     const path = decodeURIComponent(c.req.path.slice('/files/'.length));
-    if (!/^c1\/[a-z2-7]{2}\/[a-z2-7]{2}\/[a-z2-7]{25}[aeimquy4]$/.test(path)) return c.notFound();
-    const row = await rowOf(`c1:${path.split('/').pop()}`);
+    // the standard layout, or a file adopted in place: the asset recorded at this path
+    const row = await assetAt(db, path);
     const file = row?.status === 'available' ? disk.file(path) : null;
     if (!file) return c.body(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
     const size = statSync(file).size, range = /bytes=(\d*)-(\d*)/.exec(c.req.header('range') ?? '');
