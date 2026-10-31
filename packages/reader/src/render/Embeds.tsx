@@ -102,7 +102,7 @@ export function AudioEmbed({ book, o, locale }: { book: Book; o: EmbedObject; lo
       </div>
       {src && (
         <audio ref={el} src={src} preload="metadata" loop={p.loop}
-          onPlay={() => { resume.onPlay(); setState((s) => ({ ...s, playing: true })); }} onPause={() => { resume.onPause(); setState((s) => ({ ...s, playing: false })); }}
+          onPlay={() => { resume.onPlay(); setState((s) => ({ ...s, playing: true })); }} onPause={(e) => { resume.onPause(e); setState((s) => ({ ...s, playing: false })); }}
           onTimeUpdate={(e) => { const a = e.currentTarget; setState((s) => ({ ...s, time: a.currentTime })); }}
           onError={resume.onError}
           onLoadedMetadata={(e) => { resume.onLoadedMetadata(e); const a = e.currentTarget; setState((s) => ({ ...s, duration: a.duration })); }} />

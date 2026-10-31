@@ -90,7 +90,8 @@ export function useResume(onError: () => void, onLoad: () => void) {
   const paused = useRef(false);
   return {
     onPlay: () => { paused.current = false; },
-    onPause: () => { paused.current = true; },
+    // a pause while the URL is being renewed counts too: the renewed media do not start
+    onPause: (e: { currentTarget: HTMLMediaElement }) => { paused.current = true; if (at.current) { at.current.playing = false; e.currentTarget.autoplay = false; } },
     onError: (e: { currentTarget: HTMLMediaElement }) => {
       const m = e.currentTarget;
       // playing, or asked to play (a tap sets autoplay) and failed before it started; a player the student paused stays paused under its
