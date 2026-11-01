@@ -72,12 +72,12 @@ Where a question **appeared**: a board's exam, a school's or college's test pape
 
 | Field | | Meaning |
 |---|---|---|
-| `kind` | required | `board_exam` (a board's public exam) or `institution_exam` (a school's or college's own test paper). Later versions may add kinds: lower-case letters, digits and `_` |
+| `kind` | required | `board_exam` (a board's public exam) or `institution_exam` (a school's or college's own test paper). Later versions may add kinds: a lower-case letter, then up to 39 lower-case letters, digits and `_` |
 | `code` | required | The tag: 2 to 8 of `A`–`Z` and `0`–`9`, such as `DHA` or `VNSC`. A publisher gives each board or school one code and keeps it |
 | `name` | required | The full name, as text (§4, without Markdown): a string, or one per language |
-| `year` | | The year of the paper, an integer; `null` (or no `year`) when it is not known |
+| `year` | | The year of the paper, an integer from 1900 to 2200; `null` (or no `year`) when it is not known |
 
-- One entry per paper: the same `kind`, `code` and `year` appear once. A question set by two boards in the same year has two entries.
+- At most 100 entries. One entry per paper: the same `kind`, `code` and `year` appear once. A question set by two boards in the same year has two entries.
 - A writer SHOULD list the newest year first, and entries without a year last. A reader may sort them again.
 - A reader MUST NOT reject a manifest because of a `kind` it does not know: it shows the `code`, with the `name` on hover.
 - `provenance` is not `source`. `source` is the book the publisher copied the question from, and it may be left out; a paper in
