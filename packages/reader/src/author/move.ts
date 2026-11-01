@@ -88,8 +88,10 @@ export function follow(sel: At, moves: readonly Moved[], has: (at: At, sig?: str
       for (let i = mine.length - 1; i >= 0; i--) {
         const m = mine[i]!;
         const other = key(m.from) === key(cur) ? m.to : key(m.to) === key(cur) ? m.from : null;
-        if (!other || seen.has(key(other))) continue;
+        if (!other) continue;
+        // each move checks its own end, even one already reached by another move (the object differs from move to move)
         if (has(other, m.sig)) return other;
+        if (seen.has(key(other))) continue;
         seen.add(key(other));
         next.push(other);
       }

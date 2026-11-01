@@ -148,6 +148,13 @@ describe('the selection follows a moved object', () => {
     expect(follow(at('p3', 'x'), moves, has)).toEqual(at('p1', 'x'));
   });
 
+  it('back and forth between two pages with a change between (A to B, resize, B to A, all undone)', () => {
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x'), 'small'), mv(at('p2', 'x'), at('p1', 'x'), 'big'));
+    // the selection was on p1 (after the second move); all undone, the object is on p1 again, small: the older move knows it
+    const has = (q: At, sig?: string) => q.pageId === 'p1' && q.id === 'x' && (sig === undefined || sig === 'small');
+    expect(follow(at('p2', 'x'), moves, has)).toEqual(at('p1', 'x'));
+  });
+
   it('through a renamed id, and back again on redo', () => {
     const moves = line(mv(at('p1', 'x'), at('p2', 'x_new')));
     expect(follow(at('p2', 'x_new'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
