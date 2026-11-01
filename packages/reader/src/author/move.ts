@@ -44,3 +44,32 @@ export function relocate<T extends LessonObject>(o: T, from: Size, to: Size): T 
 export function freeIdOn<T extends LessonObject>(page: Pick<LessonPage, 'objects'> | undefined, o: T): T {
   return page?.objects.some((x) => x.id === o.id) ? { ...o, id: generateId(o.type) } : o;
 }
+
+/** An object at its place: its page and its id there. */
+export type At = { pageId: string; id: string };
+/** A move made in this session: the object was at `from`, and is at `to` since. */
+export type Moved = { from: At; to: At };
+
+/**
+ * Where the selected object is now, when it is no longer where the selection says (a move, or the undo or redo of one): the selection is
+ * followed along the moves made in this session, newest first, from either end, until a place that `has` the object. Never a guess by id
+ * alone (an id is unique only within its page: another page's object with the same id is another object). Null when it is gone.
+ */
+export function follow(sel: At, moves: readonly Moved[], has: (at: At) => boolean): At | null {
+  const same = (a: At, b: At) => a.pageId === b.pageId && a.id === b.id;
+  const seen: At[] = [sel];
+  let cur = sel;
+  for (let step = 0; step <= moves.length; step++) {
+    if (has(cur)) return cur;
+    let next: At | null = null;
+    for (let i = moves.length - 1; i >= 0 && !next; i--) {
+      const m = moves[i]!;
+      const other = same(m.from, cur) ? m.to : same(m.to, cur) ? m.from : null;
+      if (other && !seen.some((s) => same(s, other))) next = other;
+    }
+    if (!next) return null;
+    seen.push(next);
+    cur = next;
+  }
+  return null;
+}

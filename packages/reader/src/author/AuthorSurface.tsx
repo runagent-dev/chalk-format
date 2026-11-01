@@ -56,10 +56,11 @@ function surfaceAt(viewer: HTMLElement | null, x: number, y: number): HTMLElemen
  * the pages above and below in the continuous view, the facing page in a spread; near the edge of the view it scrolls), the corner handle
  * resizes it, files dropped on the page are placed where they land. Edits go through `apply`; one gesture is one undo.
  */
-export function AuthorSurface({ page, scale, selected, onSelect, apply, onDropFiles, labels, drag, pageOf }: {
+export function AuthorSurface({ page, scale, selected, onSelect, onCarried, apply, onDropFiles, labels, drag, pageOf }: {
   page: LessonPage; scale: number; selected: string | null;
-  /** Select an object (null: nothing); `on` names its page when that is not this one (it was carried onto another). */
-  onSelect: (id: string | null, on?: string) => void;
+  onSelect: (id: string | null) => void;
+  /** The dragged object was carried from one page (and id) onto another: the selection goes with it. */
+  onCarried: (from: { pageId: string; id: string }, to: { pageId: string; id: string }) => void;
   apply: (fn: (l: Lesson) => Lesson, gesture?: string) => void;
   onDropFiles: (files: File[], at: Point) => void;
   labels: { resize: string; drop: string };
@@ -126,9 +127,9 @@ export function AuthorSurface({ page, scale, selected, onSelect, apply, onDropFi
     const landing = freeIdOn(pageOf(to), obj);
     s.placed = { obj: landing, size };
     apply(edit.move(s.on, to, landing, obj.id), s.id);
+    onCarried({ pageId: s.on, id: obj.id }, { pageId: to, id: landing.id });
     s.orig = { ...s.orig, id: landing.id };
     s.on = to;
-    onSelect(landing.id, to);
     try { target.setPointerCapture(s.pointer); } catch { /* the pointer is already up */ }
   };
 

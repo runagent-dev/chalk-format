@@ -22,7 +22,7 @@ import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface, type Drag } from './author/AuthorSurface.js';
-import { boxOf, freeIdOn, relocate } from './author/move.js';
+import { boxOf, follow, freeIdOn, relocate, type Moved } from './author/move.js';
 import { InsertMenu } from './author/InsertMenu.js';
 import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
 import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, videoPoster, type MediaKind } from './author/insert.js';
@@ -266,15 +266,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const book = useMemo(() => withLibraries(authoringOn ? au.book : original, libs, lookup), [authoringOn, au.book, original, libs, lookup]);
   const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
-  // the selection follows its object to another page (a drag across pages, "Move to page", or the undo of either): found by its id, on the
-  // nearest page that has it (an id is unique only within its page)
+  // the selection follows its object to another page (a drag across pages, "Move to page", or the undo or redo of either), along the moves
+  // made in this session: never to another object that only shares its id
+  const moves = useRef<Moved[]>([]);
   const sel = useMemo(() => {
-    if (!selState || pages.find((p) => p.id === selState.pageId)?.objects.some((o) => o.id === selState.id)) return selState;
-    const was = pages.findIndex((p) => p.id === selState.pageId);
-    let now = -1;
-    pages.forEach((p, i) => { if (p.objects.some((o) => o.id === selState.id) && (now < 0 || Math.abs(i - was) < Math.abs(now - was))) now = i; });
-    return now >= 0 ? { pageId: pages[now]!.id, id: selState.id } : selState;
+    if (!selState) return null;
+    const has = (at: { pageId: string; id: string }) => !!pages.find((p) => p.id === at.pageId)?.objects.some((o) => o.id === at.id);
+    return has(selState) ? selState : (follow(selState, moves.current, has) ?? selState);
   }, [selState, pages]);
+  const recordMove = useCallback((from: { pageId: string; id: string }, to: { pageId: string; id: string }) => {
+    moves.current = [...moves.current.slice(-199), { from, to }];
+    setSel(to);
+  }, []);
   // the drag in progress, shared by every page (an object can be carried from one page onto another)
   const drag = useRef<Drag | null>(null);
   const lessonNow = useRef(au.lesson); lessonNow.current = au.lesson;
@@ -367,9 +370,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     if (!from || !to || !o || to.id === from.id) return;
     const there = freeIdOn(to, relocate(o, getPageSize(from), getPageSize(to))), b = boxOf(there);
     auApply(edit.move(from.id, to.id, there, o.id));
-    if (there.id !== o.id) setSel({ pageId: to.id, id: there.id });
+    recordMove({ pageId: from.id, id: o.id }, { pageId: to.id, id: there.id });
     viewer.current?.reveal(i, b.x + b.width / 2, b.y);
-  }, [sel, auLesson, auApply]);
+  }, [sel, auLesson, auApply, recordMove]);
 
 
   useEffect(() => {
@@ -777,12 +780,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     <div style={{ display: 'contents' }} onContextMenu={(e) => openInsertMenu(e, pg, scale)}>
       {authorTool === 'select'
         ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
-            onSelect={(id, on) => setSel(id ? { pageId: on ?? pg.id, id } : null)} apply={au.apply} pageOf={pageOf}
+            onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} onCarried={recordMove} apply={au.apply} pageOf={pageOf}
             onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} drag={drag} />
         : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={strings(authorLocale).textPrompt} />}
       {addAt?.pageId === pg.id && <span className="chalk-author-target" aria-hidden style={{ left: addAt.x, top: addAt.y, '--s': scale } as CSSProperties} />}
     </div>
-  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt, pageOf]);
+  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt, pageOf, recordMove]);
   // + in the rail, or the right-click menu (with the page point it was opened at): that kind of media, with its options in the sidebar
   const pickMedia = useCallback((kind: MediaKind, at?: { pageId: string; x: number; y: number }) => { setAuthorToolState('select'); setSel(null); setAdding(kind); setAddAt(at ? { ...at, from: page } : null); }, [page]);
   // every opening sets what the picker offers (a cancelled one never reports back, so nothing is left narrowed)

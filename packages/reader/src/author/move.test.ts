@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createPatch } from '@chalk-format/container';
 import { MEDIA_ICON_SIZE, type Lesson, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { edit } from '../annotate/state.js';
-import { KEEP_ON_PAGE, boxOf, freeIdOn, placeAt, relocate } from './move.js';
+import { KEEP_ON_PAGE, boxOf, follow, freeIdOn, placeAt, relocate, type At } from './move.js';
 
 const page = (id: string, objects: LessonObject[], over: Record<string, unknown> = {}) => ({ id, title: id, background: { type: 'blank' }, objects, ...over }) as LessonPage;
 const lesson = (pages: LessonPage[]): Lesson => ({ id: 'b', title: 'B', locale: 'bn', pages, snipPages: [], createdAt: '', updatedAt: '' }) as Lesson;
@@ -99,5 +99,30 @@ describe('where a moved object goes', () => {
     // bigger than the page: its top left corner
     const big = { ...video, width: 1000, height: 1200 } as LessonObject;
     expect(relocate(big, size, { width: 600, height: 800 })).toMatchObject({ x: 0, y: 0 });
+  });
+});
+
+describe('the selection follows a moved object', () => {
+  const at = (pageId: string, id: string): At => ({ pageId, id });
+  const where = (...places: At[]) => (a: At) => places.some((p) => p.pageId === a.pageId && p.id === a.id);
+
+  it('never to another object that only shares its id', () => {
+    // x on p1 moved to p3; another x sits on p2: undoing the move leads back to p1, not to p2
+    const moves = [{ from: at('p1', 'x'), to: at('p3', 'x') }];
+    expect(follow(at('p3', 'x'), moves, where(at('p1', 'x'), at('p2', 'x')))).toEqual(at('p1', 'x'));
+    // with no move made, an object gone from its place is gone (no guess by id)
+    expect(follow(at('p1', 'x'), [], where(at('p2', 'x')))).toBeNull();
+  });
+
+  it('through a renamed id, and back again on redo', () => {
+    const moves = [{ from: at('p1', 'x'), to: at('p2', 'x_new') }];
+    expect(follow(at('p2', 'x_new'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
+    expect(follow(at('p1', 'x'), moves, where(at('p2', 'x_new')))).toEqual(at('p2', 'x_new'));
+  });
+
+  it('along a drag that crossed several pages, undone as one step', () => {
+    const moves = [{ from: at('p1', 'x'), to: at('p2', 'x') }, { from: at('p2', 'x'), to: at('p3', 'x') }];
+    expect(follow(at('p3', 'x'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
+    expect(follow(at('p3', 'x'), moves, where())).toBeNull();
   });
 });
