@@ -38,6 +38,33 @@ describe('question manifests (spec 1.7)', () => {
     expect(questionStem(base({ stem: { en: 'Hello' } }), 'bn')).toBe('Hello');
   });
 
+  describe('provenance (§2.1)', () => {
+    const board = { kind: 'board_exam', code: 'DHA', name: 'ঢাকা বোর্ড', year: 2023 };
+    const school = { kind: 'institution_exam', code: 'VNSC', name: { bn: 'ভিকারুননিসা নূন স্কুল এন্ড কলেজ, ঢাকা', en: 'Viqarunnisa Noon School & College, Dhaka' }, year: null };
+    it('accepts board and school papers, a year or null, a name in one language or many', () => {
+      const m = base({ provenance: [board, school] });
+      expect(m.provenance).toEqual([board, school]);
+      expect(checkQuestion(m)).toEqual([]);
+      expect(questionManifestSchema.safeParse({ ...m, provenance: [{ kind: 'board_exam', code: 'RAJ', name: 'রাজশাহী বোর্ড' }] }).success).toBe(true); // no year: not known
+    });
+    it('accepts a kind it does not know (readers show its code)', () => {
+      expect(questionManifestSchema.safeParse({ ...base(), provenance: [{ ...board, kind: 'olympiad' }] }).success).toBe(true);
+    });
+    it('refuses a code that is not 2 to 8 capitals and digits, a missing name, a year that is not a whole number', () => {
+      for (const bad of [{ code: 'D' }, { code: 'dha' }, { code: 'TOOLONGXX' }, { code: 'ঢা' }, { code: 'DH-A' }, { name: undefined }, { year: 2023.5 }, { year: '2023' }, { kind: 'Board' }]) {
+        expect(questionManifestSchema.safeParse({ ...base(), provenance: [{ ...board, ...bad }] }).success, JSON.stringify(bad)).toBe(false);
+      }
+    });
+    it('keeps fields of an entry it does not know', () => {
+      const m = base({ provenance: [{ ...board, paper: '1st' }] });
+      expect((m.provenance![0] as Record<string, unknown>).paper).toBe('1st');
+    });
+    it('says when the same paper is listed twice', () => {
+      expect(checkQuestion(base({ provenance: [board, board] }))).toEqual(['provenance board_exam DHA 2023: the same paper twice']);
+      expect(checkQuestion(base({ provenance: [board, { ...board, year: 2022 }] }))).toEqual([]);
+    });
+  });
+
   describe('checkQuestion', () => {
     it('a multiple-choice question has two or more options and at most one marked correct', () => {
       expect(checkQuestion(mcq([1]))).toEqual([]);

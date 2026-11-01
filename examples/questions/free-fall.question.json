@@ -13,5 +13,10 @@
   ],
   "marks": 10, "difficulty": 3,
   "subject": "physics", "classes": ["9", "10"], "tags": ["motion", "free fall"],
+  "provenance": [
+    { "kind": "board_exam", "code": "DHA", "name": { "bn": "ঢাকা বোর্ড", "en": "Dhaka Board" }, "year": 2023 },
+    { "kind": "board_exam", "code": "RAJ", "name": { "bn": "রাজশাহী বোর্ড", "en": "Rajshahi Board" }, "year": 2019 },
+    { "kind": "institution_exam", "code": "VNSC", "name": "ভিকারুননিসা নূন স্কুল এন্ড কলেজ, ঢাকা", "year": null }
+  ],
   "license": "CC-BY-4.0", "authors": ["PathshalaX"]
 }
