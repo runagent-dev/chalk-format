@@ -61,19 +61,23 @@ export function sigOf(o: LessonObject): string {
  * Where the selected object is now, when it is no longer where the selection says (a move, or the undo or redo of one): the places it was
  * moved between in this session, searched outward from the selection (nearest first, newer moves first among equals) for one that `has`
  * the object. Never a guess by id alone (an id is unique only within its page: another page's object with the same id is another object):
- * a place reached through a move must hold the object that move moved (`has` gets its `sig`), not another one that came to that page and id.
- * Null when it is gone.
+ * only the moves of the one object the selection last moved with are walked (the newest move that touches the selection says which: its
+ * `sig`), and a place reached must hold that object (`has` gets the `sig`), not another one that came to that page and id. Null when it is
+ * gone.
  */
 export function follow(sel: At, moves: readonly Moved[], has: (at: At, sig?: string) => boolean): At | null {
   const key = (a: At) => `${a.pageId}\u0000${a.id}`;
   const seen = new Set([key(sel)]);
   if (has(sel)) return sel;
+  const last = [...moves].reverse().find((m) => key(m.from) === key(sel) || key(m.to) === key(sel));
+  if (!last) return null;
+  const mine = moves.filter((m) => m.sig === last.sig);
   let ring: At[] = [sel];
   while (ring.length) {
     const next: At[] = [];
     for (const cur of ring) {
-      for (let i = moves.length - 1; i >= 0; i--) {
-        const m = moves[i]!;
+      for (let i = mine.length - 1; i >= 0; i--) {
+        const m = mine[i]!;
         const other = key(m.from) === key(cur) ? m.to : key(m.to) === key(cur) ? m.from : null;
         if (!other || seen.has(key(other))) continue;
         if (has(other, m.sig)) return other;

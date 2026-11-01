@@ -128,6 +128,16 @@ describe('the selection follows a moved object', () => {
     expect(sigOf({ ...video, width: 1 } as LessonObject)).not.toBe(sigOf(video));
   });
 
+  it('only along the moves of the one object: never across to another that passed through the same place', () => {
+    // A (sig a) dragged p1 to p2 to p3; B (sig b), same id, moved p4 to p2; both undone: the selection on p3 finds A on p1, never B on p4
+    const moves = [mv(at('p1', 'x'), at('p2', 'x'), 'a'), mv(at('p2', 'x'), at('p3', 'x'), 'a'), mv(at('p4', 'x'), at('p2', 'x'), 'b')];
+    const objects = new Map([['p1 x', 'a'], ['p4 x', 'b']]);
+    const has = (q: At, sig?: string) => objects.has(`${q.pageId} ${q.id}`) && (sig === undefined || objects.get(`${q.pageId} ${q.id}`) === sig);
+    expect(follow(at('p3', 'x'), moves, has)).toEqual(at('p1', 'x'));
+    objects.delete('p1 x');
+    expect(follow(at('p3', 'x'), moves, has)).toBeNull();
+  });
+
   it('through a renamed id, and back again on redo', () => {
     const moves = [mv(at('p1', 'x'), at('p2', 'x_new'))];
     expect(follow(at('p2', 'x_new'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
