@@ -30,7 +30,9 @@ const idOf = (v: string | undefined) => v?.toLowerCase();
 const by = z.string().min(1).max(200);
 const role = z.enum(ROLES);
 const scope = z.enum(SCOPES);
-const questionType = z.string().min(1).max(40).optional();
+/** A question's kind as the writer names it (`mcq`, `cq`, …): a plain lower-case name, so it is safe as a key of the counts it is grouped by. */
+const TYPE_NAME = /^[a-z][a-z0-9_]{0,39}$/;
+const questionType = z.string().regex(TYPE_NAME).optional();
 const rect = z.object({ x: z.number(), y: z.number(), w: z.number(), fs: z.number() });
 const lineIn = z.object({
   key: z.string().min(1).max(300), pageId: z.string().min(1).max(200), pageNo: z.number().int().min(0), idx: z.number().int().min(0), block: z.number().int().min(0),
@@ -53,7 +55,7 @@ const importSchema = z.object({
   lines: z.array(lineIn.extend({ id: uuid, retiredAt: z.string().nullable().optional() })).max(200_000),
   links: z.array(z.object({
     id: uuid, questionId: uuid, lineId: uuid, role: z.string().min(1).max(40), scope: z.string().min(1).max(40), method: z.string().min(1).max(20), status: z.enum(STATUSES),
-    score: z.number().nullable().optional(), rationale: z.string().nullable().optional(), questionType: z.string().nullable().optional(),
+    score: z.number().nullable().optional(), rationale: z.string().nullable().optional(), questionType: z.string().regex(TYPE_NAME).nullable().optional(),
     reviewedBy: z.string().nullable().optional(), reviewedAt: z.string().nullable().optional(), createdAt: z.string().optional(),
   })).max(500_000),
 });
@@ -83,6 +85,16 @@ const retired = () => new HighlightError(409, 'conflict', 'that line is no longe
  * canonical form (lower case, as Postgres prints a uuid), so two spellings of one id share the lock.
  */
 const lockQuestion = (q: Query, id: string) => q(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`chalk-highlights:q:${id.toLowerCase()}`]);
+
+/**
+ * Locks every question with a link on these lines, in id order (so two bulk changes never wait on each other crosswise), and gives their ids:
+ * a bulk change then touches only those questions' links.
+ */
+async function lockQuestionsOf(q: Query, lineIds: string[]): Promise<string[]> {
+  const ids = (await q<{ id: string }>(`SELECT DISTINCT question_id::text AS id FROM book_links WHERE line_id = ANY($1::uuid[]) ORDER BY 1`, [lineIds])).map((r) => r.id);
+  for (const id of ids) await lockQuestion(q, id);
+  return ids;
+}
 
 async function linkView(q: Query, id: string) {
   return (await q(`SELECT ${LINK_COLS} ${LINKS_FROM} WHERE k.id = $1`, [id]))[0]!;
@@ -163,20 +175,23 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
       `SELECT ${LINE_COLS} FROM book_lines l WHERE l.book = $1 AND l.page_no = ANY($2::int[]) AND l.retired_at IS NULL ORDER BY l.page_no, l.idx`, [book, pages]);
     const links = await db.query<{ lineId: string; status: string; type: string | null }>(
       `SELECT k.line_id AS "lineId", k.status, k.question_type AS type ${LINKS_FROM} WHERE k.book = $1 AND l.page_no = ANY($2::int[]) AND l.retired_at IS NULL AND ${statusFilter(c)}`, [book, pages]);
-    const byLine = new Map<string, { links: number; suggested: number; typeCounts: Record<string, { confirmed: number; suggested: number }> }>();
+    // the kinds are counted in a Map and only then made an object (Object.fromEntries defines own keys), so no kind can reach a prototype
+    const byLine = new Map<string, { links: number; suggested: number; types: Map<string, { confirmed: number; suggested: number }> }>();
     for (const k of links) {
-      const s = byLine.get(k.lineId) ?? { links: 0, suggested: 0, typeCounts: {} };
+      const s = byLine.get(k.lineId) ?? { links: 0, suggested: 0, types: new Map() };
       s.links++;
       if (k.status === 'suggested') s.suggested++;
       if (k.type) {
-        const t = (s.typeCounts[k.type] ??= { confirmed: 0, suggested: 0 });
+        const t = s.types.get(k.type) ?? { confirmed: 0, suggested: 0 };
         if (k.status === 'confirmed') t.confirmed++; else t.suggested++;
+        s.types.set(k.type, t);
       }
       byLine.set(k.lineId, s);
     }
     const linked = c.req.query('linked') === '1';
     for (const l of lines) {
-      const s = byLine.get(l.id) ?? { links: 0, suggested: 0, typeCounts: {} };
+      const counted = byLine.get(l.id);
+      const s = { links: counted?.links ?? 0, suggested: counted?.suggested ?? 0, typeCounts: Object.fromEntries(counted?.types ?? []) };
       if (linked && !s.links) continue;
       const rest: Record<string, unknown> = { ...l };
       delete rest.textHash;
@@ -359,11 +374,15 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const b = await parse(c, removeSchema);
     const lineId = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(lineId).success) throw notFound('that line is not in this book');
-    const ids = await covered(db.query, book, lineId, Boolean(b.paragraph));
-    if (!ids.length) throw notFound('that line is not in this book');
-    const gone = await db.query(`UPDATE book_links SET status = 'rejected', method = 'human', reviewed_by = $2, reviewed_at = now()
-      WHERE line_id = ANY($1::uuid[]) AND status <> 'rejected' RETURNING id`, [ids, b.by]);
-    return c.json({ removed: gone.length });
+    const removed = await db.begin(async (q) => {
+      const ids = await covered(q, book, lineId, Boolean(b.paragraph));
+      if (!ids.length) throw notFound('that line is not in this book');
+      const locked = await lockQuestionsOf(q, ids);
+      const gone = await q(`UPDATE book_links SET status = 'rejected', method = 'human', reviewed_by = $2, reviewed_at = now()
+        WHERE line_id = ANY($1::uuid[]) AND status <> 'rejected' AND question_id = ANY($3::uuid[]) RETURNING id`, [ids, b.by, locked]);
+      return gone.length;
+    });
+    return c.json({ removed });
   }));
 
   app.post('/v1/books/:slug/lines/:id/links/move', (c) => run(c, 'author', async (book) => {
@@ -374,14 +393,15 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const moved = await db.begin(async (q) => {
       await lineOf(q, book, b.to, true);
       await lineOf(q, book, from, false);
-      // the questions involved, locked in one order
-      await q(`SELECT pg_advisory_xact_lock(hashtext('chalk-highlights:q:' || x.question_id::text)) FROM (SELECT DISTINCT question_id FROM book_links WHERE line_id = $1 ORDER BY 1) x`, [from]);
+      // the questions involved, locked in one order; only their links move (one that arrives meanwhile, of another question, stays where it is)
+      const locked = await lockQuestionsOf(q, [from]);
       // the other line already has that tag: it is kept, becomes the person's, and is confirmed if it had been turned down; rejected rows of the old line stay there
       await q(`UPDATE book_links x SET status = CASE WHEN x.status = 'rejected' THEN 'confirmed' ELSE x.status END, method = 'human', reviewed_by = $3, reviewed_at = now()
-        FROM book_links l WHERE l.line_id = $1 AND l.status <> 'rejected' AND x.line_id = $2 AND x.question_id = l.question_id AND x.role = l.role`, [from, b.to, b.by]);
-      await q(`DELETE FROM book_links l WHERE l.line_id = $1 AND l.status <> 'rejected'
-        AND EXISTS (SELECT 1 FROM book_links x WHERE x.line_id = $2 AND x.question_id = l.question_id AND x.role = l.role)`, [from, b.to]);
-      const rows = await q(`UPDATE book_links SET line_id = $2, method = 'human', reviewed_by = $3, reviewed_at = now() WHERE line_id = $1 AND status <> 'rejected' RETURNING id`, [from, b.to, b.by]);
+        FROM book_links l WHERE l.line_id = $1 AND l.status <> 'rejected' AND l.question_id = ANY($4::uuid[]) AND x.line_id = $2 AND x.question_id = l.question_id AND x.role = l.role`, [from, b.to, b.by, locked]);
+      await q(`DELETE FROM book_links l WHERE l.line_id = $1 AND l.status <> 'rejected' AND l.question_id = ANY($3::uuid[])
+        AND EXISTS (SELECT 1 FROM book_links x WHERE x.line_id = $2 AND x.question_id = l.question_id AND x.role = l.role)`, [from, b.to, locked]);
+      const rows = await q(`UPDATE book_links SET line_id = $2, method = 'human', reviewed_by = $3, reviewed_at = now()
+        WHERE line_id = $1 AND status <> 'rejected' AND question_id = ANY($4::uuid[]) RETURNING id`, [from, b.to, b.by, locked]);
       return rows.length;
     });
     return c.json({ moved });

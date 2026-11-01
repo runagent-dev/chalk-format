@@ -66,6 +66,15 @@ describe('book highlights (registry-api §11)', () => {
     expect((await call('POST', b('/links'), { questionId: Q1, lineId: up(L['p7/0/0']!), by: 'rafi' })).status).toBe(409);
   });
 
+  it('a question kind is a plain name: __proto__ is refused, and kinds are counted as own keys', async () => {
+    const L = await ids();
+    expect((await call('POST', b('/links'), { questionId: Q1, lineId: L['p6/0/0'], questionType: '__proto__', by: 'rafi' })).status).toBe(400);
+    expect((await call('POST', b('/links'), { questionId: Q1, lineId: L['p6/0/0'], questionType: 'constructor', by: 'rafi' })).status).toBe(201);
+    const page = (await call('GET', b('/lines?pages=6'))).body.pages['6'];
+    expect(page[0].typeCounts).toEqual({ constructor: { confirmed: 1, suggested: 0 } });
+    expect(({} as Record<string, unknown>).confirmed).toBeUndefined();
+  });
+
   it('sync adds, changes, retires and revives lines by key; a re-run changes nothing', async () => {
     const again = await call('POST', b('/lines/sync'), { lines: [line(6, 0), line(6, 1), line(6, 2, 1), line(7, 0)] });
     expect(again.body).toEqual({ added: 0, changed: 0, retired: 0, revived: 0, linksRetired: 0 });
