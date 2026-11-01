@@ -276,7 +276,15 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [selState, pages]);
   // what the selection followed becomes the selection, so a later undo starts from where the object really is (not from a place another
   // object with the same id may come back to)
-  useEffect(() => { if (sel && selState && (sel.pageId !== selState.pageId || sel.id !== selState.id)) setSel(sel); }, [sel, selState]);
+  useEffect(() => {
+    if (!sel || !selState || (sel.pageId === selState.pageId && sel.id === selState.id)) return;
+    setSel(sel);
+    if (sel.pageId === selState.pageId) return;
+    // an undo or redo took the object to another page: the view goes there too (in the single-page layout that page is not drawn otherwise,
+    // and its keys, Delete and the arrows, belong to its surface)
+    const i = pages.findIndex((p) => p.id === sel.pageId), o = pages[i]?.objects.find((x) => x.id === sel.id);
+    if (o) { const b = boxOf(o); viewer.current?.reveal(i, b.x + b.width / 2, b.y); }
+  }, [sel, selState, pages]);
   const recordMove = useCallback((from: { pageId: string; id: string }, to: { pageId: string; id: string }, obj: LessonObject) => {
     moves.current = [...moves.current.slice(-199), { from, to, sig: sigOf(obj), line: lineFor(moves.current, from) }];
     setSel(to);

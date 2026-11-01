@@ -101,6 +101,12 @@ async function openAuthor(o, query = '', book) {
   check('the next-page button is off on the last page', await p.isDisabled('.chalk-insp-move button[aria-label="Move to the next page"]'));
   await p.keyboard.press('Alt+PageDown'); await p.waitForTimeout(300);
   check('and Alt+Page Down there changes nothing', (await where(p, 'screw-gauge'))?.page === 5);
+  // undo: the object goes back to page 4, and the view goes with it, still selected
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(700);
+  const back = await where(p, 'screw-gauge');
+  check('undo of a move shows the object where it went back to, selected', back?.page === 4 && back.selOnSame && back.y > -back.h && back.y < 800, JSON.stringify(back));
+  await p.keyboard.press('Control+y'); await p.waitForTimeout(700);
+  check('redo takes it (and the view) to page 5 again', (await where(p, 'screw-gauge'))?.page === 5);
 
   // a video goes too, keeping how it is presented
   // pages far from the view are not drawn: go to the video's page first
