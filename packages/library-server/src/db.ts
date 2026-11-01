@@ -7,6 +7,8 @@ import { mkdirSync, readFileSync } from 'node:fs';
  */
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  /** Runs `fn` in one transaction: its queries all happen or none does (an error rolls back). */
+  begin<T>(fn: (query: Db['query']) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -33,6 +35,7 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
     const pg = new PGlite({ ...(dir ? { dataDir: dir } : {}), extensions: { pg_trgm } });
     db = {
       async query<T>(sql: string, params: unknown[] = []) { return (await pg.query<T>(sql, params)).rows; },
+      begin: (fn) => pg.transaction((tx) => fn(async <T>(sql: string, params: unknown[] = []) => (await tx.query<T>(sql, params)).rows)),
       async close() { await pg.close(); },
     };
     await migrate(db, (sql) => pg.transaction((tx) => tx.exec(sql)).then(() => undefined));
@@ -47,6 +50,7 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
     const sql = postgres(url, { max: 10, onnotice: () => {}, connection: { search_path: `${schema}, public` } });
     db = {
       async query<T>(text: string, params: unknown[] = []) { return (await sql.unsafe(text, params as never[])) as unknown as T[]; },
+      begin: <T>(fn: (query: Db['query']) => Promise<T>) => sql.begin((tx) => fn(async <R>(text: string, params: unknown[] = []) => (await tx.unsafe(text, params as never[])) as unknown as R[])) as Promise<T>,
       async close() { await sql.end(); },
     };
     await migrate(db, (text) => sql.begin((tx) => tx.unsafe(text).simple()).then(() => undefined));
@@ -74,7 +78,55 @@ ALTER TABLE locations ADD PRIMARY KEY (key, store, path);
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS checked_at timestamptz;
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS missing boolean NOT NULL DEFAULT false;
 INSERT INTO chalk_library_schema (version) VALUES (4);`);
+  // step 5: the highlights of books (registry-api §11), editable records: the lines of a book and the questions linked to them
+  if (!done.has(5)) await exec(`${HIGHLIGHTS_SQL}\nINSERT INTO chalk_library_schema (version) VALUES (5);`);
 }
+
+/** Step 5: book highlights (spec/1.2/registry-api.md §11). Questions are named by their lasting id only (no foreign key: they are manifests). */
+const HIGHLIGHTS_SQL = `
+CREATE TABLE IF NOT EXISTS book_lines (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book           text NOT NULL,
+  key            text NOT NULL,                   -- the line's lasting name in the book: "<page id>/<hash>/<n>"
+  page_id        text NOT NULL,
+  page_no        integer NOT NULL,
+  idx            integer NOT NULL,                -- place on the page, from 0
+  block          integer NOT NULL,                -- the paragraph
+  kind           text NOT NULL,                   -- body, heading, formula, caption
+  text           text NOT NULL,
+  text_hash      text NOT NULL,
+  chapter_no     integer,
+  chapter_title  text,
+  section        text,
+  rects          jsonb NOT NULL DEFAULT '[]',     -- [{x, y, w, fs}] in page units, one per printed line
+  retired_at     timestamptz,                     -- the text layer no longer has it: kept, so its links are kept
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (book, key)
+);
+CREATE INDEX IF NOT EXISTS book_lines_page ON book_lines (book, page_no, idx);
+CREATE INDEX IF NOT EXISTS book_lines_chapter ON book_lines (book, chapter_no);
+CREATE TABLE IF NOT EXISTS book_links (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book           text NOT NULL,
+  question_id    uuid NOT NULL,                   -- the question manifest's lasting id (spec 1.7)
+  line_id        uuid NOT NULL REFERENCES book_lines (id) ON DELETE CASCADE,
+  role           text NOT NULL DEFAULT 'answers_from',
+  scope          text NOT NULL DEFAULT 'sentence',
+  method         text NOT NULL DEFAULT 'auto',    -- auto (a matcher's) or human
+  status         text NOT NULL DEFAULT 'suggested', -- suggested, confirmed, rejected (a removal remembered)
+  score          real,
+  rationale      text,
+  question_type  text,
+  reviewed_by    text,
+  reviewed_at    timestamptz,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (question_id, line_id, role)
+);
+CREATE INDEX IF NOT EXISTS book_links_line ON book_links (line_id);
+CREATE INDEX IF NOT EXISTS book_links_book ON book_links (book, status);
+CREATE INDEX IF NOT EXISTS book_links_question ON book_links (question_id);
+`;
 
 /**
  * Step 2: the library as its own identity provider (spec/1.2/registry-api.md §10). Not part of the reference

@@ -180,7 +180,7 @@ describe('the reference library (disk + PGlite)', () => {
 
   it('POST /v1/assets/current runs one SQL statement however many tags, and uses the tags index', async () => {
     const seen: string[] = [];
-    const counting: Db = { query: (sql, params) => { seen.push(sql); return db.query(sql, params); }, close: async () => {} };
+    const counting: Db = { query: (sql, params) => { seen.push(sql); return db.query(sql, params); }, begin: (fn) => db.begin(fn), close: async () => {} };
     const app2 = createLibraryApp({ db: counting, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: tokenCallers('teacher:t-1') });
     seen.length = 0;
     const res = await app2.fetch(new Request(`${BASE}/v1/assets/current`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: Array.from({ length: 300 }, (_, i) => `question:n-${i}`) }) }));

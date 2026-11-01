@@ -356,7 +356,7 @@ describe('adopting: off by default, and a private library', () => {
     mkdirSync(join(dir, 'chalk-books', 'race'), { recursive: true }); writeFileSync(join(dir, ...path.split('/')), bytes);
     // after every statement the app runs, look at what a reader would see
     const states: string[] = [];
-    const watched: Db = { close: () => db.close(), async query<T>(sql: string, params?: unknown[]) {
+    const watched: Db = { close: () => db.close(), begin: (fn) => db.begin(fn), async query<T>(sql: string, params?: unknown[]) {
       const r = await db.query<T>(sql, params);
       const [x] = await db.query<{ status: string; path: string | null }>("SELECT a.status, l.path FROM assets a LEFT JOIN locations l ON l.key = a.key AND l.store = 'library' WHERE a.key = $1", [k.key]);
       if (x) states.push(`${x.status}:${x.path ?? '-'}`);
