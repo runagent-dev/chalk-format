@@ -52,10 +52,36 @@ Stored and delivered with the media type `application/vnd.chalk.question+json`:
 | `answer` | | `text` (the answer, or a worked solution), `detail` (`final` or `full`), and for a number `value` and `unit` |
 | `marks`, `difficulty`, `level` | | Marks (a number ≥ 0), difficulty 1 to 5, and the thinking asked for: `knowledge`, `comprehension`, `application`, `higher_order` |
 | `subject`, `classes`, `tags`, `license`, `authors` | | For finding questions in a store |
-| `source` | | Where it was printed, for people: `book`, `edition`, `number`, `page` |
+| `source` | | Where it was printed, for people: `book`, `edition`, `number`, `page`. A publisher that must not say which book it took the question from leaves it out |
+| `provenance` | | The exam papers the question was set in, for students (§2.1) |
 | `assets` | | The content keys of the pictures the text uses (§4) |
 
 Like the lab manifest, a manifest is an open object: writers keep fields they do not know.
+
+### 2.1 Provenance
+
+Where a question **appeared**: a board's exam, a school's or college's test paper. A reader shows each entry as a short tag
+(the `code`) and the full `name` when the tag is hovered or tapped.
+
+```jsonc
+"provenance": [
+  { "kind": "board_exam", "code": "DHA", "name": "ঢাকা বোর্ড", "year": 2023 },
+  { "kind": "institution_exam", "code": "VNSC", "name": "ভিকারুননিসা নূন স্কুল এন্ড কলেজ, ঢাকা", "year": null }
+]
+```
+
+| Field | | Meaning |
+|---|---|---|
+| `kind` | required | `board_exam` (a board's public exam) or `institution_exam` (a school's or college's own test paper). Later versions may add kinds: a lower-case letter, then up to 39 lower-case letters, digits and `_` |
+| `code` | required | The tag: 2 to 8 of `A`–`Z` and `0`–`9`, such as `DHA` or `VNSC`. A publisher gives each board or school one code and keeps it |
+| `name` | required | The full name, as text (§4, without Markdown): a string, or one per language |
+| `year` | | The year of the paper, an integer from 1900 to 2200; `null` (or no `year`) when it is not known |
+
+- At most 100 entries. One entry per paper: the same `kind`, `code` and `year` appear once. A question set by two boards in the same year has two entries.
+- A writer SHOULD list the newest year first, and entries without a year last. A reader may sort them again.
+- A reader MUST NOT reject a manifest because of a `kind` it does not know: it shows the `code`, with the `name` on hover.
+- `provenance` is not `source`. `source` is the book the publisher copied the question from, and it may be left out; a paper in
+  `provenance` is public knowledge, what a student wants to know ("this came in the Dhaka board exam, 2023").
 
 ## 3. Kinds
 
@@ -106,5 +132,5 @@ The manifest's own `tags` are listed as they are. The item's title SHOULD be the
 ## 7. Conformance
 
 - `schema/question-manifest.schema.json`.
-- `examples/questions/`: a multiple-choice, a numeric and a creative question, valid against the schema.
+- `examples/questions/`: a multiple-choice, a numeric and a creative question (with `provenance`), valid against the schema.
 - A library server accepts the media type, and finds questions by the tags of §5.
