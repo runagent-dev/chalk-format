@@ -389,10 +389,11 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const b = await parse(c, moveSchema);
     const from = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(from).success) throw notFound('that line is not in this book');
-    if (from === b.to) return c.json({ moved: 0 });
     const moved = await db.begin(async (q) => {
       await lineOf(q, book, b.to, true);
       await lineOf(q, book, from, false);
+      // checked after both lines are known: moving a line onto itself still answers 404 for a line the book lacks and 409 for a retired one
+      if (from === b.to) return 0;
       // the questions involved, locked in one order; only their links move (one that arrives meanwhile, of another question, stays where it is)
       const locked = await lockQuestionsOf(q, [from]);
       // the other line already has that tag: it is kept, becomes the person's, and is confirmed if it had been turned down; rejected rows of the old line stay there
@@ -467,6 +468,13 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
   app.post('/v1/books/:slug/import', (c) => run(c, 'author', async (book) => {
     const b = await parse(c, importSchema);
     await db.begin(async (q) => {
+      // an id that is another book's is refused, not skipped: the answer must not count records it did not write
+      const elsewhere = async (table: 'book_lines' | 'book_links', ids: string[]) =>
+        ids.length ? (await q<{ id: string }>(`SELECT id FROM ${table} WHERE id = ANY($1::uuid[]) AND book <> $2 LIMIT 1`, [ids, book]))[0]?.id : undefined;
+      const lineClash = await elsewhere('book_lines', b.lines.map((l) => l.id));
+      if (lineClash) throw new HighlightError(409, 'conflict', `line ${lineClash} belongs to another book`);
+      const linkClash = await elsewhere('book_links', b.links.map((l) => l.id));
+      if (linkClash) throw new HighlightError(409, 'conflict', `link ${linkClash} belongs to another book`);
       for (const part of chunks(b.lines)) {
         await q(`INSERT INTO book_lines (id, book, key, page_id, page_no, idx, block, kind, text, text_hash, chapter_no, chapter_title, section, rects, retired_at)
           SELECT x.id, $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]'), x."retiredAt"

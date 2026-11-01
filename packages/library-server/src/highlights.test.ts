@@ -204,5 +204,11 @@ describe('book highlights (registry-api §11)', () => {
     const got = (await call('GET', `/v1/books/other-book/links?line=${lineId}`)).body.items;
     expect(got[0]).toMatchObject({ id: linkId, score: 0.7, questionType: 'mcq' });
     expect((await call('POST', '/v1/books/other-book/import', { lines: [], links: [{ id: linkId, questionId: Q1, lineId: '66666666-6666-4666-8666-666666666666', role: 'answers_from', scope: 'sentence', method: 'auto', status: 'suggested' }] })).status).toBe(404);
+    // the same ids sent for another book are refused, not reported as copied
+    const again = await call('POST', '/v1/books/third-book/import', { lines: [{ ...line(3, 0), id: lineId, retiredAt: null }], links: [] });
+    expect(again.status).toBe(409);
+    expect(again.body.error.message).toMatch(/another book/);
+    // moving a line onto itself still checks the line
+    expect((await call('POST', b('/lines/77777777-7777-4777-8777-777777777777/links/move'), { to: '77777777-7777-4777-8777-777777777777', by: 'x' })).status).toBe(404);
   });
 });
