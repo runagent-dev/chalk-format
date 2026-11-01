@@ -16,7 +16,7 @@ const lesson: Lesson = { id: 'lib-book', title: 'A book in a library', locale: '
 const at = (key: string) => { const h = key.slice(3); return `https://cdn.example/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`; };
 
 /** A streamed book published into a fake library as the contract says (items by key, the book item last), and that library's fetch. */
-async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string; adopted?: boolean; adoptedStore?: object } = {}) {
+async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?: boolean; tamper?: string; storeMedia?: string[]; rendition?: Uint8Array; firstStore?: object; question?: string; adopted?: boolean; adoptedStore?: object; copy?: { dir: string } } = {}) {
   const { index, files } = await publishStreamed(lesson, new Map([[pictureKey, { type: 'image/png', bytes: picture }]]));
   const items = new Map<string, { bytes: Uint8Array; type: string; tags: string[] }>();
   const put = async (bytes: Uint8Array, type: string, tags: string[] = []) => { const { key } = await assetKeyAndSha256(bytes); items.set(key, { bytes, type, tags }); return key; };
@@ -45,8 +45,8 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
       // files adopted in place (registry-api §3.1): everything but the book item, at the book's own paths, named by the index
       const shard = /^\/index\/([a-z2-7]{2})\.json$/.exec(u.pathname)?.[1];
       if (shard) {
-        asked.push(`index ${shard}`);
-        const entries = Object.fromEntries([...items].filter(([key]) => o.adopted && key !== bookKey && key.slice(3, 5) === shard).map(([key, i]) => [key.slice(3), { p: adoptedAt(key), t: i.type }]));
+        asked.push(`index ${shard}${init?.cache ? ` ${init.cache}` : ''}`);
+        const entries = Object.fromEntries([...items].filter(([key]) => o.adopted && key !== bookKey && key.slice(3, 5) === shard).map(([key, i]) => [key.slice(3), { p: adoptedAt(key, o.copy?.dir), t: i.type }]));
         return Object.keys(entries).length ? json({ v: 1, entries }) : new Response(null, { status: 404 });
       }
       const tags = u.searchParams.getAll('tag');
@@ -54,14 +54,14 @@ async function library(o: { token?: string; bearerStore?: boolean; verifyAlways?
       return json({ items: hits.map(([key, i]) => ({ key, sha256: '0'.repeat(64), type: i.type, size: i.bytes.byteLength, tags: i.tags, status: 'available', createdAt: '2026-10-30T00:00:00Z' })) });
     }
     if (o.bearerStore && (init?.headers as Record<string, string> | undefined)?.Authorization !== `Bearer ${o.token}`) return new Response(null, { status: 401 });
-    const hit = [...items].find(([key]) => (o.adopted && key !== bookKey ? adoptedAt(key) : at(key)) === u.href);
+    const hit = [...items].find(([key]) => (o.adopted && key !== bookKey ? adoptedAt(key, o.copy?.dir) : at(key)) === u.href);
     asked.push(hit ? (hit[0] === bookKey ? 'book' : hit[1].type.split('/')[1]!.replace('vnd.chalk.', '').replace('+json', '')) : u.href);
     if (hit && hit[0] === o.tamper) return new Response(enc.encode('not the picture') as unknown as BodyInit, { status: 200 });
     return hit ? new Response(hit[1].bytes as unknown as BodyInit, { status: 200, headers: { 'content-type': hit[1].type } }) : new Response(null, { status: 404 });
   }) as unknown as typeof globalThis.fetch;
   return { fetch, asked, pageKey, bookKey, put };
 }
-const adoptedAt = (key: string) => `https://cdn.example/chalk-books/demo/items/${key.slice(3)}`;
+const adoptedAt = (key: string, dir = 'demo') => `https://cdn.example/chalk-books/${dir}/items/${key.slice(3)}`;
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
 describe('books in a library, in the reader', () => {
@@ -113,6 +113,43 @@ describe('books in a library, in the reader', () => {
     // every item from its adopted path; no derived URL was asked (each would 404)
     expect(lib.asked.filter((a) => a.startsWith('https://'))).toEqual([]);
     expect(lib.asked.filter((a) => a === 'page')).toHaveLength(20);
+  });
+
+  it('a drawn URL that failed (the library moved the adopted file to another copy): renewed once, past the cached index shard', async () => {
+    const copy = { dir: 'demo' };
+    const lib = await library({ adopted: true, copy });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    const first = await b.assetUrl(pictureKey);
+    expect(first).toBe(adoptedAt(pictureKey));
+    // the book pruned its file: the library names the other copy now; the shard the book holds still names the first
+    copy.dir = 'other-book';
+    expect(await b.assetUrl(pictureKey)).toBe(first);
+    lib.asked.length = 0;
+    const renewed = await b.renewUrl!(pictureKey, first);
+    expect(renewed).toBe(adoptedAt(pictureKey, 'other-book'));
+    // the shard asked again past the browser's cache, once
+    expect(lib.asked).toEqual([`index ${pictureKey.slice(3, 5)} no-cache`]);
+    expect(b.peekUrl(pictureKey)).toBe(renewed);
+    // another element that drew the old URL gets the new one, with nothing asked
+    expect(await b.renewUrl!(pictureKey, first!)).toBe(renewed);
+    expect(lib.asked).toHaveLength(1);
+    // two elements failing at once: resolved once
+    copy.dir = 'third';
+    const [x, y] = await Promise.all([b.renewUrl!(pictureKey, renewed), b.renewUrl!(pictureKey, renewed)]);
+    expect(x).toBe(adoptedAt(pictureKey, 'third'));
+    expect(y).toBe(x);
+    expect(lib.asked).toHaveLength(2);
+    b.dispose();
+  });
+
+  it('bytes of an adopted file that moved are fetched from the new copy (the index asked again once)', async () => {
+    const copy = { dir: 'demo' };
+    const lib = await library({ adopted: true, copy });
+    const b = await openLibraryStreamedBook({ library: 'https://lib.example/', slug: 'demo' }, { fetch: lib.fetch });
+    await b.assetUrl(pictureKey);
+    copy.dir = 'other-book';
+    expect(new Uint8Array((await b.assetBytes(pictureKey))!.bytes)).toEqual(picture);
+    b.dispose();
   });
 
   it('adopted media of an indexed store that asks to be verified always are drawn from checked bytes, not a bare URL', async () => {

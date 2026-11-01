@@ -46,6 +46,9 @@ export function createResolver(o: ResolverOptions = {}) {
   const book = (o.bookStores ?? []).filter(known).map((d) => ({ ...d, auth: 'none' as const }));
   const plans = new Map<string, StoreDescriptor[]>();
   const shards = new Map<string, Promise<IndexShard | null>>();
+  // shards dropped because a path they named failed: fetched again past the browser's cache (a library lets it keep one a minute)
+  const stale = new Set<string>();
+  const drop = (sk: string) => { shards.delete(sk); stale.add(sk); };
   const downAt = new Map<string, number>();
   const inflight = new Map<string, Promise<Resolved | null>>();
 
@@ -86,7 +89,7 @@ export function createResolver(o: ResolverOptions = {}) {
     const sk = `${s.id}|${shardOf(key)}`;
     let shard = shards.get(sk);
     if (!shard) {
-      shard = doFetch(shardUrl(s, key), { headers: headersFor(s) }).then(async (r) => {
+      shard = doFetch(shardUrl(s, key), { headers: headersFor(s), ...(stale.delete(sk) ? { cache: 'no-cache' as const } : {}) }).then(async (r) => {
         if (r.status === 404) return { v: 1 as const, entries: {} };
         if (!r.ok) throw new Error(`shard ${r.status}`);
         return indexShardSchema.parse(await r.json());
@@ -110,12 +113,12 @@ export function createResolver(o: ResolverOptions = {}) {
         if (!url) continue;
         // a path an index named that fails is forgotten with its shard: the store may have moved the key (a library's adopted file whose
         // owner deleted one copy, registry-api §3.1), and the next resolve asks the index again
-        const stale = () => { if (s.kind === 'indexed') shards.delete(`${s.id}|${shardOf(key)}`); };
+        const forgetShard = () => { if (s.kind === 'indexed') drop(`${s.id}|${shardOf(key)}`); };
         const r = await gate(() => doFetch(url, { headers: headersFor(s) }));
-        if (r.status === 404 || r.status === 410) { stale(); continue; }
-        if (!r.ok) { if (r.status >= 500) markDown(s); stale(); continue; }
+        if (r.status === 404 || r.status === 410) { forgetShard(); continue; }
+        if (!r.ok) { if (r.status >= 500) markDown(s); forgetShard(); continue; }
         const bytes = await r.arrayBuffer();
-        if (mustVerify(s, type) && !(await verifyAssetBytes(id, new Uint8Array(bytes)))) { stale(); continue; }   // not what the id names: next store
+        if (mustVerify(s, type) && !(await verifyAssetBytes(id, new Uint8Array(bytes)))) { forgetShard(); continue; }   // not what the id names: next store
         // cached once obtained: verified, or from a store the host trusts (verify 'none')
         await o.cache?.put(key, { bytes, type });
         return { bytes, type, from: s.id };
@@ -155,6 +158,8 @@ export function createResolver(o: ResolverOptions = {}) {
           const url = await urlIn(s, key);
           if (!url) continue;
           const r = await gate(() => doFetch(url, { method: 'HEAD', headers: headersFor(s) }));
+          // a path an index named that is gone: its shard is forgotten (the key moved), as in `resolve`
+          if (!r.ok && s.kind === 'indexed') drop(`${s.id}|${shardOf(key)}`);
           if (r.ok) { const headers = headersFor(s); return Object.keys(headers).length ? { url, from: s.id, headers } : { url, from: s.id }; }
           if (r.status >= 500) markDown(s);
         } catch { markDown(s); }
@@ -162,12 +167,22 @@ export function createResolver(o: ResolverOptions = {}) {
       return null;
     },
 
+    /**
+     * Forget where the indexed stores said a key is: a URL `locate` gave failed later (the store moved the key, registry-api §3.1). The
+     * next `resolve` or `locate` asks the index again.
+     */
+    forget(id: string): void {
+      const key = resolutionKey(id);
+      if (key) for (const s of [...host, ...book]) if (s.kind === 'indexed') drop(`${s.id}|${shardOf(key)}`);
+    },
+
     /** The ordered stores for a type (for diagnostics and tests). */
     plan: (type: string) => plan(type).map((s) => s.id),
   };
 }
 
-export type Resolver = ReturnType<typeof createResolver>;
+// `forget` is optional in the type: a resolver written before it (a host's own, a mock) still is one
+export type Resolver = Omit<ReturnType<typeof createResolver>, 'forget'> & { forget?(id: string): void };
 
 /** Kinds this resolver knows; others are skipped (spec 1.2 §5.1). */
 function known(d: StoreDescriptor): boolean {

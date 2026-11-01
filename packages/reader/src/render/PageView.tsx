@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react';
 import { getPageSize, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { usePresenter, type Presenter } from '../present.js';
-import { useAssetUrl } from './assets.js';
+import { useAssetSrc } from './assets.js';
 import { inkPath } from './ink.js';
 import { TextLayer } from './TextLayer.js';
 import { renderPdfPage } from './pdf.js';
@@ -80,7 +80,7 @@ function runs(objects: readonly LessonObject[], pr: Presenter): Run[] {
 
 function Background({ book, bg, width, height, scale, pdfWorkerSrc }: { book: Book; bg: PageBackground; width: number; height: number; scale: number; pdfWorkerSrc?: string | null | undefined }) {
   const imageId = bg.type === 'image' ? bg.assetId : bg.type === 'pdf_page' ? bg.renderedImageAssetId : undefined;
-  const url = useAssetUrl(book, imageId);
+  const { url, onError, onLoad } = useAssetSrc(book, imageId);
   // a PDF page with no rendered image: draw it from the PDF, at the width it is shown (rounded up to 400 px steps)
   const pdf = bg.type === 'pdf_page' && !imageId && pdfWorkerSrc ? bg : null;
   const want = pdf ? Math.min(2400, Math.ceil((width * scale * (globalThis.devicePixelRatio || 1)) / 400) * 400) : 0;
@@ -94,7 +94,7 @@ function Background({ book, bg, width, height, scale, pdfWorkerSrc }: { book: Bo
   const color = bg.type === 'color' ? bg.color : '#fff';
   return (
     <div className="chalk-bg" style={{ width, height, background: color }}>
-      {imageId && url && <img src={url} alt="" draggable={false} width={width} height={height} decoding="async" />}
+      {imageId && url && <img src={url} alt="" draggable={false} width={width} height={height} decoding="async" onError={onError} onLoad={onLoad} />}
       {pdfUrl && <img src={pdfUrl} alt="" draggable={false} width={width} height={height} decoding="async" />}
       {bg.type === 'pdf_page' && !imageId && !pdfUrl && <div className="chalk-bg-missing">PDF</div>}
     </div>
@@ -132,8 +132,8 @@ function VectorObject({ o, book }: { o: LessonObject; book: Book }) {
 }
 
 function ImageObject({ o, book }: { o: Extract<LessonObject, { type: 'image' }>; book: Book }) {
-  const url = useAssetUrl(book, o.assetId);
-  if (url) return <image href={url} x={o.x} y={o.y} width={o.width} height={o.height} preserveAspectRatio="none" />;
+  const { url, onError, onLoad } = useAssetSrc(book, o.assetId);
+  if (url) return <image href={url} x={o.x} y={o.y} width={o.width} height={o.height} preserveAspectRatio="none" onError={onError} onLoad={onLoad} />;
   // still coming (undefined), or nowhere to be found (null): a dashed box for the latter, so it reads as missing
   return <rect x={o.x} y={o.y} width={o.width} height={o.height} className={`chalk-placeholder ${url === null ? 'is-missing' : ''}`} />;
 }

@@ -48,6 +48,20 @@ export function withLibraries(book: Book, libraries: readonly Library[], lookup:
     assetUrl: { value: async (id: string) => (await book.assetUrl(id)) ?? fromLibraries(id) },
     // what is known already: the book's URL, else a library's answer (a URL, or null for not found), else nothing yet
     peekUrl: { value: (id: string) => book.peekUrl(id) || (lookup.settled.has(id) ? lookup.settled.get(id) : undefined) },
+    renewUrl: {
+      value: async (id: string, failed: string | null) => {
+        // the book's own answer failed: the book renews it (the libraries still come after it)
+        const own = book.peekUrl(id);
+        if (own) return own === failed && book.renewUrl ? ((await book.renewUrl(id, failed)) ?? fromLibraries(id)) : own;
+        if (failed === null) return ((book.renewUrl ? await book.renewUrl(id, null) : null) ?? fromLibraries(id));
+        // a library's URL failed (the item moved): the libraries forget it and are asked again. "Not found" (null) is not a failure to retry
+        if (lookup.settled.get(id) === failed) {
+          lookup.urls.delete(id); lookup.settled.delete(id);
+          for (const lib of libraries) lib.forget?.(id);
+        }
+        return wrapped.assetUrl(id);
+      },
+    },
     assetBytes: {
       value: async (id: string) => {
         const own = await book.assetBytes(id).catch(() => null);

@@ -3,7 +3,7 @@ import { getPageSize, type LessonPage } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import type { Locale } from '../config.js';
 import { num, strings } from '../i18n.js';
-import { useAssetUrl } from '../render/assets.js';
+import { useAssetSrc } from '../render/assets.js';
 import { PageView, type HtmlObjectRenderer } from '../render/PageView.js';
 
 const THUMB_W = 116;
@@ -41,13 +41,13 @@ const Thumb = memo(function Thumb({ book, page, renderHtmlObject, pdfWorkerSrc }
   }, [seen]);
   const bg = page.background;
   const thumbId = bg.type === 'pdf_page' ? bg.thumbnailAssetId : undefined;
-  const url = useAssetUrl(book, seen ? thumbId : undefined);
+  const { url, onError, onLoad } = useAssetSrc(book, seen ? thumbId : undefined);
   const { width, height } = getPageSize(page);
   const scale = THUMB_W / width;
   return (
     <span ref={box} className="chalk-thumb-pic" style={{ width: THUMB_W, height: Math.round(height * scale) }}>
       {seen && (thumbId
-        ? url && <img src={url} alt="" draggable={false} />
+        ? url && <img src={url} alt="" draggable={false} onError={onError} onLoad={onLoad} />
         : <PageView book={book} page={page} scale={scale} live renderHtmlObject={renderHtmlObject} textLayer={false} pdfWorkerSrc={pdfWorkerSrc} />)}
     </span>
   );
