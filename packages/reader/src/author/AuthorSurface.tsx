@@ -103,10 +103,18 @@ export function AuthorSurface({ page, scale, selected, onSelect, onCarried, appl
     if (!hit) return;
     el.current!.setPointerCapture(e.pointerId);
     const b = boxOf(hit), client = { x: e.clientX, y: e.clientY };
-    drag.current = {
+    const s: Drag = {
       id: generateId('g'), pointer: e.pointerId, orig: hit, grab: { x: p.x - b.x, y: p.y - b.y }, on: page.id, from: page.id, resize, start: p,
       startClient: client, last: client, moved: false, viewer: el.current!.closest<HTMLElement>('.chalk-viewer'), raf: 0,
     };
+    drag.current = s;
+    // the page holding the pointer may scroll out of the view and unmount mid-drag (its handlers go with it): the window hears the release
+    const stop = (ev: PointerEvent) => {
+      if (ev.pointerId !== s.pointer) return;
+      removeEventListener('pointerup', stop, true); removeEventListener('pointercancel', stop, true);
+      if (drag.current === s) end(ev);
+    };
+    addEventListener('pointerup', stop, true); addEventListener('pointercancel', stop, true);
   };
 
   /**
@@ -181,7 +189,7 @@ export function AuthorSurface({ page, scale, selected, onSelect, onCarried, appl
     carry(s);
     autoScroll(s);
   };
-  const end = (e: React.PointerEvent) => {
+  const end = (e: { pointerId: number }) => {
     const s = drag.current;
     if (s?.pointer !== e.pointerId) return;
     if (s.raf) cancelAnimationFrame(s.raf);
