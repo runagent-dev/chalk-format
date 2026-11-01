@@ -291,7 +291,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
       for (const part of chunks(plan.write)) {
         await q(`INSERT INTO book_lines (book, key, page_id, page_no, idx, block, kind, text, text_hash, chapter_no, chapter_title, section, rects)
           SELECT $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]')
-          FROM jsonb_to_recordset($2::jsonb) AS ${LINE_RECORDSET}
+          FROM jsonb_to_recordset($2::text::jsonb) AS ${LINE_RECORDSET}
           ON CONFLICT (book, key) DO UPDATE SET page_id = EXCLUDED.page_id, page_no = EXCLUDED.page_no, idx = EXCLUDED.idx, block = EXCLUDED.block, kind = EXCLUDED.kind,
             text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section, rects = EXCLUDED.rects, retired_at = NULL, updated_at = now()`,
         [book, JSON.stringify(part)]);
@@ -478,19 +478,19 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
       for (const part of chunks(b.lines)) {
         await q(`INSERT INTO book_lines (id, book, key, page_id, page_no, idx, block, kind, text, text_hash, chapter_no, chapter_title, section, rects, retired_at)
           SELECT x.id, $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]'), x."retiredAt"
-          FROM jsonb_to_recordset($2::jsonb) AS ${LINE_RECORDSET}
+          FROM jsonb_to_recordset($2::text::jsonb) AS ${LINE_RECORDSET}
           ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key, page_id = EXCLUDED.page_id, page_no = EXCLUDED.page_no, idx = EXCLUDED.idx, block = EXCLUDED.block, kind = EXCLUDED.kind,
             text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section,
             rects = EXCLUDED.rects, retired_at = EXCLUDED.retired_at, updated_at = now()
           WHERE book_lines.book = $1`, [book, JSON.stringify(part)]);
       }
       for (const part of chunks(b.links)) {
-        const bad = await q<{ id: string }>(`SELECT x."lineId" AS id FROM jsonb_to_recordset($2::jsonb) AS x("lineId" uuid)
+        const bad = await q<{ id: string }>(`SELECT x."lineId" AS id FROM jsonb_to_recordset($2::text::jsonb) AS x("lineId" uuid)
           WHERE NOT EXISTS (SELECT 1 FROM book_lines l WHERE l.id = x."lineId" AND l.book = $1) LIMIT 1`, [book, JSON.stringify(part)]);
         if (bad.length) throw notFound(`line ${bad[0]!.id} is not in this book`);
         await q(`INSERT INTO book_links (id, book, question_id, line_id, role, scope, method, status, score, rationale, question_type, reviewed_by, reviewed_at, created_at)
           SELECT x.id, $1, x."questionId", x."lineId", x.role, x.scope, x.method, x.status, x.score, x.rationale, x."questionType", x."reviewedBy", x."reviewedAt", coalesce(x."createdAt", now())
-          FROM jsonb_to_recordset($2::jsonb) AS x(id uuid, "questionId" uuid, "lineId" uuid, role text, scope text, method text, status text, score real, rationale text,
+          FROM jsonb_to_recordset($2::text::jsonb) AS x(id uuid, "questionId" uuid, "lineId" uuid, role text, scope text, method text, status text, score real, rationale text,
             "questionType" text, "reviewedBy" text, "reviewedAt" timestamptz, "createdAt" timestamptz)
           ON CONFLICT (id) DO UPDATE SET question_id = EXCLUDED.question_id, line_id = EXCLUDED.line_id, role = EXCLUDED.role, scope = EXCLUDED.scope, method = EXCLUDED.method,
             status = EXCLUDED.status, score = EXCLUDED.score, rationale = EXCLUDED.rationale, question_type = EXCLUDED.question_type, reviewed_by = EXCLUDED.reviewed_by,
