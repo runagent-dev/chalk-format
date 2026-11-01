@@ -195,6 +195,11 @@ dock (or drive it yourself with the `mode` prop and `onModeChange`).
   Escape in a field leaves the field; a second Escape clears the selection.
 - **Select:** click any object; drag to move it, the corner handle to resize it (media keeps its proportions),
   arrows to nudge, Delete to remove; the object under the mouse is outlined.
+- **Move to another page:** drag the object past the edge of its page onto the page above or below (or the facing page in a
+  spread); near the edge of the view it scrolls, so a finger can carry it too. Dropped there, it is kept wholly on that page. For a far
+  page, **Move to page** in the sidebar (a page picker with previous and next buttons) or Alt+Page Up / Alt+Page Down: it lands at the
+  same place relative to the page. Either way it is one undo step, it stays selected, keeps its id and everything it had, and a patch
+  save sends both pages.
 - **Right-click a page** (any tool) to add media where you click: a menu of Image, Video, Sound, 3D model and Lab opens at the
   pointer; choosing one opens its picker in the sidebar, a small cross on the page marks the spot, and what you pick or upload
   is placed centred there. The **+** in the rail does the same but places in the middle of the current page. A host can turn the menu

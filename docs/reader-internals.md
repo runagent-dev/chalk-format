@@ -64,7 +64,10 @@ How `@chalk-format/reader` is built, for people changing it. For using it, see i
 - `state.ts`: `useAuthoring` edits the book itself (not an overlay): edits, undo and redo, save. For a streamed
   book it loads every page first.
 - `AuthorRail.tsx`: the left rail (select, pen, highlighter, eraser, text, shapes, add media) with keyboard
-  shortcuts. `AuthorSurface.tsx`: selection, move and resize handles, drawing.
+  shortcuts. `AuthorSurface.tsx`: selection, move and resize handles, drawing. A drag is shared by every page's surface
+  (`Drag`, held by `ChalkReader`): when the pointer carries an object onto another page, `edit.move` moves it there and the pointer
+  capture goes to that page's surface. `move.ts`: where a moved object goes (`placeAt` for a drag, `relocate` for Move to page,
+  `freeIdOn` when the target page already uses its id).
 - `Sidebar.tsx`: the right sidebar holds every setting, by context: the selection, else the media being added,
   else the active tool, else the page (with the book's libraries and the objects on the page).
   `Inspector.tsx` and `controls.tsx` are its fields.
