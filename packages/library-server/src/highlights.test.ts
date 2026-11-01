@@ -192,6 +192,9 @@ describe('book highlights (registry-api §11)', () => {
     expect(r.total).toBe(2);
     expect(r.items).toHaveLength(1);
     expect(r.items[0].line.key).toBe('p6/0/0');
+    // chapter 0 is a chapter like any other (the lines here are in chapter 1)
+    expect((await call('GET', b('/links?chapter=0'))).body.total).toBe(0);
+    expect((await call('GET', b('/links?chapter=1'))).body.total).toBe(2);
   });
 
   it('import copies lines and links with their ids', async () => {

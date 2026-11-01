@@ -238,7 +238,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     // review: by chapter, status and method, in book order
     const where = ['k.book = $1'], params: unknown[] = [book];
     const chapter = int(c.req.query('chapter'));
-    if (chapter) { params.push(chapter); where.push(`l.chapter_no = $${params.length}`); }
+    if (chapter !== undefined) { params.push(chapter); where.push(`l.chapter_no = $${params.length}`); }
     const status = c.req.query('status');
     if (status && (STATUSES as readonly string[]).includes(status)) { params.push(status); where.push(`k.status = $${params.length}`); } else where.push(`k.status <> 'rejected'`);
     const method = c.req.query('method');
