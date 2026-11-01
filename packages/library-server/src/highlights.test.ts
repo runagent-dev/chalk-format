@@ -26,7 +26,9 @@ describe('book highlights (registry-api §11)', () => {
   const b = (p: string) => `/v1/books/${BOOK}${p}`;
   const ids = async () => Object.fromEntries(((await call('GET', b('/lines/all?retired=1'))).body.items as { id: string; key: string }[]).map((l) => [l.key, l.id]));
 
-  beforeAll(async () => { db = await openDb('pglite:'); }, 60_000);
+  // PGlite by default; TEST_POSTGRES_URL runs the same tests on a real Postgres through postgres.js (the production driver: it passes
+  // parameters differently, which PGlite alone did not show)
+  beforeAll(async () => { db = await openDb(process.env.TEST_POSTGRES_URL ?? 'pglite:'); }, 60_000);
   afterAll(async () => { await db.close(); });
   beforeEach(async () => {
     await db.query('DELETE FROM book_links'); await db.query('DELETE FROM book_lines');
