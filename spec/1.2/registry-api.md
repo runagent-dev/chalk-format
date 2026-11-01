@@ -308,3 +308,81 @@ credential, `401` without one.
 A registry MAY require a token for reading too (the reference server: `PUBLIC_READ=false`). It then names, at
 `GET v1/stores`, a store with `"auth": "bearer"` (1.2 §5.1) for the bytes, and readers send the same bearer
 credential to it (§7.1). `GET v1/stores` itself and the discovery documents of §10.3 stay public.
+
+## 11. Book highlights (optional)
+
+A registry MAY keep the **highlights** of its books: the lines of a book's text and which question each line leads to. Unlike
+assets these are records that change one by one: an editor adds, moves and removes links, a matcher suggests them, and
+readers (a reading app, a mobile app) ask for the lines of the pages they show. A registry that lacks this answers `404`.
+Paths are under `v1/books/{slug}/` (`{slug}` as in spec 1.8 §2). Reads need `reader`, writes `author` (§10.1). Ids are
+UUID strings. Unknown ids of the book are `404 not_found`; a write that names a line the book no longer has (retired)
+is `409 conflict`.
+
+### 11.1 Records
+
+A **line** (one sentence of the text layer):
+
+```json
+{ "id": "…uuid…", "key": "p12/3b0fbd6c9c/0", "pageId": "p12", "pageNo": 12, "idx": 4, "block": 1, "kind": "body",
+  "text": "…", "textHash": "…", "chapterNo": 1, "chapterTitle": "…", "section": "…",
+  "rects": [{ "x": 120, "y": 530, "w": 610, "fs": 19 }], "retiredAt": null }
+```
+
+`key` is the line's lasting name (unique in the book; the indexer derives it from the page and the words), `rects` one box
+per printed line in page units (`y` the top; a box is `fs × 1.25` high). A line the text layer no longer has is
+**retired** (`retiredAt` set), never deleted, so the links on it are kept.
+
+A **link** (a question tied to a line):
+
+```json
+{ "id": "…uuid…", "questionId": "…uuid…", "lineId": "…uuid…", "role": "answers_from", "scope": "sentence",
+  "method": "auto", "status": "suggested", "score": 0.82, "rationale": "…", "questionType": "mcq",
+  "reviewedBy": null, "reviewedAt": null, "createdAt": "…" }
+```
+
+- `role`: `answers_from`, `tests_concept`, `uses_figure`, `formula_source` (spec 1.8 §3.4). `scope`: `sentence`,
+  `paragraph`, `section`. One link per (`questionId`, `lineId`, `role`).
+- `status`: `suggested`, `confirmed` or `rejected`. **A rejected link is a memory, not a link:** it records that the pair
+  was taken off, so a matcher does not put it back. Reads leave rejected links out unless they say otherwise.
+- `method`: `auto` (a matcher's) or `human`. A link is a **person's decision** when `method` is `human`, `reviewedBy` is
+  set, or it is `confirmed`. A question with any person's decision is never touched by a matcher (§11.4 `place`).
+- `questionId` names the question manifest's lasting id (spec 1.7, the `question:<id>` tag; resolve the current version
+  with §4.1). `questionType` is the question's kind as the writer gives it (`mcq`, `cq`, …), so readers can filter
+  without fetching every manifest.
+
+### 11.2 Reading (`reader`)
+
+| Request | Answer |
+|---|---|
+| `GET lines?pages=6,7` (`&linked=1`, `&status=confirmed`) | `{ "pages": { "6": [line + counts] } }`: the live lines of those pages (at most 50) in reading order, each with `links` (not rejected; with `status=confirmed` only confirmed), `suggested`, and `typeCounts` (`{ "<type>": { "confirmed", "suggested" } }`). `linked=1` leaves out lines with no link |
+| `GET lines/all` (`?chapter=`, `&retired=1`) | `{ "items": [line] }`: every line of the book (live only unless `retired=1`) |
+| `GET chapters` | `{ "items": [{ "no", "title" }] }` |
+| `GET pages/counts` | `{ "counts": { "<pageNo>": n } }`: questions with a live link on each page's live lines |
+| `GET links?line=` (`&paragraph=1`, `&status=confirmed`) | `{ "items": [link + line] }` of the line (or every live line of its paragraph): confirmed first, then by score, newest first |
+| `GET links?question=` | `{ "items": [link + line] }`: the question's live links on live lines of the book, in book order |
+| `GET links?chapter=&status=&method=&limit=&offset=` | `{ "items": [link + line], "total" }`: for review, in book order (default: not rejected; `limit` ≤ 200) |
+| `GET links/all` (`?rejected=1`) | `{ "items": [link + line key] }`: every link of the book |
+| `GET links/orphaned` | `{ "items": [link + line] }`: a person's live links on retired lines |
+| `POST v1/highlights/questions` `{ "questionIds": [...] }` (≤ 5000) | `{ "items": { "<id>": { "live", "human", "any" } } }`: over every book, how many live links each question has, whether a person decided on any of its links, whether it has any row |
+| `GET v1/highlights/tagged` | `{ "questionIds": [...] }`: every question with a live link in any book |
+
+`link + line` is the link with `"line": { "id", "key", "pageId", "pageNo", "idx", "block", "text", "chapterNo", "retiredAt" }`.
+
+### 11.3 Writing (`author`)
+
+Every write names the person (or job) in `by`, kept as `reviewedBy`. Each request is one transaction.
+
+| Request | What it does |
+|---|---|
+| `POST lines/sync` `{ "lines": [line without id] }` | Makes the book's lines what the text layer has: by `key`, adds new ones, updates changed ones (a retired one comes back), retires the ones not sent; then rejects the links on retired lines that are not a person's decision (`rationale` says why). → `{ "added", "changed", "retired", "revived", "linksRetired" }` |
+| `POST links` `{ questionId, lineId, role?, scope?, questionType?, by }` | A person's link: `human`, `confirmed`. An existing row for the pair becomes it. → the link |
+| `PATCH links/{id}` `{ status?, role?, scope?, lineId?, by }` | Changes one link. Changing role, scope or line, or rejecting, makes it `human`; a move confirms it unless `status` is given. Moving onto a pair that exists merges into that row (confirmed, `human`) and drops this one. → the link kept |
+| `DELETE links/{id}` `{ by }` | Takes it off: the row stays, `rejected`, `human`. → `{ "removed": 1 }` |
+| `POST lines/{id}/links/remove` `{ paragraph?, by }` | Takes off every live link of the line (or its paragraph). → `{ "removed": n }` |
+| `POST lines/{id}/links/move` `{ to, by }` | Moves the live links of a line to another: a pair the other line has is kept (confirmed if it was rejected, `human`) and this one dropped; rejected rows stay. → `{ "moved": n }` |
+| `PUT questions/{questionId}/lines` `{ role, add: [lineId], remove: [lineId], scope?, questionType?, by }` | A question's highlight under one role (≤ 200 lines named): `add`ed lines become the person's confirmed links, `remove`d ones rejected rows (whatever they were), the kept ones the person's. → `{ "items": [link + line] }` as `GET links?question=` |
+| `POST links/place` `{ questionId, questionType?, proposals: [{ lineId, role, scope?, score?, rationale? }] }` | A matcher's suggestions, written only if the question still has no live link and no person's decision in any book; lines retired since, and lines the question already has a row on, are skipped. → `{ "placed": n }` (0: not placed) |
+| `POST import` `{ lines: [line], links: [link] }` | Copies records with their ids (moving from another system). Upsert by id. → `{ "lines", "links" }` |
+
+Writes that touch a question (`links`, `questions/…/lines`, `place`, `move`) are serialised per question, so a matcher
+never places a question a person is tagging at the same moment.
