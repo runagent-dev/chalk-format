@@ -60,7 +60,7 @@ export function AuthorSurface({ page, scale, selected, onSelect, onCarried, appl
   page: LessonPage; scale: number; selected: string | null;
   onSelect: (id: string | null) => void;
   /** The dragged object was carried from one page (and id) onto another: the selection goes with it. */
-  onCarried: (from: { pageId: string; id: string }, to: { pageId: string; id: string }) => void;
+  onCarried: (from: { pageId: string; id: string }, to: { pageId: string; id: string }, obj: LessonObject) => void;
   apply: (fn: (l: Lesson) => Lesson, gesture?: string) => void;
   onDropFiles: (files: File[], at: Point) => void;
   labels: { resize: string; drop: string };
@@ -127,7 +127,7 @@ export function AuthorSurface({ page, scale, selected, onSelect, onCarried, appl
     const landing = freeIdOn(pageOf(to), obj);
     s.placed = { obj: landing, size };
     apply(edit.move(s.on, to, landing, obj.id), s.id);
-    onCarried({ pageId: s.on, id: obj.id }, { pageId: to, id: landing.id });
+    onCarried({ pageId: s.on, id: obj.id }, { pageId: to, id: landing.id }, landing);
     s.orig = { ...s.orig, id: landing.id };
     s.on = to;
     try { target.setPointerCapture(s.pointer); } catch { /* the pointer is already up */ }
