@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createPatch } from '@chalk-format/container';
 import { MEDIA_ICON_SIZE, type Lesson, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { edit } from '../annotate/state.js';
-import { KEEP_ON_PAGE, boxOf, follow, freeIdOn, placeAt, relocate, sigOf, type At } from './move.js';
+import { KEEP_ON_PAGE, boxOf, follow, freeIdOn, lineFor, placeAt, relocate, sigOf, type At, type Moved } from './move.js';
 
 const page = (id: string, objects: LessonObject[], over: Record<string, unknown> = {}) => ({ id, title: id, background: { type: 'blank' }, objects, ...over }) as LessonPage;
 const lesson = (pages: LessonPage[]): Lesson => ({ id: 'b', title: 'B', locale: 'bn', pages, snipPages: [], createdAt: '', updatedAt: '' }) as Lesson;
@@ -104,12 +104,14 @@ describe('where a moved object goes', () => {
 
 describe('the selection follows a moved object', () => {
   const at = (pageId: string, id: string): At => ({ pageId, id });
-  const mv = (from: At, to: At, sig = 's') => ({ from, to, sig });
+  // moves recorded as the reader does: each on the line of the move that ended where it starts
+  const line = (...ms: { from: At; to: At; sig?: string }[]) => ms.reduce<Moved[]>((acc, m) => [...acc, { from: m.from, to: m.to, sig: m.sig ?? 's', line: lineFor(acc, m.from) }], []);
+  const mv = (from: At, to: At, sig?: string) => ({ from, to, ...(sig ? { sig } : {}) });
   const where = (...places: At[]) => (a: At) => places.some((p) => p.pageId === a.pageId && p.id === a.id);
 
   it('never to another object that only shares its id', () => {
     // x on p1 moved to p3; another x sits on p2: undoing the move leads back to p1, not to p2
-    const moves = [mv(at('p1', 'x'), at('p3', 'x'))];
+    const moves = line(mv(at('p1', 'x'), at('p3', 'x')));
     expect(follow(at('p3', 'x'), moves, where(at('p1', 'x'), at('p2', 'x')))).toEqual(at('p1', 'x'));
     // with no move made, an object gone from its place is gone (no guess by id)
     expect(follow(at('p1', 'x'), [], where(at('p2', 'x')))).toBeNull();
@@ -117,7 +119,7 @@ describe('the selection follows a moved object', () => {
 
   it('never to another object that came to a place the moved object passed through', () => {
     // x (sig "a") moved from p1 to p3, then another object ("b") took p1 and the id x: it is not the moved one, and is never selected for it
-    const moves = [mv(at('p1', 'x'), at('p3', 'x'), 'a')];
+    const moves = line(mv(at('p1', 'x'), at('p3', 'x'), 'a'));
     const objects = new Map([['p1 x', 'b']]);
     const has = (a: At, sig?: string) => objects.has(`${a.pageId} ${a.id}`) && (sig === undefined || objects.get(`${a.pageId} ${a.id}`) === sig);
     expect(follow(at('p3', 'x'), moves, has)).toBeNull();
@@ -130,7 +132,7 @@ describe('the selection follows a moved object', () => {
 
   it('only along the moves of the one object: never across to another that passed through the same place', () => {
     // A (sig a) dragged p1 to p2 to p3; B (sig b), same id, moved p4 to p2; both undone: the selection on p3 finds A on p1, never B on p4
-    const moves = [mv(at('p1', 'x'), at('p2', 'x'), 'a'), mv(at('p2', 'x'), at('p3', 'x'), 'a'), mv(at('p4', 'x'), at('p2', 'x'), 'b')];
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x'), 'a'), mv(at('p2', 'x'), at('p3', 'x'), 'a'), mv(at('p4', 'x'), at('p2', 'x'), 'b'));
     const objects = new Map([['p1 x', 'a'], ['p4 x', 'b']]);
     const has = (q: At, sig?: string) => objects.has(`${q.pageId} ${q.id}`) && (sig === undefined || objects.get(`${q.pageId} ${q.id}`) === sig);
     expect(follow(at('p3', 'x'), moves, has)).toEqual(at('p1', 'x'));
@@ -138,20 +140,28 @@ describe('the selection follows a moved object', () => {
     expect(follow(at('p3', 'x'), moves, has)).toBeNull();
   });
 
+  it('along one object\'s moves even when it was changed between them (moved, resized, moved, all undone)', () => {
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x'), 'small'), mv(at('p2', 'x'), at('p3', 'x'), 'big'));
+    expect(moves.map((m) => m.line)).toEqual([1, 1]);
+    // everything undone: back on p1, as it was before the resize
+    const has = (q: At, sig?: string) => q.pageId === 'p1' && q.id === 'x' && (sig === undefined || sig === 'small');
+    expect(follow(at('p3', 'x'), moves, has)).toEqual(at('p1', 'x'));
+  });
+
   it('through a renamed id, and back again on redo', () => {
-    const moves = [mv(at('p1', 'x'), at('p2', 'x_new'))];
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x_new')));
     expect(follow(at('p2', 'x_new'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
     expect(follow(at('p1', 'x'), moves, where(at('p2', 'x_new')))).toEqual(at('p2', 'x_new'));
   });
 
   it('back past a move it does not need: A to B to C, undone twice, finds A', () => {
-    const moves = [mv(at('p1', 'x'), at('p2', 'x')), mv(at('p2', 'x'), at('p3', 'x'))];
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x')), mv(at('p2', 'x'), at('p3', 'x')));
     // the first undo left the selection on p2; the second puts the object back on p1
     expect(follow(at('p2', 'x'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
   });
 
   it('along a drag that crossed several pages, undone as one step', () => {
-    const moves = [mv(at('p1', 'x'), at('p2', 'x')), mv(at('p2', 'x'), at('p3', 'x'))];
+    const moves = line(mv(at('p1', 'x'), at('p2', 'x')), mv(at('p2', 'x'), at('p3', 'x')));
     expect(follow(at('p3', 'x'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
     expect(follow(at('p3', 'x'), moves, where())).toBeNull();
   });

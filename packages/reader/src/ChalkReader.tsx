@@ -22,7 +22,7 @@ import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
 import { AuthorSurface, type Drag } from './author/AuthorSurface.js';
-import { boxOf, follow, freeIdOn, relocate, sigOf, type Moved } from './author/move.js';
+import { boxOf, follow, freeIdOn, lineFor, relocate, sigOf, type Moved } from './author/move.js';
 import { InsertMenu } from './author/InsertMenu.js';
 import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
 import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, videoPoster, type MediaKind } from './author/insert.js';
@@ -278,7 +278,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // object with the same id may come back to)
   useEffect(() => { if (sel && selState && (sel.pageId !== selState.pageId || sel.id !== selState.id)) setSel(sel); }, [sel, selState]);
   const recordMove = useCallback((from: { pageId: string; id: string }, to: { pageId: string; id: string }, obj: LessonObject) => {
-    moves.current = [...moves.current.slice(-199), { from, to, sig: sigOf(obj) }];
+    moves.current = [...moves.current.slice(-199), { from, to, sig: sigOf(obj), line: lineFor(moves.current, from) }];
     setSel(to);
   }, []);
   // the drag in progress, shared by every page (an object can be carried from one page onto another)

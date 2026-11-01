@@ -47,8 +47,17 @@ export function freeIdOn<T extends LessonObject>(page: Pick<LessonPage, 'objects
 
 /** An object at its place: its page and its id there. */
 export type At = { pageId: string; id: string };
-/** A move made in this session: the object was at `from`, and is at `to` since; `sig` is what it was (`sigOf`), to know it again. */
-export type Moved = { from: At; to: At; sig: string };
+/**
+ * A move made in this session: the object was at `from`, and is at `to` since; `sig` is what it was (`sigOf`), to know it again; `line`
+ * names the object's run of moves (a move from where an earlier one ended goes on its line, whatever was changed on the object between).
+ */
+export type Moved = { from: At; to: At; sig: string; line: number };
+
+/** The line a new move from `from` goes on: that of the newest move that ended there, else a new one. */
+export function lineFor(moves: readonly Moved[], from: At): number {
+  for (let i = moves.length - 1; i >= 0; i--) if (moves[i]!.to.pageId === from.pageId && moves[i]!.to.id === from.id) return moves[i]!.line;
+  return moves.reduce((n, m) => Math.max(n, m.line), 0) + 1;
+}
 
 /** An object without its id and place: the same object moved has the same one (another object that took its page and id has not). */
 export function sigOf(o: LessonObject): string {
@@ -61,9 +70,9 @@ export function sigOf(o: LessonObject): string {
  * Where the selected object is now, when it is no longer where the selection says (a move, or the undo or redo of one): the places it was
  * moved between in this session, searched outward from the selection (nearest first, newer moves first among equals) for one that `has`
  * the object. Never a guess by id alone (an id is unique only within its page: another page's object with the same id is another object):
- * only the moves of the one object the selection last moved with are walked (the newest move that touches the selection says which: its
- * `sig`), and a place reached must hold that object (`has` gets the `sig`), not another one that came to that page and id. Null when it is
- * gone.
+ * only the moves on the line of the newest move that touches the selection are walked (one object's moves, not another's that passed through
+ * the same place), and a place reached through a move must hold the object as that move moved it (`has` gets its `sig`; an undo brings back
+ * exactly that), not another one that came to that page and id. Null when it is gone.
  */
 export function follow(sel: At, moves: readonly Moved[], has: (at: At, sig?: string) => boolean): At | null {
   const key = (a: At) => `${a.pageId}\u0000${a.id}`;
@@ -71,7 +80,7 @@ export function follow(sel: At, moves: readonly Moved[], has: (at: At, sig?: str
   if (has(sel)) return sel;
   const last = [...moves].reverse().find((m) => key(m.from) === key(sel) || key(m.to) === key(sel));
   if (!last) return null;
-  const mine = moves.filter((m) => m.sig === last.sig);
+  const mine = moves.filter((m) => m.line === last.line);
   let ring: At[] = [sel];
   while (ring.length) {
     const next: At[] = [];
