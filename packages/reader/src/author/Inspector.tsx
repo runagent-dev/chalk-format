@@ -1,9 +1,11 @@
-import { ArrowLineDownIcon, ArrowLineUpIcon, TrashIcon } from '@phosphor-icons/react';
+import { ArrowLineDownIcon, ArrowLineUpIcon, CaretLeftIcon, CaretRightIcon, TrashIcon } from '@phosphor-icons/react';
 import type { Lesson, LessonObject, Presentation } from '@chalk-format/model';
 import { edit } from '../annotate/state.js';
 import { kindOf } from '../present.js';
 import { Colors, Field, Num, PresentationFields, Section, Seg, TEXT_SIZES, WIDTHS, numbers } from './controls.js';
 import type { AuthorStrings } from './i18n.js';
+import type { Locale } from '../config.js';
+import { num } from '../i18n.js';
 
 /** #rrggbbaa (a highlighter stroke): keep its see-through-ness when the colour changes. */
 const alphaOf = (c: string) => (/^#[0-9a-f]{8}$/i.test(c) ? c.slice(7) : '');
@@ -28,10 +30,13 @@ const arrange = (pageId: string, id: string, to: 'front' | 'back') => (l: Lesson
  * has (spec 1.3 presentation for media; words, size and colour for text; line, fill and thickness for shapes).
  * Each control changes the book at once; typing in a field is one undo step.
  */
-export function Inspector({ o, pageId, apply, onDelete, t }: {
+export function Inspector({ o, pageId, apply, onDelete, move, t }: {
   o: LessonObject; pageId: string;
   apply: (fn: (l: Lesson) => Lesson, gesture?: string) => void;
-  onDelete: () => void; t: AuthorStrings;
+  onDelete: () => void;
+  /** "Move to page": the page it is on (0-based), how many there are, and the move. Absent for a one-page book. */
+  move?: { index: number; count: number; to: (index: number) => void; locale: Locale } | undefined;
+  t: AuthorStrings;
 }) {
   const media = o.type === 'image' || o.type === 'embed';
   const setObj = (patch: Record<string, unknown>, gesture?: string) => apply(edit.replace(pageId, { ...o, ...patch } as LessonObject), gesture);
@@ -67,6 +72,20 @@ export function Inspector({ o, pageId, apply, onDelete, t }: {
           <button type="button" className="chalk-side-btn" onClick={() => apply(arrange(pageId, o.id, 'back'))}><ArrowLineDownIcon size={16} /> {t.back}</button>
         </div>
       </Section>
+
+      {move && (
+        <Section title={t.movePage}>
+          {/* for a far page; a near one is easier by dragging the object onto it */}
+          <div className="chalk-side-row chalk-insp-move">
+            <button type="button" className="chalk-side-btn" aria-label={t.movePrev} title={t.movePrev} disabled={move.index === 0} onClick={() => move.to(move.index - 1)}><CaretLeftIcon size={16} /></button>
+            <select aria-label={t.movePage} value={move.index} onChange={(e) => move.to(Number(e.target.value))}>
+              {Array.from({ length: move.count }, (_, i) => <option key={i} value={i}>{t.pageN.replace('{n}', num(move.locale, i + 1))}</option>)}
+            </select>
+            <button type="button" className="chalk-side-btn" aria-label={t.moveNext} title={t.moveNext} disabled={move.index === move.count - 1} onClick={() => move.to(move.index + 1)}><CaretRightIcon size={16} /></button>
+          </div>
+          <p className="chalk-side-note">{t.moveHint}</p>
+        </Section>
+      )}
 
       {media && (
         <PresentationFields o={o} setP={setP} t={t}

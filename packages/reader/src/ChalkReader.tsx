@@ -21,7 +21,8 @@ import { ToolsMenu } from './annotate/ToolsMenu.js';
 import type { ToolId } from './config.js';
 import { Panel } from './panels/Panel.js';
 import { useAuthoring } from './author/state.js';
-import { AuthorSurface } from './author/AuthorSurface.js';
+import { AuthorSurface, type Drag } from './author/AuthorSurface.js';
+import { boxOf, freeIdOn, relocate } from './author/move.js';
 import { InsertMenu } from './author/InsertMenu.js';
 import { AuthorSidebar, DEFAULT_TOOLS, type InsertDefaults, type ToolSettings } from './author/Sidebar.js';
 import { ACCEPT, mediaKindOf, naturalSize, objectFromFile, objectFromItem, videoPoster, type MediaKind } from './author/insert.js';
@@ -240,7 +241,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const notesBase = useRef(original.lesson);
   if (!author) notesBase.current = authoringOn ? au.lesson : original.lesson;
   const ann = useAnnotations(notesBase.current, { overlay: props.overlay, defaultOverlay: props.defaultOverlay, onOverlayChange: props.onOverlayChange, persistence: config.persistence });
-  const [sel, setSel] = useState<{ pageId: string; id: string } | null>(null);
+  const [selState, setSel] = useState<{ pageId: string; id: string } | null>(null);
   const [authorTool, setAuthorToolState] = useState<AuthorTool>('select');
   // the media type being added (its options are in the sidebar), what drawing tools draw, how added media starts
   const [adding, setAdding] = useState<MediaKind | null>(null);
@@ -265,6 +266,19 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const book = useMemo(() => withLibraries(authoringOn ? au.book : original, libs, lookup), [authoringOn, au.book, original, libs, lookup]);
   const lesson = author ? au.lesson : ann.lesson;
   const pages = lesson.pages;
+  // the selection follows its object to another page (a drag across pages, "Move to page", or the undo of either): found by its id, on the
+  // nearest page that has it (an id is unique only within its page)
+  const sel = useMemo(() => {
+    if (!selState || pages.find((p) => p.id === selState.pageId)?.objects.some((o) => o.id === selState.id)) return selState;
+    const was = pages.findIndex((p) => p.id === selState.pageId);
+    let now = -1;
+    pages.forEach((p, i) => { if (p.objects.some((o) => o.id === selState.id) && (now < 0 || Math.abs(i - was) < Math.abs(now - was))) now = i; });
+    return now >= 0 ? { pageId: pages[now]!.id, id: selState.id } : selState;
+  }, [selState, pages]);
+  // the drag in progress, shared by every page (an object can be carried from one page onto another)
+  const drag = useRef<Drag | null>(null);
+  const lessonNow = useRef(au.lesson); lessonNow.current = au.lesson;
+  const pageOf = useCallback((id: string) => lessonNow.current.pages.find((p) => p.id === id), []);
   const viewer = useRef<ViewerHandle>(null);
   const root = useRef<HTMLDivElement>(null);
   const narrow = () => (root.current?.clientWidth ?? 1000) < 720;
@@ -344,6 +358,18 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   const next = useCallback(() => goTo(page + step), [goTo, page, step]);
   const prev = useCallback(() => goTo(page - step), [goTo, page, step]);
   const zoomBy = useCallback((f: number) => viewer.current?.zoomTo(zoom * f), [zoom]);
+  // "Move to page" (the sidebar, Alt+PageUp / Alt+PageDown): the selected object goes to that page, at the same place relative to the page
+  // and inside it, as one undo step; it stays selected and the view follows it there
+  const auLesson = au.lesson, auApply = au.apply;
+  const moveSelTo = useCallback((i: number) => {
+    if (!sel) return;
+    const from = auLesson.pages.find((p) => p.id === sel.pageId), to = auLesson.pages[i], o = from?.objects.find((x) => x.id === sel.id);
+    if (!from || !to || !o || to.id === from.id) return;
+    const there = freeIdOn(to, relocate(o, getPageSize(from), getPageSize(to))), b = boxOf(there);
+    auApply(edit.move(from.id, to.id, there, o.id));
+    if (there.id !== o.id) setSel({ pageId: to.id, id: there.id });
+    viewer.current?.reveal(i, b.x + b.width / 2, b.y);
+  }, [sel, auLesson, auApply]);
 
 
   useEffect(() => {
@@ -368,6 +394,13 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     }
     // arrow keys move the selected object in author mode, not the page
     if (author && sel && k.startsWith('Arrow')) return;
+    // Alt+PageDown / Alt+PageUp carries the selected object to the next / previous page
+    if (author && sel && e.altKey && (k === 'PageDown' || k === 'PageUp')) {
+      e.preventDefault();
+      const at = pages.findIndex((p) => p.id === sel.pageId);
+      if (at >= 0) moveSelTo(at + (k === 'PageDown' ? 1 : -1));
+      return;
+    }
     if (k === 'PageDown' || (k === 'ArrowRight' && !mod) || (k === ' ' && layout === 'single')) { e.preventDefault(); next(); }
     else if (k === 'PageUp' || (k === 'ArrowLeft' && !mod)) { e.preventDefault(); prev(); }
     else if (k === 'Home') { e.preventDefault(); goTo(0); }
@@ -744,12 +777,12 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     <div style={{ display: 'contents' }} onContextMenu={(e) => openInsertMenu(e, pg, scale)}>
       {authorTool === 'select'
         ? <AuthorSurface page={pg} scale={scale} selected={sel?.pageId === pg.id ? sel.id : null}
-            onSelect={(id) => setSel(id ? { pageId: pg.id, id } : null)} apply={au.apply}
-            onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} />
+            onSelect={(id, on) => setSel(id ? { pageId: on ?? pg.id, id } : null)} apply={au.apply} pageOf={pageOf}
+            onDropFiles={(files, p) => void addFiles(files, pg, p)} labels={{ resize: at_.resize, drop: at_.drop }} drag={drag} />
         : <Surface page={pg} scale={scale} pen={authorPen} editable={erasable} apply={au.apply} textPrompt={strings(authorLocale).textPrompt} />}
       {addAt?.pageId === pg.id && <span className="chalk-author-target" aria-hidden style={{ left: addAt.x, top: addAt.y, '--s': scale } as CSSProperties} />}
     </div>
-  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt]);
+  ), [sel, au.apply, addFiles, at_, authorTool, authorPen, erasable, authorLocale, openInsertMenu, addAt, pageOf]);
   // + in the rail, or the right-click menu (with the page point it was opened at): that kind of media, with its options in the sidebar
   const pickMedia = useCallback((kind: MediaKind, at?: { pageId: string; x: number; y: number }) => { setAuthorToolState('select'); setSel(null); setAdding(kind); setAddAt(at ? { ...at, from: page } : null); }, [page]);
   // every opening sets what the picker offers (a cancelled one never reports back, so nothing is left narrowed)
@@ -823,7 +856,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
         <AuthorSidebar lesson={au.lesson} page={sel ? au.lesson.pages.find((x) => x.id === sel.pageId) : pages[page]} selected={selectedObject}
           tool={authorTool} adding={adding} tools={toolSettings} onTools={setToolSettings} defaults={insertDefaults} onDefaults={setInsertDefaults}
           apply={au.apply} onSelect={(id) => { const pg = pages[page]; if (pg) setSel({ pageId: pg.id, id }); }}
-          onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }}
+          onDelete={() => { if (sel) au.apply(edit.remove(sel.pageId, new Set([sel.id]))); setSel(null); }} onMoveTo={moveSelTo}
           libraries={libs} onLibrariesChange={props.onLibrariesChange} onPickItem={(it, lib) => void placeItem(it, lib)} onUploadTo={(fs, lib) => void uploadTo(fs, lib)}
           onChooseFile={chooseFile} onDropFiles={(fs) => { const { pg, at } = target(); if (pg) void addFiles(fs, pg, at); }}
           onClose={rootWidth < 720 ? () => { setSel(null); setAdding(null); } : undefined} closeLabel={strings(authorLocale).close} locale={authorLocale} t={at_} />
