@@ -67,7 +67,7 @@ const LINK_COLS = `k.id, k.question_id AS "questionId", k.line_id AS "lineId", k
     'chapterNo', l.chapter_no, 'retiredAt', l.retired_at) AS line`;
 const LINKS_FROM = `FROM book_links k JOIN book_lines l ON l.id = k.line_id`;
 
-type LineRow = { id: string; key: string; retiredAt: string | Date | null; pageNo: number; idx: number; block: number; kind: string; chapterNo: number | null; chapterTitle: string | null; section: string | null; rects: unknown };
+type LineRow = { id: string; key: string; pageId: string; text: string; textHash: string; retiredAt: string | Date | null; pageNo: number; idx: number; block: number; kind: string; chapterNo: number | null; chapterTitle: string | null; section: string | null; rects: unknown };
 
 class HighlightError extends Error {
   constructor(readonly status: 400 | 404 | 409, readonly code: string, message: string) { super(message); }
@@ -75,8 +75,11 @@ class HighlightError extends Error {
 const notFound = (what: string) => new HighlightError(404, 'not_found', what);
 const retired = () => new HighlightError(409, 'conflict', 'that line is no longer in the book');
 
-/** Takes the lock of a question for the rest of the transaction: writes to one question happen one after another. */
-const lockQuestion = (q: Query, id: string) => q(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`chalk-highlights:q:${id}`]);
+/**
+ * Takes the lock of a question for the rest of the transaction: writes to one question happen one after another. The id is taken in its
+ * canonical form (lower case, as Postgres prints a uuid), so two spellings of one id share the lock.
+ */
+const lockQuestion = (q: Query, id: string) => q(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`chalk-highlights:q:${id.toLowerCase()}`]);
 
 async function linkView(q: Query, id: string) {
   return (await q(`SELECT ${LINK_COLS} ${LINKS_FROM} WHERE k.id = $1`, [id]))[0]!;
@@ -112,7 +115,7 @@ export function planLines(stored: LineRow[], lines: z.infer<typeof lineIn>[]) {
   for (const r of lines) {
     const h = have.get(r.key);
     if (!h) { write.push(r); added++; continue; }
-    if (h.retiredAt || h.pageNo !== r.pageNo || h.idx !== r.idx || h.block !== r.block || h.kind !== r.kind || h.chapterNo !== (r.chapterNo ?? null)
+    if (h.retiredAt || h.pageId !== r.pageId || h.text !== r.text || h.textHash !== r.textHash || h.pageNo !== r.pageNo || h.idx !== r.idx || h.block !== r.block || h.kind !== r.kind || h.chapterNo !== (r.chapterNo ?? null)
       || h.chapterTitle !== (r.chapterTitle ?? null) || h.section !== (r.section ?? null) || !sameRects(h.rects, r.rects)) {
       write.push(r);
       if (h.retiredAt) revived++;
@@ -272,7 +275,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
           SELECT $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]')
           FROM jsonb_to_recordset($2::jsonb) AS ${LINE_RECORDSET}
           ON CONFLICT (book, key) DO UPDATE SET page_id = EXCLUDED.page_id, page_no = EXCLUDED.page_no, idx = EXCLUDED.idx, block = EXCLUDED.block, kind = EXCLUDED.kind,
-            chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section, rects = EXCLUDED.rects, retired_at = NULL, updated_at = now()`,
+            text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section, rects = EXCLUDED.rects, retired_at = NULL, updated_at = now()`,
         [book, JSON.stringify(part)]);
       }
       for (const part of chunks(plan.retire)) await q(`UPDATE book_lines SET retired_at = now(), updated_at = now() WHERE book = $1 AND retired_at IS NULL AND key = ANY($2::text[])`, [book, part]);
@@ -339,8 +342,13 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const { by: who } = await parse(c, bySchema);
     const linkId = c.req.param('id');
     if (!uuid.safeParse(linkId).success) throw notFound('link not found');
-    const done = await db.query(`UPDATE book_links SET status = 'rejected', method = 'human', reviewed_by = $3, reviewed_at = now() WHERE id = $1 AND book = $2 RETURNING id`, [linkId, book, who]);
-    if (!done.length) throw notFound('link not found');
+    // under the question's lock: taking a link off is a person's decision, so a matcher placing the question at the same moment must see it
+    await db.begin(async (q) => {
+      const [cur] = await q<{ questionId: string }>(`SELECT question_id AS "questionId" FROM book_links WHERE id = $1 AND book = $2`, [linkId, book]);
+      if (!cur) throw notFound('link not found');
+      await lockQuestion(q, cur.questionId);
+      await q(`UPDATE book_links SET status = 'rejected', method = 'human', reviewed_by = $2, reviewed_at = now() WHERE id = $1`, [linkId, who]);
+    });
     return c.json({ removed: 1 });
   }));
 
@@ -416,7 +424,9 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
       const [busy] = await q(`SELECT 1 FROM book_links k WHERE k.question_id = $1 AND (k.status <> 'rejected' OR ${HUMAN}) LIMIT 1`, [b.questionId]);
       if (busy) return 0;
       const have = new Set((await q<{ id: string }>(`SELECT line_id AS id FROM book_links WHERE question_id = $1`, [b.questionId])).map((r) => r.id));
-      const live = new Set((await q<{ id: string }>(`SELECT id FROM book_lines WHERE book = $1 AND retired_at IS NULL AND id = ANY($2::uuid[])`, [book, b.proposals.map((p) => p.lineId)])).map((r) => r.id));
+      // FOR SHARE: a sync that retires one of these lines waits for this transaction (and then turns the new suggestions down), and one
+      // that already retired it is waited for, so no suggestion lands on a line that is gone
+      const live = new Set((await q<{ id: string }>(`SELECT id FROM book_lines WHERE book = $1 AND retired_at IS NULL AND id = ANY($2::uuid[]) FOR SHARE`, [book, b.proposals.map((p) => p.lineId)])).map((r) => r.id));
       const once = new Set<string>(); // one row per line, whatever the roles asked for
       let n = 0;
       for (const p of b.proposals) {

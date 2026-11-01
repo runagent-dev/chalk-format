@@ -40,6 +40,20 @@ describe('book highlights (registry-api §11)', () => {
     expect((await call('GET', '/v1/books/-bad/lines?pages=6')).status).toBe(400);
   });
 
+  it('sync writes a line\'s new words under the same key', async () => {
+    await call('POST', b('/lines/sync'), { lines: [{ ...line(6, 0), text: 'corrected words', textHash: 'h-new' }, line(6, 1), line(6, 2, 1), line(7, 0)] });
+    const l = ((await call('GET', b('/lines/all'))).body.items as { key: string; text: string; textHash: string }[]).find((x) => x.key === 'p6/0/0')!;
+    expect(l).toMatchObject({ text: 'corrected words', textHash: 'h-new' });
+  });
+
+  it('a question\'s lock is the same whatever the case of its id: an upper-case id is serialised with the lower-case one', async () => {
+    const L = await ids();
+    const add = await call('POST', b('/links'), { questionId: Q1.toUpperCase(), lineId: L['p6/0/0'], by: 'rafi' });
+    expect(add.body.questionId).toBe(Q1);
+    expect((await call('DELETE', b(`/links/${add.body.id}`), { by: 'rafi' })).body).toEqual({ removed: 1 });
+    expect((await call('DELETE', b('/links/33333333-3333-4333-8333-333333333333'), { by: 'rafi' })).status).toBe(404);
+  });
+
   it('sync adds, changes, retires and revives lines by key; a re-run changes nothing', async () => {
     const again = await call('POST', b('/lines/sync'), { lines: [line(6, 0), line(6, 1), line(6, 2, 1), line(7, 0)] });
     expect(again.body).toEqual({ added: 0, changed: 0, retired: 0, revived: 0, linksRetired: 0 });
@@ -51,9 +65,10 @@ describe('book highlights (registry-api §11)', () => {
   });
 
   it('planLines matches the dashboard\'s plan: no change, a moved line, a missing one', () => {
-    const stored = [{ id: 'a', key: 'p6/0/0', retiredAt: null, pageNo: 6, idx: 0, block: 0, kind: 'body', chapterNo: 1, chapterTitle: 'Physical quantities', section: null, rects: line(6, 0).rects }];
+    const stored = [{ id: 'a', key: 'p6/0/0', pageId: 'p6', text: 'line 6.0', textHash: 'h6.0', retiredAt: null, pageNo: 6, idx: 0, block: 0, kind: 'body', chapterNo: 1, chapterTitle: 'Physical quantities', section: null, rects: line(6, 0).rects }];
     expect(planLines(stored, [line(6, 0)])).toMatchObject({ write: [], retire: [] });
     expect(planLines(stored, [])).toMatchObject({ retire: ['p6/0/0'] });
+    expect(planLines(stored, [{ ...line(6, 0), text: 'corrected words' }])).toMatchObject({ changed: 1 });
   });
 
   it('a person tags a line: confirmed and theirs; the page shows counts by kind; a reader may ask for linked lines only', async () => {
