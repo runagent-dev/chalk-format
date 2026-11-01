@@ -54,6 +54,18 @@ describe('book highlights (registry-api §11)', () => {
     expect((await call('DELETE', b('/links/33333333-3333-4333-8333-333333333333'), { by: 'rafi' })).status).toBe(404);
   });
 
+  it('ids are compared in lower case wherever they come in: a line moved onto itself, a retired line, a placement, a question\'s state', async () => {
+    const L = await ids();
+    const up = (id: string) => id.toUpperCase();
+    await call('POST', b('/links'), { questionId: Q1, lineId: L['p6/0/0'], by: 'rafi' });
+    expect((await call('POST', b(`/lines/${L['p6/0/0']}/links/move`), { to: up(L['p6/0/0']!), by: 'rafi' })).body).toEqual({ moved: 0 });
+    expect((await call('GET', b(`/links?line=${up(L['p6/0/0']!)}`))).body.items).toHaveLength(1);
+    expect((await call('POST', '/v1/highlights/questions', { questionIds: [up(Q1)] })).body.items).toEqual({ [Q1]: { live: 1, human: true, any: true } });
+    expect((await call('POST', b('/links/place'), { questionId: up(Q2), proposals: [{ lineId: up(L['p6/1/0']!), role: 'answers_from' }] })).body).toEqual({ placed: 1 });
+    await call('POST', b('/lines/sync'), { lines: [line(6, 0), line(6, 1), line(6, 2, 1)] });
+    expect((await call('POST', b('/links'), { questionId: Q1, lineId: up(L['p7/0/0']!), by: 'rafi' })).status).toBe(409);
+  });
+
   it('sync adds, changes, retires and revives lines by key; a re-run changes nothing', async () => {
     const again = await call('POST', b('/lines/sync'), { lines: [line(6, 0), line(6, 1), line(6, 2, 1), line(7, 0)] });
     expect(again.body).toEqual({ added: 0, changed: 0, retired: 0, revived: 0, linksRetired: 0 });

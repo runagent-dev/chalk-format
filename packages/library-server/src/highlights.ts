@@ -23,7 +23,10 @@ const SCOPES = ['sentence', 'paragraph', 'section'] as const;
 /** The most lines one change of a question's highlight may name: a highlight is a few lines, not a chapter. */
 export const MAX_LINE_CHANGES = 200;
 
-const uuid = z.string().uuid();
+/** A uuid, in its canonical form (lower case, as Postgres prints one): every id is compared as the database stores it. */
+const uuid = z.string().uuid().transform((s) => s.toLowerCase());
+/** An id from the URL (a path part or a query parameter) in the same canonical form; anything else is left as it is and fails its check. */
+const idOf = (v: string | undefined) => v?.toLowerCase();
 const by = z.string().min(1).max(200);
 const role = z.enum(ROLES);
 const scope = z.enum(SCOPES);
@@ -203,7 +206,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
   }));
 
   app.get('/v1/books/:slug/links', (c) => run(c, 'reader', async (book) => {
-    const line = c.req.query('line'), question = c.req.query('question');
+    const line = idOf(c.req.query('line')), question = idOf(c.req.query('question'));
     if (line !== undefined) {
       if (!uuid.safeParse(line).success) throw new HighlightError(400, 'invalid', 'line: not a uuid');
       const where = c.req.query('paragraph') === '1'
@@ -304,7 +307,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.patch('/v1/books/:slug/links/:id', (c) => run(c, 'author', async (book) => {
     const p = await parse(c, patchSchema);
-    const linkId = c.req.param('id');
+    const linkId = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(linkId).success) throw notFound('link not found');
     const kept = await db.begin(async (q) => {
       const [cur0] = await q<{ questionId: string }>(`SELECT question_id AS "questionId" FROM book_links WHERE id = $1 AND book = $2`, [linkId, book]);
@@ -340,7 +343,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.delete('/v1/books/:slug/links/:id', (c) => run(c, 'author', async (book) => {
     const { by: who } = await parse(c, bySchema);
-    const linkId = c.req.param('id');
+    const linkId = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(linkId).success) throw notFound('link not found');
     // under the question's lock: taking a link off is a person's decision, so a matcher placing the question at the same moment must see it
     await db.begin(async (q) => {
@@ -354,7 +357,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.post('/v1/books/:slug/lines/:id/links/remove', (c) => run(c, 'author', async (book) => {
     const b = await parse(c, removeSchema);
-    const lineId = c.req.param('id');
+    const lineId = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(lineId).success) throw notFound('that line is not in this book');
     const ids = await covered(db.query, book, lineId, Boolean(b.paragraph));
     if (!ids.length) throw notFound('that line is not in this book');
@@ -365,7 +368,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.post('/v1/books/:slug/lines/:id/links/move', (c) => run(c, 'author', async (book) => {
     const b = await parse(c, moveSchema);
-    const from = c.req.param('id');
+    const from = idOf(c.req.param('id'))!;
     if (!uuid.safeParse(from).success) throw notFound('that line is not in this book');
     if (from === b.to) return c.json({ moved: 0 });
     const moved = await db.begin(async (q) => {
@@ -386,7 +389,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.put('/v1/books/:slug/questions/:question/lines', (c) => run(c, 'author', async (book) => {
     const b = await parse(c, linesSchema);
-    const questionId = c.req.param('question');
+    const questionId = idOf(c.req.param('question'))!;
     if (!uuid.safeParse(questionId).success) throw new HighlightError(400, 'invalid', 'question: not a uuid');
     const add = [...new Set(b.add)], remove = [...new Set(b.remove)];
     if (!add.length && !remove.length) throw new HighlightError(400, 'invalid', 'name a line to add or take off');

@@ -315,7 +315,7 @@ A registry MAY keep the **highlights** of its books: the lines of a book's text 
 assets these are records that change one by one: an editor adds, moves and removes links, a matcher suggests them, and
 readers (a reading app, a mobile app) ask for the lines of the pages they show. A registry that lacks this answers `404`.
 Paths are under `v1/books/{slug}/` (`{slug}` as in spec 1.8 §2). Reads need `reader`, writes `author` (§10.1). Ids are
-UUID strings. Unknown ids of the book are `404 not_found`; a write that names a line the book no longer has (retired)
+UUID strings, compared and answered in lower case. Unknown ids of the book are `404 not_found`; a write that names a line the book no longer has (retired)
 is `409 conflict`.
 
 ### 11.1 Records
