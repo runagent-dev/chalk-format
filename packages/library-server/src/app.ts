@@ -13,6 +13,7 @@ import { createAuth, type AuthOptions } from './auth/service.js';
 import type { Db } from './db.js';
 import { adoptedStore, adoptPrefixes, assetAt, registerAdopt } from './adopt.js';
 import { baseOf, registerDelivery, type DeliveryOptions } from './delivery.js';
+import { registerHighlights } from './highlights.js';
 import { servedType, type DiskStorage, type Storage } from './storage.js';
 
 /**
@@ -100,7 +101,7 @@ export function createLibraryApp(o: LibraryOptions) {
   // what this address is, for someone who opens it in a browser
   app.get('/', (c) => c.json({
     name: o.name ?? 'Chalk library', api: 'Chalk registry API v1 (spec/1.2/registry-api.md)',
-    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/assets/current', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'POST /v1/auth/token',
+    endpoints: ['GET /v1/stores', 'GET /v1/search?q=', 'GET /v1/assets/{key}', 'POST /v1/assets/check', 'POST /v1/assets/current', 'POST /v1/uploads', 'POST /v1/assets', 'GET /v1/files/{key}', 'GET /v1/assets/{key}/link', 'GET /v1/books/{slug}/lines?pages=', 'GET /v1/books/{slug}/links?line=', 'POST /v1/auth/token',
       'GET /.well-known/openid-configuration', 'GET /healthz'],
   }));
 
@@ -185,6 +186,7 @@ export function createLibraryApp(o: LibraryOptions) {
   const adopting = { db, storage, prefixes: adoptPrefixes(o.adoptPrefixes), publicUrl: o.publicUrl, publicRead: o.publicRead !== false, maxBytes, types, fail, ensureStore, describe,
     recordOf: async (key: string) => record((await rowOf(key))!, true), sha256Of, base: (c: Context) => baseOf(c, (o as DeliveryOptions).serverUrl) };
   registerAdopt(app, adopting);
+  registerHighlights(app, { db, fail }); // §11: the lines of books and the questions linked to them
 
   // ---- §4 reading ----
   app.get('/v1/assets/:key', async (c) => {
