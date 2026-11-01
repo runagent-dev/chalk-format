@@ -51,25 +51,27 @@ export type At = { pageId: string; id: string };
 export type Moved = { from: At; to: At };
 
 /**
- * Where the selected object is now, when it is no longer where the selection says (a move, or the undo or redo of one): the selection is
- * followed along the moves made in this session, newest first, from either end, until a place that `has` the object. Never a guess by id
- * alone (an id is unique only within its page: another page's object with the same id is another object). Null when it is gone.
+ * Where the selected object is now, when it is no longer where the selection says (a move, or the undo or redo of one): the places it was
+ * moved between in this session, searched outward from the selection (nearest first, newer moves first among equals) for one that `has`
+ * the object. Never a guess by id alone (an id is unique only within its page: another page's object with the same id is another object).
+ * Null when it is gone.
  */
 export function follow(sel: At, moves: readonly Moved[], has: (at: At) => boolean): At | null {
-  const same = (a: At, b: At) => a.pageId === b.pageId && a.id === b.id;
-  const seen: At[] = [sel];
-  let cur = sel;
-  for (let step = 0; step <= moves.length; step++) {
-    if (has(cur)) return cur;
-    let next: At | null = null;
-    for (let i = moves.length - 1; i >= 0 && !next; i--) {
-      const m = moves[i]!;
-      const other = same(m.from, cur) ? m.to : same(m.to, cur) ? m.from : null;
-      if (other && !seen.some((s) => same(s, other))) next = other;
+  const key = (a: At) => `${a.pageId}\u0000${a.id}`;
+  const seen = new Set([key(sel)]);
+  let ring: At[] = [sel];
+  while (ring.length) {
+    const found = ring.find(has);
+    if (found) return found;
+    const next: At[] = [];
+    for (const cur of ring) {
+      for (let i = moves.length - 1; i >= 0; i--) {
+        const m = moves[i]!;
+        const other = key(m.from) === key(cur) ? m.to : key(m.to) === key(cur) ? m.from : null;
+        if (other && !seen.has(key(other))) { seen.add(key(other)); next.push(other); }
+      }
     }
-    if (!next) return null;
-    seen.push(next);
-    cur = next;
+    ring = next;
   }
   return null;
 }

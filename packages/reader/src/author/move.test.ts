@@ -120,6 +120,12 @@ describe('the selection follows a moved object', () => {
     expect(follow(at('p1', 'x'), moves, where(at('p2', 'x_new')))).toEqual(at('p2', 'x_new'));
   });
 
+  it('back past a move it does not need: A to B to C, undone twice, finds A', () => {
+    const moves = [{ from: at('p1', 'x'), to: at('p2', 'x') }, { from: at('p2', 'x'), to: at('p3', 'x') }];
+    // the first undo left the selection on p2; the second puts the object back on p1
+    expect(follow(at('p2', 'x'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
+  });
+
   it('along a drag that crossed several pages, undone as one step', () => {
     const moves = [{ from: at('p1', 'x'), to: at('p2', 'x') }, { from: at('p2', 'x'), to: at('p3', 'x') }];
     expect(follow(at('p3', 'x'), moves, where(at('p1', 'x')))).toEqual(at('p1', 'x'));
