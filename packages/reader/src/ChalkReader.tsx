@@ -274,12 +274,17 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     const has = (at: { pageId: string; id: string }) => !!pages.find((p) => p.id === at.pageId)?.objects.some((o) => o.id === at.id);
     return has(selState) ? selState : (follow(selState, moves.current, has) ?? selState);
   }, [selState, pages]);
+  // what the selection followed becomes the selection, so a later undo starts from where the object really is (not from a place another
+  // object with the same id may come back to)
+  useEffect(() => { if (sel && selState && (sel.pageId !== selState.pageId || sel.id !== selState.id)) setSel(sel); }, [sel, selState]);
   const recordMove = useCallback((from: { pageId: string; id: string }, to: { pageId: string; id: string }) => {
     moves.current = [...moves.current.slice(-199), { from, to }];
     setSel(to);
   }, []);
   // the drag in progress, shared by every page (an object can be carried from one page onto another)
   const drag = useRef<Drag | null>(null);
+  // a drag ends with its pointer; leaving the select tool or author mode mid-drag (the surfaces go away) ends it too
+  useEffect(() => () => { const d = drag.current; if (d?.raf) cancelAnimationFrame(d.raf); drag.current = null; }, [authorTool, author]);
   const lessonNow = useRef(au.lesson); lessonNow.current = au.lesson;
   const pageOf = useCallback((id: string) => lessonNow.current.pages.find((p) => p.id === id), []);
   const viewer = useRef<ViewerHandle>(null);

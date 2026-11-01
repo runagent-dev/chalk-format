@@ -113,6 +113,15 @@ async function openAuthor(o, query = '', book) {
   const v2 = await where(p, 'pendulum-video');
   check('the video moves to page 1 with its label', v2?.page === 1 && (await p.evaluate(() => document.querySelector('[data-chalk-id="pendulum-video"]')?.getAttribute('aria-label'))) === vLabel, JSON.stringify(v2));
 
+  // a drag cut short by a tool change (P, let go, V) is over: moving the mouse afterwards moves nothing
+  const s0 = await where(p, 'pendulum-video');
+  await p.mouse.move(s0.x + s0.w / 2, s0.y + s0.h / 2); await p.mouse.down(); await p.mouse.move(s0.x + s0.w / 2 + 20, s0.y + s0.h / 2 + 10, { steps: 4 });
+  await p.keyboard.press('p'); await p.mouse.up(); await p.keyboard.press('v'); await p.waitForTimeout(200);
+  const s1 = await where(p, 'pendulum-video');
+  await p.mouse.move(s0.x + s0.w / 2 + 200, s0.y + s0.h / 2 + 120, { steps: 6 }); await p.waitForTimeout(200);
+  const s2 = await where(p, 'pendulum-video');
+  check('a drag cut short by a tool change leaves the object where it was let go', Math.abs(s2.x - s1.x) < 1 && Math.abs(s2.y - s1.y) < 1, JSON.stringify({ s1, s2 }));
+
   // save (the showcase downloads the .chalk): each object once, on its new page, the same id
   const dl = p.waitForEvent('download');
   await p.keyboard.press('Control+s');

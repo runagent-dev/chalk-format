@@ -163,6 +163,8 @@ export function AuthorSurface({ page, scale, selected, onSelect, onCarried, appl
     // no drag: outline what a click would select
     if (!s) { if (e.pointerType === 'mouse') setHover(topAt(page.objects, at(e), tol)?.id ?? null); return; }
     if (s.pointer !== e.pointerId) return;
+    // a mouse with no button down: the drag ended where this page did not hear it (e.g. the button was let go over another tool)
+    if (e.pointerType === 'mouse' && e.buttons === 0) { end(e); return; }
     s.last = { x: e.clientX, y: e.clientY };
     if (!s.moved && Math.hypot(s.last.x - s.startClient.x, s.last.y - s.startClient.y) < 3) return;
     s.moved = true;
