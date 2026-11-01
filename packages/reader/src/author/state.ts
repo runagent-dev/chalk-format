@@ -51,6 +51,8 @@ export function useAuthoring(base: Book, onChange?: (lesson: Lesson) => void, o:
       lesson,
       assetUrl: (id) => { const a = own.get(id); return a ? Promise.resolve(a.url) : base.assetUrl(id); },
       peekUrl: (id) => own.get(id)?.url ?? base.peekUrl(id),
+      // media the author added are this page's blob: URLs (nothing to renew); the rest the book renews
+      renewUrl: (id, failed) => { const a = own.get(id); return a ? Promise.resolve(a.url) : base.renewUrl ? base.renewUrl(id, failed) : base.assetUrl(id); },
       assetBytes: (id) => { const a = own.get(id); return a ? Promise.resolve({ type: a.type, bytes: a.bytes.slice().buffer as ArrayBuffer }) : base.assetBytes(id); },
     };
   }, [base, lesson, addedVersion]);

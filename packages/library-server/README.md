@@ -23,6 +23,11 @@ DATABASE_URL=pglite:./.data/db npx tsx src/cli.ts key add ci --roles author     
 
 (PGlite allows one process at a time: stop `serve` first, or use the admin API.) Docker, from the repository root: `docker build -f packages/library-server/Dockerfile -t chalk-library-server .`
 
+It also keeps the **highlights** of books (registry API §11): the lines of a book's text and the questions linked to
+them, as records an editor and a matcher change one by one (`v1/books/<slug>/lines`, `…/links`), so reading apps get
+them from the library. They are migration step 5 of its database (two tables, `book_lines` and `book_links`), applied
+when the server starts.
+
 Every setting, Postgres and S3 setup, bucket CORS, deploying and security:
 [docs/guides/run-a-library-server.md](../../docs/guides/run-a-library-server.md). Using libraries in the
 reader and the editor: [docs/guides/media-libraries.md](../../docs/guides/media-libraries.md).

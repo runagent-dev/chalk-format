@@ -167,6 +167,10 @@ the asset with that path as its location. Nothing is copied.
   cache). If every copy is gone, readers get a 404 (they verify what they get, so other bytes at a path are
   refused). Adopting a path again HEADs it and reads nothing. The schema step that allows this (step 4: `locations`
   keyed by key, store and path, with `checked_at` and `missing`) runs by itself on the first start.
+  A book already open in the reader recovers too: a picture, video, audio or model whose URL fails to load is asked
+  for again once (the reader drops the index shard it held and fetches it past the browser's cache) and drawn from
+  the copy the library names now; the same goes for a signed link (`/v1/assets/{key}/link`) that expired while a
+  video played, when the host's resolver hands out links.
 - A key the library already has (uploaded, or adopted elsewhere) stays where it is; adopting it again only updates
   its title, tags and the other descriptive fields, and reads nothing.
 

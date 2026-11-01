@@ -1,7 +1,7 @@
 import { parseStreamIndex, parseStreamPage, parseStreamText } from '@chalk-format/container';
 import { isImageType, resolutionKey, sniffMediaType, type Lesson, type LessonPage, type StreamIndex, type StreamPage, type StreamText } from '@chalk-format/model';
 import { openLibraryBook, type OpenedLibraryBook, type TokenSource } from '@chalk-format/store';
-import type { AssetResolver, Book } from './book.js';
+import { stale, type AssetResolver, type Book } from './book.js';
 
 /**
  * A streamed book (spec 1.4): the index first, then pages as the reader asks for them. Until its file arrives a
@@ -123,6 +123,8 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
       if (!resolutionKey(id) || lib.storeFor(type) || !lib.storesFor(type).length) return null;
       return new Blob([(await lib.fetchItem(id, { signal, type })) as BlobPart], { type });
     },
+    // a URL the library named failed to draw (the library moved an adopted key to another copy): where it is is asked again
+    forget: (id) => lib.forgetUrl?.(id),
     library: lib,
   }, o);
 }
@@ -143,6 +145,8 @@ type StreamFiles = {
   fallbackUrl?(id: string, signal: AbortSignal): Promise<string | Blob | null>;
   /** External media's bytes, fetched and checked by the source; undefined for an id it cannot name. */
   assetBytes?(id: string, signal: AbortSignal): Promise<ArrayBuffer | undefined>;
+  /** Forget what the source knows about where an external asset is (a URL it gave failed to load). */
+  forget?(id: string): void;
   library?: OpenedLibraryBook;
 };
 
@@ -196,6 +200,8 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
 
   // assets: the book's own files by URL (cacheable), external ones through the host
   const urls = new Map<string, Promise<string | null>>(), settled = new Map<string, string | null>(), owned: string[] = [];
+  // ids whose resolution failed (a fetch, not "not available"): `renewUrl(id, null)` asks again only for these
+  const errored = new Set<string>();
   const resolveUrl = async (id: string): Promise<string | null> => {
     const p = assetPath.get(id);
     if (p) return at(p);
@@ -214,22 +220,38 @@ function streamedBook(src: StreamFiles, o: { resolveAsset?: AssetResolver; fetch
     get lesson() { return lesson; },
     missingAssetIds: [],
     assetUrl(id) {
-      let u = urls.get(id);
-      if (!u) { u = resolveUrl(id).catch(() => null).then((v) => { settled.set(id, v); return v; }); urls.set(id, u); }
+      const kept = urls.get(id);
+      if (kept) return kept;
+      errored.delete(id);
+      const u: Promise<string | null> = resolveUrl(id).then((v) => ({ v, e: false }), () => ({ v: null, e: true })).then(({ v, e }) => {
+        // an answer renewed while this one was on its way is not overwritten by it
+        if (urls.get(id) === u) { settled.set(id, v); if (e) errored.add(id); }
+        return v;
+      });
+      urls.set(id, u);
       return u;
     },
     peekUrl(id) { const p = assetPath.get(id); return p ? at(p) : settled.get(id); },
+    renewUrl(id, failed) {
+      // the book's own files have one URL each; a disposed book renews nothing
+      if (assetPath.has(id) || abort.signal.aborted) return book.assetUrl(id);
+      if (stale(urls, settled, errored, id, failed)) { urls.delete(id); settled.delete(id); src.forget?.(id); }
+      return book.assetUrl(id);
+    },
     async assetBytes(id) {
       if (src.assetBytes && !assetPath.has(id)) {
         // the source's answer is final for an id it can name: bytes that failed their key check are not fetched again unchecked
         const bytes = await src.assetBytes(id, abort.signal).catch(() => null);
         if (bytes !== undefined) return bytes && { type: assetType.get(id) ?? 'application/octet-stream', bytes };
       }
-      const url = await book.assetUrl(id);
+      let url = await book.assetUrl(id);
       if (!url) return null;
       // a blob: URL holds bytes already here (checked ones from a store, or the host's): the host's fetch may not know the scheme
-      const r = await (url.startsWith('blob:') ? globalThis.fetch(url, { signal: abort.signal }) : doFetch(url, { signal: abort.signal }));
-      if (!r.ok) return null;
+      const get = (u: string) => (u.startsWith('blob:') ? globalThis.fetch(u, { signal: abort.signal }) : doFetch(u, { signal: abort.signal })).catch((e: unknown) => { if (abort.signal.aborted) throw e; return null; });
+      let r = await get(url);
+      // the URL failed (a link expired, the file moved): renewed once
+      if (!r?.ok) { const again = await book.renewUrl!(id, url); if (again && again !== url) { url = again; r = await get(url); } }
+      if (!r?.ok) return null;
       return { type: assetType.get(id) ?? r.headers.get('content-type') ?? 'application/octet-stream', bytes: await r.arrayBuffer() };
     },
     want(list) {

@@ -18,6 +18,14 @@ export type Book = {
   assetBytes(assetId: string): Promise<{ type: string; bytes: ArrayBuffer } | null>;
   /** Already-resolved URL, or undefined while still unknown (lets renders avoid a flash). */
   peekUrl(assetId: string): string | null | undefined;
+  /**
+   * A URL drawn for an asset failed to load (`failed`), or resolving it failed (`failed` null): the book forgets that answer, and what
+   * told it where the asset is, and resolves it once more. Another element that failed on the same URL gets the same new answer (it is
+   * resolved once). The URL from the new answer on is what `assetUrl` and `peekUrl` give. A failed URL that is not the book's current one
+   * any more gets the current one; an asset whose answer was "not available" (not a failure) is not asked again. Optional: a book without
+   * it keeps its first answers.
+   */
+  renewUrl?(assetId: string, failed: string | null): Promise<string | null>;
   /** Free the blob: URLs. The book is unusable afterwards. */
   dispose(): void;
 };
@@ -41,6 +49,8 @@ export function bookFrom(lesson: Lesson, assets: AssetBundle, missingAssetIds: s
   const buffers = new Map<string, ArrayBuffer>();
   let disposed = false;
 
+  // ids whose resolution failed (the resolver threw): `renewUrl(id, null)` asks again only for these
+  const errored = new Set<string>();
   const blobUrl = (blob: Blob) => { const u = URL.createObjectURL(blob); owned.push(u); return u; };
   async function resolve(id: string): Promise<string | null> {
     const carried = assets.get(id);
@@ -50,19 +60,31 @@ export function bookFrom(lesson: Lesson, assets: AssetBundle, missingAssetIds: s
     if (r == null) return null;
     return typeof r === 'string' ? r : blobUrl(r);
   }
+  const assetUrl = (id: string): Promise<string | null> => {
+    if (disposed) return Promise.resolve(null);
+    const kept = urls.get(id);
+    if (kept) return kept;
+    errored.delete(id);
+    const u: Promise<string | null> = resolve(id).then((v) => ({ v, e: false }), () => ({ v: null, e: true })).then(({ v, e }) => {
+      // an answer renewed while this one was on its way is not overwritten by it
+      if (urls.get(id) === u) { settled.set(id, v); if (e) errored.add(id); }
+      return v;
+    });
+    urls.set(id, u);
+    return u;
+  };
+  const renewUrl = (id: string, failed: string | null): Promise<string | null> => {
+    // carried bytes (a blob: URL of this page) and a book with no resolver have nothing to renew
+    if (disposed || assets.has(id) || !resolveAsset) return assetUrl(id);
+    if (stale(urls, settled, errored, id, failed)) { urls.delete(id); settled.delete(id); }
+    return assetUrl(id);
+  };
   return {
     lesson,
     missingAssetIds,
-    assetUrl(id) {
-      if (disposed) return Promise.resolve(null);
-      let u = urls.get(id);
-      if (!u) {
-        u = resolve(id).catch(() => null).then((v) => { settled.set(id, v); return v; });
-        urls.set(id, u);
-      }
-      return u;
-    },
+    assetUrl,
     peekUrl: (id) => settled.get(id),
+    renewUrl,
     async assetBytes(id) {
       const carried = assets.get(id);
       if (carried) {
@@ -71,12 +93,25 @@ export function bookFrom(lesson: Lesson, assets: AssetBundle, missingAssetIds: s
         if (!b) { b = carried.bytes.slice().buffer as ArrayBuffer; buffers.set(id, b); }
         return { type: carried.type, bytes: b };
       }
-      const url = await this.assetUrl(id);
+      let url = await assetUrl(id);
       if (!url) return null;
-      const res = await fetch(url);
-      if (!res.ok) return null;
+      let res = await fetch(url).catch(() => null);
+      // the URL failed (it expired, the file moved): renewed once
+      if (!res?.ok) { const again = await renewUrl(id, url); if (again && again !== url) { url = again; res = await fetch(url).catch(() => null); } }
+      if (!res?.ok) return null;
       return { type: res.headers.get('content-type') ?? 'application/octet-stream', bytes: await res.arrayBuffer() };
     },
     dispose() { disposed = true; owned.forEach((u) => URL.revokeObjectURL(u)); owned.length = 0; urls.clear(); settled.clear(); buffers.clear(); },
   };
+}
+
+/**
+ * Whether a cached answer for `id` is the one that failed, so it is to be resolved again: a URL still being resolved (another element
+ * renewed it already) or a different current URL is not; nor is "not available" (null) unless its resolution failed.
+ */
+export function stale(urls: ReadonlyMap<string, Promise<string | null>>, settled: ReadonlyMap<string, string | null>, errored: ReadonlySet<string>, id: string, failed: string | null): boolean {
+  if (!urls.has(id)) return true;
+  if (!settled.has(id)) return false;
+  const now = settled.get(id);
+  return failed === null ? now === null && errored.has(id) : now === failed;
 }
