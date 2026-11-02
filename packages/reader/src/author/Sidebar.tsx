@@ -55,6 +55,8 @@ export function AuthorSidebar(p: {
   defaults: InsertDefaults; onDefaults: (d: InsertDefaults) => void;
   apply: (fn: (l: Lesson) => Lesson, gesture?: string) => void;
   onSelect: (id: string) => void; onDelete: () => void;
+  /** Move the selected object to the page at this index (0-based). */
+  onMoveTo?: ((index: number) => void) | undefined;
   onChooseFile: (kind: MediaKind) => void; onDropFiles: (files: File[]) => void;
   /** Connected libraries: the gallery searches them; with `onLibrariesChange` the panel can connect and reorder them. */
   libraries: Library[]; onLibrariesChange?: ((l: Library[]) => void) | undefined;
@@ -71,7 +73,9 @@ export function AuthorSidebar(p: {
   let icon: ReactNode, title: string, hint: string | null = null, body: ReactNode;
   if (p.selected && page) {
     icon = glyphOf(p.selected, pr); title = kindName(p.selected, t);
-    body = <Inspector o={p.selected} pageId={page.id} apply={p.apply} onDelete={p.onDelete} t={t} />;
+    const at = p.lesson.pages.findIndex((x) => x.id === page.id), onMoveTo = p.onMoveTo;
+    const move = onMoveTo && at >= 0 && p.lesson.pages.length > 1 ? { index: at, count: p.lesson.pages.length, to: onMoveTo, locale: p.locale } : undefined;
+    body = <Inspector o={p.selected} pageId={page.id} apply={p.apply} onDelete={p.onDelete} move={move} t={t} />;
   } else if (p.adding) {
     const kind = p.adding, d = p.defaults[kind] ?? {};
     const setD = (next: InsertDefaults[MediaKind]) => p.onDefaults({ ...p.defaults, [kind]: next });
