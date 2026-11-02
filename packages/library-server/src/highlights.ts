@@ -60,11 +60,20 @@ const importSchema = z.object({
   })).max(500_000),
 });
 const questionsSchema = z.object({ questionIds: z.array(uuid).max(5000) });
+/** A box a person drew: on the page (page units), with a width and a type size. */
+const drawn = z.object({ x: z.number().finite().min(0).max(100_000), y: z.number().finite().min(0).max(100_000), w: z.number().finite().positive().max(100_000), fs: z.number().finite().positive().max(1_000) });
+/** `rects`: the line's boxes as a person drew them; null goes back to the computed ones. */
+const rectsSchema = z.object({ rects: z.array(drawn).min(1).max(200).nullable(), by });
 
 /** A person's decision, on the links table as `k`. */
 const HUMAN = `(k.method = 'human' OR k.reviewed_by IS NOT NULL OR k.status = 'confirmed')`;
 
+/** A line as readers get it: the boxes a person drew when there are any (`rectsManual`), else the computed ones. */
 const LINE_COLS = `l.id, l.key, l.page_id AS "pageId", l.page_no AS "pageNo", l.idx, l.block, l.kind, l.text, l.text_hash AS "textHash",
+  l.chapter_no AS "chapterNo", l.chapter_title AS "chapterTitle", l.section, coalesce(l.rects_manual, l.rects) AS rects,
+  l.rects_manual IS NOT NULL AS "rectsManual", l.rects_by AS "rectsBy", l.retired_at AS "retiredAt"`;
+/** A line as a sync compares it: the computed boxes (a person's are never replaced by a sync). */
+const SYNC_COLS = `l.id, l.key, l.page_id AS "pageId", l.page_no AS "pageNo", l.idx, l.block, l.kind, l.text, l.text_hash AS "textHash",
   l.chapter_no AS "chapterNo", l.chapter_title AS "chapterTitle", l.section, l.rects, l.retired_at AS "retiredAt"`;
 const LINK_COLS = `k.id, k.question_id AS "questionId", k.line_id AS "lineId", k.role, k.scope, k.method, k.status, k.score, k.rationale,
   k.question_type AS "questionType", k.reviewed_by AS "reviewedBy", k.reviewed_at AS "reviewedAt", k.created_at AS "createdAt",
@@ -286,14 +295,17 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const result = await db.begin(async (q) => {
       // one sync of a book at a time
       await q(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`chalk-highlights:sync:${book}`]);
-      const stored = await q<LineRow>(`SELECT ${LINE_COLS} FROM book_lines l WHERE l.book = $1`, [book]);
+      const stored = await q<LineRow>(`SELECT ${SYNC_COLS} FROM book_lines l WHERE l.book = $1`, [book]);
       const plan = planLines(stored, lines);
       for (const part of chunks(plan.write)) {
         await q(`INSERT INTO book_lines (book, key, page_id, page_no, idx, block, kind, text, text_hash, chapter_no, chapter_title, section, rects)
           SELECT $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]')
           FROM jsonb_to_recordset($2::text::jsonb) AS ${LINE_RECORDSET}
           ON CONFLICT (book, key) DO UPDATE SET page_id = EXCLUDED.page_id, page_no = EXCLUDED.page_no, idx = EXCLUDED.idx, block = EXCLUDED.block, kind = EXCLUDED.kind,
-            text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section, rects = EXCLUDED.rects, retired_at = NULL, updated_at = now()`,
+            text = EXCLUDED.text, text_hash = EXCLUDED.text_hash, chapter_no = EXCLUDED.chapter_no, chapter_title = EXCLUDED.chapter_title, section = EXCLUDED.section, rects = EXCLUDED.rects,
+            rects_manual = CASE WHEN book_lines.text_hash = EXCLUDED.text_hash THEN book_lines.rects_manual END,
+            rects_by = CASE WHEN book_lines.text_hash = EXCLUDED.text_hash THEN book_lines.rects_by END,
+            rects_at = CASE WHEN book_lines.text_hash = EXCLUDED.text_hash THEN book_lines.rects_at END, retired_at = NULL, updated_at = now()`,
         [book, JSON.stringify(part)]);
       }
       for (const part of chunks(plan.retire)) await q(`UPDATE book_lines SET retired_at = now(), updated_at = now() WHERE book = $1 AND retired_at IS NULL AND key = ANY($2::text[])`, [book, part]);
@@ -383,6 +395,21 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
       return gone.length;
     });
     return c.json({ removed });
+  }));
+
+  // a line's boxes as a person drew them (the computed ones are often a few letters off where a sentence starts or ends inside a printed
+  // line): shown instead of the computed ones from now on, and kept by every sync; null goes back to the computed ones
+  app.put('/v1/books/:slug/lines/:id/rects', (c) => run(c, 'author', async (book) => {
+    const b = await parse(c, rectsSchema);
+    const id = idOf(c.req.param('id'))!;
+    if (!uuid.safeParse(id).success) throw notFound('that line is not in this book');
+    const line = await db.begin(async (q) => {
+      await lineOf(q, book, id, true);
+      await q(`UPDATE book_lines SET rects_manual = $3::text::jsonb, rects_by = $4, rects_at = CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, updated_at = now() WHERE id = $1 AND book = $2`,
+        [id, book, b.rects === null ? null : JSON.stringify(b.rects), b.rects === null ? null : b.by]);
+      return (await q(`SELECT ${LINE_COLS} FROM book_lines l WHERE l.id = $1`, [id]))[0];
+    });
+    return c.json({ line });
   }));
 
   app.post('/v1/books/:slug/lines/:id/links/move', (c) => run(c, 'author', async (book) => {

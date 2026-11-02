@@ -80,6 +80,11 @@ ALTER TABLE locations ADD COLUMN IF NOT EXISTS missing boolean NOT NULL DEFAULT 
 INSERT INTO chalk_library_schema (version) VALUES (4);`);
   // step 5: the highlights of books (registry-api §11), editable records: the lines of a book and the questions linked to them
   if (!done.has(5)) await exec(`${HIGHLIGHTS_SQL}\nINSERT INTO chalk_library_schema (version) VALUES (5);`);
+  // step 6: a line's boxes as a person drew them (registry-api §11.3, lines/:id/rects): shown instead of the computed ones, and kept by a sync
+  if (!done.has(6)) await exec(`ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_manual jsonb;
+ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_by text;
+ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_at timestamptz;
+INSERT INTO chalk_library_schema (version) VALUES (6);`);
 }
 
 /** Step 5: book highlights (spec/1.2/registry-api.md §11). Questions are named by their lasting id only (no foreign key: they are manifests). */
