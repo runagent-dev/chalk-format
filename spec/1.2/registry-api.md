@@ -325,12 +325,17 @@ A **line** (one sentence of the text layer):
 ```json
 { "id": "…uuid…", "key": "p12/3b0fbd6c9c/0", "pageId": "p12", "pageNo": 12, "idx": 4, "block": 1, "kind": "body",
   "text": "…", "textHash": "…", "chapterNo": 1, "chapterTitle": "…", "section": "…",
-  "rects": [{ "x": 120, "y": 530, "w": 610, "fs": 19 }], "retiredAt": null }
+  "rects": [{ "x": 120, "y": 530, "w": 610, "fs": 19 }], "rectsManual": false, "rectsBy": null, "retiredAt": null }
 ```
 
 `key` is the line's lasting name (unique in the book; the indexer derives it from the page and the words), `rects` one box
 per printed line in page units (`y` the top; a box is `fs × 1.25` high). A line the text layer no longer has is
 **retired** (`retiredAt` set), never deleted, so the links on it are kept.
+
+`rects` are computed by the indexer and can be a few letters off where a line starts or ends inside a printed line. A person
+can draw them (`PUT lines/{id}/rects`): those boxes are then the line's `rects` for every reader (`rectsManual: true`,
+`rectsBy` who drew them), a sync keeps them while the line's words stay (`textHash`), and `null` goes back to the computed
+ones. A registry without this sends neither field; a reader treats a missing `rectsManual` as `false`.
 
 A **link** (a question tied to a line):
 
@@ -379,6 +384,7 @@ Every write names the person (or job) in `by`, kept as `reviewedBy`. Each reques
 | `PATCH links/{id}` `{ status?, role?, scope?, lineId?, by }` | Changes one link. Changing role, scope or line, or rejecting, makes it `human`; a move confirms it unless `status` is given. Moving onto a pair that exists merges into that row (confirmed, `human`) and drops this one. → the link kept |
 | `DELETE links/{id}` `{ by }` | Takes it off: the row stays, `rejected`, `human`. → `{ "removed": 1 }` |
 | `POST lines/{id}/links/remove` `{ paragraph?, by }` | Takes off every live link of the line (or its paragraph). → `{ "removed": n }` |
+| `PUT lines/{id}/rects` `{ rects, by }` | The line's boxes as a person drew them (`[{x, y, w, fs}]`, 1 to 200, on the page: `x`, `y` ≥ 0, `w`, `fs` > 0), or `null` for the computed ones again. A live line of the book only (404, 409 for a retired one). → `{ "line" }` |
 | `POST lines/{id}/links/move` `{ to, by }` | Moves the live links of a line to another: a pair the other line has is kept (confirmed if it was rejected, `human`) and this one dropped; rejected rows stay. → `{ "moved": n }` |
 | `PUT questions/{questionId}/lines` `{ role, add: [lineId], remove: [lineId], scope?, questionType?, by }` | A question's highlight under one role (≤ 200 lines named): `add`ed lines become the person's confirmed links, `remove`d ones rejected rows (whatever they were), the kept ones the person's. → `{ "items": [link + line] }` as `GET links?question=` |
 | `POST links/place` `{ questionId, questionType?, proposals: [{ lineId, role, scope?, score?, rationale? }] }` | A matcher's suggestions, written only if the question still has no live link and no person's decision in any book; lines retired since, and lines the question already has a row on, are skipped. → `{ "placed": n }` (0: not placed) |
