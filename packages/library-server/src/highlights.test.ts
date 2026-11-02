@@ -48,6 +48,38 @@ describe('book highlights (registry-api §11)', () => {
     expect(l).toMatchObject({ text: 'corrected words', textHash: 'h-new' });
   });
 
+  it('a person\'s boxes of a line are read instead of the computed ones, kept by a sync, dropped when the words change, and reset by null', async () => {
+    const L = await ids();
+    const drawnBox = [{ x: 140, y: 100, w: 380, fs: 18 }];
+    const put = await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: drawnBox, by: 'rafi' });
+    expect(put.status).toBe(200);
+    expect(put.body.line).toMatchObject({ rects: drawnBox, rectsManual: true, rectsBy: 'rafi' });
+    const page = async () => ((await call('GET', b('/lines?pages=6'))).body.pages['6'] as { key: string; rects: unknown; rectsManual: boolean }[]).find((x) => x.key === 'p6/0/0')!;
+    expect(await page()).toMatchObject({ rects: drawnBox, rectsManual: true });
+    // a sync with other computed boxes keeps the person's, and does not count the line as changed for them
+    const again = await call('POST', b('/lines/sync'), { lines: [line(6, 0), line(6, 1), line(6, 2, 1), line(7, 0)] });
+    expect(again.body).toMatchObject({ added: 0, changed: 0 });
+    await call('POST', b('/lines/sync'), { lines: [{ ...line(6, 0), rects: [{ x: 90, y: 100, w: 510, fs: 18 }] }, line(6, 1), line(6, 2, 1), line(7, 0)] });
+    expect(await page()).toMatchObject({ rects: drawnBox, rectsManual: true });
+    // null: the computed boxes again
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: null, by: 'rafi' })).body.line).toMatchObject({ rects: [{ x: 90, y: 100, w: 510, fs: 18 }], rectsManual: false, rectsBy: null });
+    // drawn again, then the line's words change under the same key: the drawing belonged to the old words
+    await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: drawnBox, by: 'rafi' });
+    await call('POST', b('/lines/sync'), { lines: [{ ...line(6, 0), text: 'other words', textHash: 'h-other' }, line(6, 1), line(6, 2, 1), line(7, 0)] });
+    expect(await page()).toMatchObject({ rects: line(6, 0).rects, rectsManual: false });
+  });
+
+  it('drawing a line\'s boxes needs author, a line of the book that is not retired, and boxes on the page', async () => {
+    const L = await ids();
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: [{ x: 1, y: 1, w: 1, fs: 1 }], by: 'x' }, '')).status).toBe(401);
+    expect((await call('PUT', b('/lines/33333333-3333-4333-8333-333333333333/rects'), { rects: [{ x: 1, y: 1, w: 1, fs: 1 }], by: 'x' })).status).toBe(404);
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: [{ x: 1, y: 1, w: 0, fs: 1 }], by: 'x' })).status).toBe(400);
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: [], by: 'x' })).status).toBe(400);
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: [{ x: -5, y: 1, w: 1, fs: 1 }], by: 'x' })).status).toBe(400);
+    await call('POST', b('/lines/sync'), { lines: [line(6, 1), line(6, 2, 1), line(7, 0)] });
+    expect((await call('PUT', b(`/lines/${L['p6/0/0']}/rects`), { rects: [{ x: 1, y: 1, w: 1, fs: 1 }], by: 'x' })).status).toBe(409);
+  });
+
   it('a question\'s lock is the same whatever the case of its id: an upper-case id is serialised with the lower-case one', async () => {
     const L = await ids();
     const add = await call('POST', b('/links'), { questionId: Q1.toUpperCase(), lineId: L['p6/0/0'], by: 'rafi' });
