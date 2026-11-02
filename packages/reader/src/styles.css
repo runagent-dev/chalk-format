@@ -477,6 +477,29 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   font-size: var(--chalk-text-sm); box-shadow: var(--chalk-float-shadow); animation: chalk-fade-in var(--chalk-dur) var(--chalk-ease-out);
 }
 @keyframes chalk-fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* the whole book loading for editing: a bar that fills, with the count over it */
+.chalk-load { display: grid; gap: 8px; width: min(340px, calc(100% - 32px)); }
+.chalk-load-track { display: block; height: 6px; border-radius: 999px; background: color-mix(in oklch, var(--chalk-surface) 22%, transparent); overflow: hidden; }
+.chalk-load-fill { display: block; height: 100%; border-radius: inherit; background: var(--chalk-accent-soft); transition: width 200ms linear; }
+/* filled: it fades away while the editor's tools fade in */
+.chalk-load[data-finished] { animation: chalk-fade-out 450ms var(--chalk-ease-out) forwards; }
+@keyframes chalk-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .chalk-load-fill { transition: none; } .chalk-load[data-finished] { animation: none; } }
+
+/* the editor getting ready (the whole book loading): its rail and sidebar as quiet placeholders, in the places they will take */
+.chalk-ghost-rail { width: 46px; height: min(320px, 60%); padding: 0; box-shadow: none; background: color-mix(in oklch, var(--chalk-surface) 60%, transparent); }
+.chalk-ghost-sidebar { gap: 14px; padding: var(--chalk-space-lg); box-shadow: none; background: color-mix(in oklch, var(--chalk-surface) 60%, transparent); }
+.chalk-ghost-sidebar span { display: block; height: 12px; border-radius: 6px; background: var(--chalk-surface-2); }
+.chalk-ghost-sidebar span:first-child { width: 55%; height: 16px; }
+.chalk-ghost-sidebar span:nth-child(3) { width: 80%; }
+.chalk-ghost-sidebar span:nth-child(4) { width: 65%; }
+.chalk-ghost-rail, .chalk-ghost-sidebar span { animation: chalk-ghost-pulse 1.6s ease-in-out infinite; }
+@keyframes chalk-ghost-pulse { 50% { opacity: 0.55; } }
+/* and the real ones fade in over them */
+.chalk-reader[data-mode="author"] .chalk-rail:not(.chalk-ghost-rail), .chalk-reader[data-mode="author"] .chalk-sidebar:not(.chalk-ghost-sidebar) { animation: chalk-fade-in 260ms var(--chalk-ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .chalk-ghost-rail, .chalk-ghost-sidebar span, .chalk-reader[data-mode="author"] .chalk-rail, .chalk-reader[data-mode="author"] .chalk-sidebar { animation: none; }
+}
 /* in a side dock the page number stacks: the current page over the count, a button wide */
 .chalk-dock.is-left .chalk-dock-page, .chalk-dock.is-right .chalk-dock-page {
   flex-direction: column; align-items: center; justify-content: center; gap: 0; width: var(--chalk-btn); height: 48px; padding: 0; line-height: 1.15;

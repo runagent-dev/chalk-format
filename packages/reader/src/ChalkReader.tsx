@@ -530,7 +530,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   }, [streamed, page, pages.length, config.streaming.window]);
   const wantsAuthor = authoringOn && mode === 'author';
   // while the rest of a streamed book loads for editing, say how far it is (not a notice that fades: it stays until the book is whole)
-  const [loadProgress, setLoadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [loadProgress, setLoadProgress] = useState<{ done: number; total: number; finished?: boolean } | null>(null);
   useEffect(() => {
     if (!streamed || !wantsAuthor || streamed.complete) { setLoadProgress(null); return; }
     let last = 0;
@@ -538,11 +538,13 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     show();
     // pages arrive many times a second: draw the count a few times a second
     const off = streamed.subscribe(() => { const now = Date.now(); if (now - last >= 200) { last = now; show(); } });
+    let fade: ReturnType<typeof setTimeout> | undefined;
     streamed.loadAll().then(
-      () => setLoadProgress(null),
+      // the bar fills, then fades away while the editor's tools fade in over their placeholders (nothing on the page moves)
+      () => { setLoadProgress((p) => (p ? { done: p.total, total: p.total, finished: true } : null)); fade = setTimeout(() => setLoadProgress(null), 450); },
       (e: unknown) => { setLoadProgress(null); setToast(e instanceof Error ? e.message : String(e)); },
     );
-    return off;
+    return () => { off(); clearTimeout(fade); };
   }, [streamed, wantsAuthor]);   // eslint-disable-line react-hooks/exhaustive-deps
   // search a streamed book with its text file: pages not loaded yet are searched by their text runs
   useEffect(() => { if (streamed && (panel === 'search' || query)) void streamed.searchText().then(setStreamText); }, [streamed, panel, query]);
@@ -809,6 +811,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
     return lesson.pages.find((p) => p.id === sel.pageId)?.objects.find((o) => o.id === sel.id) ?? null;
   }, [sel, lesson]);
   const sidebar = author && (rootWidth >= 720 || !!selectedObject || !!adding);
+  // the book is loading before editing begins: the editor's layout is already in place (placeholders for the rail and the sidebar),
+  // so when it is ready its tools fade in where the placeholders were and the pages do not move or change size
+  const preparing = wantsAuthor && !author;
   // a selection that was undone away is gone
   useEffect(() => { if (sel && !selectedObject) setSel(null); }, [sel, selectedObject]);
   // on a phone the properties sheet covers the lower part: bring a newly selected object up above it
@@ -835,7 +840,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
 
   return (
     <PresenterProvider value={pr}>
-    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? undefined} data-sidebar={sidebar ? '' : undefined} data-mode={authoringOn ? mode : undefined} lang={locale} style={props.style} onKeyDown={onKey}>
+    <div ref={root} className={`chalk-reader ${props.className ?? ''}`} data-theme={dark} data-dock={dockPos ?? 'none'} data-panel={panel ?? undefined} data-sidebar={sidebar || (preparing && rootWidth >= 720) ? '' : undefined} data-mode={authoringOn ? mode : undefined} lang={locale} style={props.style} onKeyDown={onKey}>
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={author ? renderPreview : renderHtmlObject}
@@ -867,6 +872,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
             requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('.chalk-sidebar :is(input, button, select):not([disabled])')?.focus({ preventScroll: true }));
           }} />
       )}
+      {preparing && <div className="chalk-rail chalk-ghost-rail" aria-hidden />}
+      {preparing && rootWidth >= 720 && <div className="chalk-sidebar chalk-ghost-sidebar" aria-hidden><span /><span /><span /><span /></div>}
       {author && <AuthorRail tool={authorTool} onTool={setAuthorTool} adding={adding} onMedia={pickMedia} locale={authorLocale} t={at_} />}
       {sidebar && (
         <AuthorSidebar lesson={au.lesson} page={sel ? au.lesson.pages.find((x) => x.id === sel.pageId) : pages[page]} selected={selectedObject}
@@ -896,7 +903,17 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <input ref={notesFile} type="file" accept=".chalk,application/vnd.chalk+zip,application/zip" hidden
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void importNotes(f); e.target.value = ''; }} />
       {loadProgress
-        ? <div className="chalk-toast" role="status">{at_.loadingProgress.replace('{done}', num(authorLocale, loadProgress.done)).replace('{total}', num(authorLocale, loadProgress.total))}</div>
+        ? (() => {
+          // a bar that fills as the pages arrive, with the count under it in words
+          const label = at_.loadingProgress.replace('{done}', num(authorLocale, loadProgress.done)).replace('{total}', num(authorLocale, loadProgress.total));
+          const pct = loadProgress.total ? Math.min(100, (loadProgress.done / loadProgress.total) * 100) : 0;
+          return (
+            <div className="chalk-toast chalk-load" data-finished={loadProgress.finished ? '' : undefined} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={loadProgress.total} aria-valuenow={loadProgress.done}>
+              <span className="chalk-load-text">{label}</span>
+              <span className="chalk-load-track" aria-hidden><span className="chalk-load-fill" style={{ width: `${pct}%` }} /></span>
+            </div>
+          );
+        })()
         : (toast ?? saveNote) && <div className="chalk-toast" role="status">{toast ?? saveNote}</div>}
       {lookup.missing.size > 0 && <MissingChip lesson={lesson} missing={lookup.missing} t={t} locale={locale} onGo={(i) => goTo(i)} />}
       {dockCfg && (
