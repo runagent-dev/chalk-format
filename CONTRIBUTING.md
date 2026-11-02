@@ -54,6 +54,7 @@ npx tsx tools/reader-library-auth-e2e.ts [url] [--port 4923]   # signing in to a
 npx tsx tools/reader-media-recover-e2e.ts <library> <token> <disk-dir>   # media adopted at two paths, one deleted while the book is open: the reader recovers (a disk test library, ADOPT_PREFIXES=books/, built showcase)
 npx tsx tools/question-current-e2e.ts <library> <token> [--read-token t]   # a corrected question reaches readers with no new links item (test library: writes)
 node tools/reader-insert-menu-e2e.mjs [url]          # author mode's right-click menu: what is added lands where you clicked
+npx tsx tools/reader-move-page-e2e.mjs [url] [shots]  # author mode: an object dragged (mouse, finger) or sent (Move to page, Alt+Page Up/Down) to another page; undo, patch save
 node tools/reader-save-e2e.mjs [url]                 # author mode's Save: the filled button, Ctrl+S, onDirtyChange, the ref's save()
 node tools/reader-window-e2e.mjs [url] [shots]       # the floating window (open: window): author UI, the window, side panel, sheet, host chrome
 node tools/reader-shots.mjs out/shots [url] [--steps steps.json]   # desktop + phone screenshots

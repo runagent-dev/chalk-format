@@ -102,4 +102,24 @@ export const edit = {
     });
     return changed ? { ...l, pages } : l;
   },
+  /**
+   * Move an object from one page to another: it leaves `fromId` and lands on top of `toId` as `obj` (the same id, so whatever tracks it by
+   * its id keeps tracking it; its new place is in `obj`). Both pages change in the one edit, so it is one undo step. With the same page it
+   * is a replace. An id is unique only within its page (spec 1.0), so an object whose id the other page already uses must be given a free
+   * one first (`freeIdOn`; `was` is then the id it has on `fromId`). Nothing changes when the object is not on `fromId`, there is no
+   * page `toId`, or `toId` already has an object with the id it lands with.
+   */
+  move: (fromId: string, toId: string, obj: LessonObject, was: string = obj.id) => (l: Lesson): Lesson => {
+    if (fromId === toId) return edit.replace(fromId, obj)(l);
+    const to = l.pages.find((p) => p.id === toId);
+    if (!to || to.objects.some((x) => x.id === obj.id) || !l.pages.some((p) => p.id === fromId && p.objects.some((x) => x.id === was))) return l;
+    return {
+      ...l,
+      pages: l.pages.map((p) => {
+        if (p.id === fromId) return { ...p, objects: p.objects.filter((x) => x.id !== was) };
+        if (p.id === toId) return { ...p, objects: [...p.objects, obj] };
+        return p;
+      }),
+    };
+  },
 };

@@ -42,13 +42,35 @@ export const questionPartSchema = z.looseObject({
   answer: questionAnswerSchema.optional(),
 });
 
-/** Where the question was printed, for people (and so that the same question is not published twice). */
+/**
+ * Where the question was printed, for people (and so that the same question is not published twice). A publisher that must not say which
+ * book it took a question from leaves it out (spec 1.7 §2.1).
+ */
 export const questionSourceSchema = z.looseObject({
   book: z.string().max(300).optional(),
   edition: z.string().max(100).optional(),
   /** The number the book gave it. */
   number: z.string().max(40).optional(),
   page: z.number().int().positive().optional(),
+});
+
+/** The kinds of paper this version names in `provenance`. Others may follow: readers show the code of a kind they do not know. */
+export const PROVENANCE_KINDS = ['board_exam', 'institution_exam'] as const;
+
+/**
+ * One exam paper the question was set in (spec 1.7 §2.1): a board's exam (`board_exam`) or a school's or college's test paper
+ * (`institution_exam`), with a short code to show as a tag and the full name to show on hover. A paper, not the book the question was
+ * copied from: that is `source`, which a publisher may leave out.
+ */
+export const questionProvenanceSchema = z.looseObject({
+  /** `board_exam`, `institution_exam`, or a kind a later version adds. */
+  kind: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+  /** The tag: 2 to 8 capital letters and digits, such as `DHA` or `VNSC`. */
+  code: z.string().regex(/^[A-Z0-9]{2,8}$/),
+  /** The full name, for people: a string or one per language. */
+  name: localizedTextSchema,
+  /** The year of the paper, or null when it is not known. */
+  year: z.number().int().min(1900).max(2200).nullable().optional(),
 });
 
 export const questionManifestSchema = z.looseObject({
@@ -74,6 +96,8 @@ export const questionManifestSchema = z.looseObject({
   classes: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   source: questionSourceSchema.optional(),
+  /** The exam papers the question was set in, newest first (spec 1.7 §2.1). */
+  provenance: z.array(questionProvenanceSchema).max(100).optional(),
   /** The content keys of the pictures the text uses. */
   assets: z.array(contentKeySchema).optional(),
   license: z.string().optional(),
@@ -84,6 +108,7 @@ export type QuestionManifest = z.infer<typeof questionManifestSchema>;
 export type QuestionAnswer = z.infer<typeof questionAnswerSchema>;
 export type QuestionOption = z.infer<typeof questionOptionSchema>;
 export type QuestionPart = z.infer<typeof questionPartSchema>;
+export type QuestionProvenance = z.infer<typeof questionProvenanceSchema>;
 
 const KEY_IN_TEXT = /c1:[a-z2-7]{25}[aeimquy4]|sha256:[0-9a-f]{64}/g;
 
@@ -130,6 +155,7 @@ export function checkQuestion(m: QuestionManifest): string[] {
   if (m.kind !== 'cq' && parts.length) problems.push(`${m.kind}: parts are for a creative question`);
   for (const l of dup(options.map((o) => o.label))) problems.push(`option ${l}: used twice`);
   for (const l of dup(parts.map((p) => p.label))) problems.push(`part ${l}: used twice`);
+  for (const l of dup((m.provenance ?? []).map((p) => `${p.kind} ${p.code} ${p.year ?? '-'}`))) problems.push(`provenance ${l}: the same paper twice`);
   const listed = new Set(m.assets ?? []);
   for (const k of questionAssetKeys(m)) if (!listed.has(k)) problems.push(`${k}: used in the text but not in assets`);
   return problems;

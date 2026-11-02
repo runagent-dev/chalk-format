@@ -490,7 +490,8 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
   background-image: radial-gradient(color-mix(in oklch, var(--chalk-ink) 22%, transparent) 1px, transparent 1.2px);
   background-size: 18px 18px;
 }
-.chalk-reader[data-mode="author"] .chalk-page { outline: 1px dashed color-mix(in oklch, var(--chalk-accent) 55%, transparent); outline-offset: 6px; }
+.chalk-reader[data-mode="author"] .chalk-page { outline: 1px dashed color-mix(in oklch, var(--chalk-accent) 55%, transparent); outline-offset: 6px; user-select: none; -webkit-user-select: none; }
+/* (a drag that carries an object over other pages selects none of their text: the fields of a text being typed keep theirs) */
 /* what is under the mouse in select mode */
 .chalk-author-hover { position: absolute; outline: calc(1.5px / var(--s)) dashed var(--chalk-accent); outline-offset: calc(2px / var(--s)); pointer-events: none; }
 .chalk-surface.chalk-author.is-drawing { cursor: crosshair; }
@@ -556,6 +557,12 @@ button.chalk-box:focus-visible { outline: 3px solid var(--chalk-focus); outline-
 .chalk-side-btn:hover { border-color: var(--chalk-ink-muted); }
 .chalk-side-btn:focus-visible, .chalk-objrow:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
 .chalk-side-btn.is-primary { background: var(--chalk-accent); border-color: var(--chalk-accent); color: var(--chalk-accent-ink); font-weight: 600; }
+/* "Move to page": previous, the page picker, next */
+.chalk-insp-move { flex-wrap: nowrap; }
+.chalk-insp-move .chalk-side-btn { min-height: 36px; padding: 0 8px; }
+.chalk-insp-move .chalk-side-btn:disabled { opacity: 0.4; cursor: default; }
+.chalk-insp-move select { flex: 1; min-width: 0; min-height: 36px; padding: 0 8px; border: 1px solid var(--chalk-line); border-radius: var(--chalk-radius-sm); background: var(--chalk-surface); color: var(--chalk-ink); font: inherit; font-size: var(--chalk-text-md); }
+.chalk-insp-move select:focus-visible { outline: 2px solid var(--chalk-focus); outline-offset: 1px; }
 .chalk-side-note { margin: 0; font-size: var(--chalk-text-sm); color: var(--chalk-ink-muted); }
 .chalk-drop { display: grid; justify-items: center; gap: var(--chalk-space-sm); padding: 20px 12px; border: 2px dashed var(--chalk-line); border-radius: var(--chalk-radius-md); color: var(--chalk-ink-muted); text-align: center; }
 .chalk-drop.is-over { border-color: var(--chalk-accent); background: var(--chalk-accent-soft); color: var(--chalk-accent); }
