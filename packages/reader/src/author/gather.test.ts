@@ -1,6 +1,6 @@
 import { packLesson, type AssetBundle } from '@chalk-format/container';
 import { assetKey, parseLesson, referencedAssetIds, type Lesson } from '@chalk-format/model';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { gatherAssets, type Gathered } from './gather.js';
 import type { SaveProgress } from './save-run.js';
 
@@ -47,9 +47,15 @@ describe('gathering a book\'s assets for a save', () => {
     const after: AssetBundle = await gatherAssets({ ids, held, fetchOne });
     expect([...after.keys()]).toEqual([...before.keys()]); // the same assets in the same order
     const fixed = { ...lesson, updatedAt: '2026-02-02T00:00:00Z' };
-    const a = await packLesson(fixed, before);
-    const b = await packLesson(fixed, after);
-    expect(Buffer.from(b).equals(Buffer.from(a))).toBe(true); // the golden check: the same file, byte for byte
+    // a ZIP entry carries the time it was packed (to 2 seconds): one clock for both packs, or packs either side of a tick differ
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-02-02T00:00:00Z') });
+    try {
+      const a = await packLesson(fixed, before);
+      const b = await packLesson(fixed, after);
+      expect(Buffer.from(b).equals(Buffer.from(a))).toBe(true); // the golden check: the same file, byte for byte
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fetches a few at a time, never more than asked, and tells how far it got', async () => {
