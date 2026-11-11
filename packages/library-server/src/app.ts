@@ -74,7 +74,8 @@ export function createLibraryApp(o: LibraryOptions) {
   // Range: a reader with a token asks /v1/files for part of a file (a suffix range is not a CORS-safelisted header)
   app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type', 'Range'], exposeHeaders: ['Content-Length', 'Content-Range'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
   // every route asks requireRole(c, 'reader' | 'author' | 'admin'); the caller is a bootstrap token, an API key or a user
-  app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)) }));
+  // an API key that acts for people sends Chalk-Actor (registry-api §10.7): every record below then names that person
+  app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)), onActor: auth.noteActor }));
   mountAuthRoutes(app, auth, { issuer, ...o.auth });
   const body = async <T>(c: Context, schema: { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { issues: { message: string; path: PropertyKey[] }[] } } }) => {
     const r = schema.safeParse(await c.req.json().catch(() => null));

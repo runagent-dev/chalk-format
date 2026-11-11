@@ -17,7 +17,19 @@ export type Caller = {
   kind?: CallerKind;
   /** The user's id, the API key's id or the bootstrap token's name. */
   sub?: string;
+  /** An API key allowed to act for people (`actFor`): it may send `Chalk-Actor` (registry-api §10.7). */
+  actFor?: boolean;
+  /**
+   * Set when an act-for key sent `Chalk-Actor`: the person (or job) it acts for. `user` is then the actor's id, so
+   * every record names the person; `via` keeps the key's own name.
+   */
+  actingFor?: Actor;
+  /** The credential's own name when `user` is an actor's id. */
+  via?: string;
 };
+
+/** Who an act-for key acts for (`Chalk-Actor`): a lasting id (`staff:<id>`, `system:<job>`) and a display name. */
+export type Actor = { id: string; name: string };
 
 const RANK: Record<Role, number> = { reader: 0, author: 1, admin: 2 };
 
