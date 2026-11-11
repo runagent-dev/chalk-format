@@ -103,7 +103,10 @@ only then makes it available.
 What the bucket needs:
 
 1. **Public read at `PUBLIC_URL`.**
-   - **R2:** a custom domain on the bucket. Cloudflare's cache then serves it.
+   - **R2:** a custom domain on the bucket, plus a Cache Rule for its `c1/` paths (R2 sends no `Cache-Control`, so
+     Cloudflare does not keep the files without one): the exact settings are in the
+     [package README](../../packages/library-server/README.md#files-from-the-edge-an-r2-custom-domain-behind-cloudflares-cache).
+     A public library's `GET /v1/files/{key}` then redirects there too, instead of pre-signing the bucket.
    - **AWS:** a bucket policy or CloudFront.
    - **MinIO:** an anonymous download policy.
    - Set `PUBLIC_URL` to that address, with a trailing `/`.
