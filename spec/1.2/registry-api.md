@@ -170,6 +170,11 @@ pinned. It MUST NOT delete an asset any book uses, nor a current book item (spec
 this registry's assets, in order. Apps fetch this when they start and pass it to their reader as its host
 stores. It is public and cacheable.
 
+A registry whose bytes are public MAY also answer **`GET v1/files/{key}`** without a token (for apps that link one
+file by key, such as an `<img>`), with a `302` to the file in the store it names here, which the redirect may let
+any cache keep (the reference: `public, max-age=604800`, as a key's bytes never change). It MUST NOT redirect a
+private registry's readers (§7.1) to a public address.
+
 ### 7.1 A private library's files
 
 A registry whose bytes are not public (its bucket is private) serves them only to callers with a token, and
