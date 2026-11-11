@@ -253,7 +253,7 @@ All are sent as `Authorization: Bearer <credential>`.
    window, or once the successor was used, the reuse revokes the family as above.
 3. **API key** (machines: CI, publishers, an app's server): an opaque string `clk_<random>`, at least 32 random
    bytes. Made by an administrator, shown once, kept as its SHA-256. It has a name and roles, records when it was
-   last used, and can be revoked.
+   last used, and can be revoked. A key MAY be allowed to act for people (§10.7).
 4. **Other tokens** the deployment configures (the reference server: `TOKENS`) MAY also be accepted.
 
 Passwords are stored with a memory-hard hash (the reference server: scrypt with a random salt per user) and
@@ -287,7 +287,8 @@ when a limit is reached.
 **`POST v1/auth/revoke`** `{ "refresh_token" }` → `200`, always: signing out ends that sign-in (its family).
 
 **`GET v1/auth/me`** → `{ "sub", "name", "roles", "kind": "user" | "api-key" | "bootstrap" }` for any valid
-credential, `401` without one.
+credential, `401` without one. A key that may act for people adds `"actFor": true`, and when the request carries
+`Chalk-Actor` (§10.7), `"actingFor": { "id", "name" }`; `name` stays the key's own.
 
 ### 10.5 Administration (`admin`)
 
@@ -297,17 +298,53 @@ credential, `401` without one.
 - **`GET v1/admin/users`** → `{ "items": [user, …] }`.
 - **`PATCH v1/admin/users/{id}`** `{ "password"?, "roles"?, "disabled"? }` → the user. Disabling a user or
   setting a new password revokes all of the user's refresh tokens.
-- **`POST v1/admin/keys`** `{ "name", "roles" }` → `201 { "id", "key", "name", "roles", … }`. `key` is never
-  shown again.
-- **`GET v1/admin/keys`** → `{ "items": [{ "id", "name", "hint", "roles", "createdBy", "createdAt", "lastUsedAt",
-  "revokedAt" }] }`; never the key.
+- **`POST v1/admin/keys`** `{ "name", "roles", "actFor"? }` → `201 { "id", "key", "name", "roles", "actFor", … }`.
+  `key` is never shown again. `actFor` (default `false`): the key may act for people (§10.7).
+- **`GET v1/admin/keys`** → `{ "items": [{ "id", "name", "hint", "roles", "actFor", "createdBy", "createdAt",
+  "lastUsedAt", "revokedAt" }] }`; never the key.
+- **`PATCH v1/admin/keys/{id}`** `{ "actFor"? }` → the key. It applies from the key's next request.
 - **`DELETE v1/admin/keys/{id}`** → `200`; the key stops working at once.
+- **`GET v1/admin/actors`** → `{ "items": [{ "id", "name", "firstSeenAt", "lastSeenAt" }] }`: everyone keys have
+  acted for (§10.7), with the latest name sent for each.
+
+A registry without user accounts (§10.8) answers `404` to the three user endpoints.
 
 ### 10.6 A private library
 
 A registry MAY require a token for reading too (the reference server: `PUBLIC_READ=false`). It then names, at
 `GET v1/stores`, a store with `"auth": "bearer"` (1.2 §5.1) for the bytes, and readers send the same bearer
 credential to it (§7.1). `GET v1/stores` itself and the discovery documents of §10.3 stay public.
+
+### 10.7 Acting for a person
+
+An app that signs in its own people (a dashboard with staff accounts) MAY call the registry with one API key and say,
+on each request, who it acts for, so the registry's records name the person and not the app. A registry MAY allow
+this; one that does MUST do it as this section says.
+
+- An administrator marks a key as one that may act for people (`actFor`, §10.5). No other credential may.
+- The app sends **`Chalk-Actor: <base64url of JSON {"id", "name"}>`** (RFC 4648 §5, padding optional). `id` is the
+  person's lasting id in the app, `staff:<id>`, or a job's, `system:<job>`; it MUST match
+  `^(staff|system):[A-Za-z0-9._:-]{1,80}$`. `name` is a display name, 1 to 120 characters, no control characters.
+- From a key that may act for people, the registry records `id` wherever it records who did something (an asset's
+  `uploadedBy`; in §11, `reviewedBy` and `rectsBy`, in place of the body's `by`, which may then be left out), and
+  filters that name the caller (`mine=1`, §5) mean that person. It keeps the latest `name` for each `id`
+  (`GET v1/admin/actors`) so screens can show a name; records keep only the id. A header that does not decode to
+  such an object is `400 invalid`.
+- From any other caller (a key without `actFor`, a user's token, another token, no token) the header MUST be
+  refused with `403 act_for_not_allowed`, never ignored: a client set up wrong is then noticed instead of writing
+  under the wrong name. A credential that is not valid is still `401`.
+- Without the header, a key that may act for people is recorded under its own name, as any key.
+
+The registry trusts the app to say who its person is: such a key is as powerful as every person it can name, and
+is kept on the app's server, never in a browser.
+
+### 10.8 Without user accounts
+
+A registry MAY run without user accounts, with API keys and its other tokens only (the reference server:
+`HUMAN_ACCOUNTS=off`), for example when the people sign in to another app that acts for them (§10.7). It then
+answers the `password` and `refresh_token` grants with `400 unsupported_grant_type`, leaves them out of
+`grant_types_supported`, answers `404` to the user endpoints of §10.5, and refuses access tokens of users it issued
+before. Discovery (§10.3) stays published.
 
 ## 11. Book highlights (optional)
 
@@ -375,7 +412,8 @@ A **link** (a question tied to a line):
 
 ### 11.3 Writing (`author`)
 
-Every write names the person (or job) in `by`, kept as `reviewedBy`. Each request is one transaction.
+Every write names the person (or job) in `by`, kept as `reviewedBy`; from a key acting for a person (§10.7), the
+person's id is kept instead and `by` may be left out. Each request is one transaction.
 
 | Request | What it does |
 |---|---|
