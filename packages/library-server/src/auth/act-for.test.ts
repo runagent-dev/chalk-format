@@ -96,10 +96,52 @@ describe('an API key acting for a person (Chalk-Actor)', () => {
     expect(plainLink.body).toMatchObject({ reviewedBy: 'library-sync' });
     // and is still required then
     expect((await call(`/v1/books/${BOOK}/links`, { token: dash.key, body: { questionId: Q1, lineId: ids['p6/0/0'] } })).status).toBe(400);
+    // a request without a body (taking a link off) takes the person from the header
+    const off = await fetchApp(`${BASE}/v1/books/${BOOK}/links/${plainLink.body.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${dash.key}`, 'Chalk-Actor': as } });
+    expect(off.status, await off.clone().text()).toBe(200);
+    expect((await db.query<{ reviewed_by: string; status: string }>('SELECT reviewed_by, status FROM book_links WHERE id = $1', [plainLink.body.id]))[0]).toEqual({ reviewed_by: RITA.id, status: 'rejected' });
   });
 
-  it('records each person once in actors, with the latest name; listed for administrators', async () => {
-    expect((await call('/v1/auth/me', { token: dash.key, actor: actor({ ...RITA, name: 'Rita Akter' }) })).status).toBe(200);
+  it('only a key acting for someone may write a staff: or system: id (400 actor_requires_act_for)', async () => {
+    const line = { key: 'p8/0/0', pageId: 'p8', pageNo: 8, idx: 0, block: 0, kind: 'body', text: 'eight', textHash: 'h8', rects: [] };
+    await call(`/v1/books/${BOOK}/lines/sync`, { token: 't-1', body: { lines: [line] } });
+    const id = ((await call(`/v1/books/${BOOK}/lines/all`)).body.items as { id: string; key: string }[]).find((l) => l.key === 'p8/0/0')!.id;
+    for (const token of [plain.key, 't-1', 'a-1', dash.key]) {
+      for (const by of ['staff:5b0c3a52', 'system:library-sync', ' Staff:x']) {
+        const link = await call(`/v1/books/${BOOK}/links`, { token, body: { questionId: Q1, lineId: id, by } });
+        expect(link.status, `${token} ${by}`).toBe(400);
+        expect(link.body.error.code).toBe('actor_requires_act_for');
+      }
+      const rects = await call(`/v1/books/${BOOK}/lines/${id}/rects`, { method: 'PUT', token, body: { rects: [{ x: 1, y: 1, w: 1, fs: 1 }], by: 'staff:rita' } });
+      expect(rects.body.error.code).toBe('actor_requires_act_for');
+    }
+    expect((await db.query("SELECT 1 FROM book_links WHERE reviewed_by LIKE 'staff:%' AND line_id = $1", [id])).length).toBe(0);
+    expect((await call(`/v1/books/${BOOK}/links`, { token: plain.key, body: { questionId: Q1, lineId: id, by: 'rafi' } })).status).toBe(201);
+  });
+
+  it('import restores the original reviewers: staff:/system: ones only from an act-for key or an administrator', async () => {
+    const lineId = '33333333-3333-4333-8333-333333333333', linkId = '44444444-4444-4444-8444-444444444444';
+    const restore = (reviewedBy: string) => ({
+      lines: [{ id: lineId, key: 'p9/0/0', pageId: 'p9', pageNo: 9, idx: 0, block: 0, kind: 'body', text: 'nine', textHash: 'h9', rects: [] }],
+      links: [{ id: linkId, questionId: Q1, lineId, role: 'answers_from', scope: 'sentence', method: 'human', status: 'confirmed', reviewedBy }],
+    });
+    const reviewer = async () => (await db.query<{ reviewed_by: string }>('SELECT reviewed_by FROM book_links WHERE id = $1', [linkId]))[0]?.reviewed_by;
+    for (const token of [plain.key, 't-1']) {
+      const r = await call(`/v1/books/${BOOK}/import`, { token, body: restore('staff:old-1') });
+      expect(r.status, token).toBe(400);
+      expect(r.body.error.code).toBe('actor_requires_act_for');
+    }
+    expect((await call(`/v1/books/${BOOK}/import`, { token: 't-1', body: restore('rafi') })).status).toBe(200);
+    expect(await reviewer()).toBe('rafi');
+    expect((await call(`/v1/books/${BOOK}/import`, { token: 'a-1', body: restore('staff:old-1') })).status).toBe(200);
+    expect(await reviewer()).toBe('staff:old-1');
+    // acting for someone, the restored rows keep their reviewers (the exception to §10.7)
+    expect((await call(`/v1/books/${BOOK}/import`, { token: dash.key, actor: actor(RITA), body: restore('system:old-sync') })).status).toBe(200);
+    expect(await reviewer()).toBe('system:old-sync');
+  });
+
+  it('records each person once in actors, with the latest name, after a change made for them; listed for administrators', async () => {
+    await upload('rita, renamed', dash.key, actor({ ...RITA, name: '  Rita Akter ' }));
     const list = await call('/v1/admin/actors', { token: 'a-1' });
     expect(list.status).toBe(200);
     const items = list.body.items as { id: string; name: string; firstSeenAt: string; lastSeenAt: string }[];
@@ -124,22 +166,36 @@ describe('an API key acting for a person (Chalk-Actor)', () => {
     expect((await call('/v1/uploads', { token: 'clk_not-a-key', actor: actor(RITA), body: {} })).status).toBe(401);
   });
 
+  it('reads, refusals and failed changes record no actor', async () => {
+    const seen = async (id: string) => (await db.query('SELECT 1 FROM actors WHERE id = $1', [id])).length;
+    expect((await call('/v1/search', { token: dash.key, actor: actor({ id: 'staff:reader-only', name: 'R' }) })).status).toBe(200);
+    expect((await call('/v1/auth/me', { token: dash.key, actor: actor({ id: 'staff:reader-only', name: 'R' }) })).status).toBe(200);
+    expect(await seen('staff:reader-only')).toBe(0);
+    expect((await call('/v1/uploads', { token: plain.key, actor: actor({ id: 'staff:refused', name: 'R' }), body: {} })).status).toBe(403);
+    expect((await call('/v1/admin/keys', { token: dash.key, actor: actor({ id: 'staff:refused', name: 'R' }), body: { name: 'x', roles: ['reader'] } })).status).toBe(403);
+    expect((await call('/v1/uploads', { token: dash.key, actor: actor({ id: 'staff:failed', name: 'R' }), body: {} })).status).toBe(400);
+    expect(await seen('staff:refused') + await seen('staff:failed')).toBe(0);
+  });
+
   it('a malformed header is 400 and records nothing', async () => {
     const bad = ['', 'not base64!', actor('not json'), actor([RITA]), actor({ id: 'rita', name: 'Rita' }), actor({ id: 'staff:', name: 'Rita' }), actor({ id: `staff:${'x'.repeat(81)}`, name: 'Rita' }),
       actor({ id: 'user:1', name: 'Rita' }), actor({ id: 'staff:a b', name: 'Rita' }), actor({ id: 'staff:1' }), actor({ id: 'staff:1', name: '' }), actor({ id: 'staff:1', name: 'x'.repeat(121) }),
-      actor({ id: 'staff:1', name: 'line\nbreak' }), actor({ id: 'staff:1', name: 7 })];
+      actor({ id: 'staff:1', name: 'line\nbreak' }), actor({ id: 'staff:1', name: 7 }), actor({ id: 'staff:1', name: '   ' }), actor({ id: 'staff:1', name: 'c1\u0085control' }),
+      actor({ id: 'staff:1', name: 'evil\u202Eright-to-left' }), actor({ id: 'staff:1', name: 'iso\u2067late' }), actor({ id: 'staff:1', name: 'line\u2028sep' }), actor({ id: 'staff:1', name: 'para\u2029sep' })];
     for (const h of bad) {
       const r = await call('/v1/uploads', { token: dash.key, actor: h, body: {} });
       expect(r.status, h).toBe(400);
       expect(r.body.error.code).toBe('invalid');
     }
-    expect((await call('/v1/auth/me', { token: dash.key, actor: actor({ id: 'system:library-sync', name: 'x'.repeat(120) }) })).status).toBe(200);
+    expect((await call('/v1/auth/me', { token: dash.key, actor: actor({ id: 'system:library-sync', name: ` ${'x'.repeat(120)} ` }) })).status).toBe(200);
+    // Bengali (with its joiners) is a name like any other
+    expect((await call('/v1/auth/me', { token: dash.key, actor: actor({ id: 'staff:2', name: 'রিতা আক্তার\u200C' }) })).body.actingFor.name).toBe('রিতা আক্তার\u200C');
     expect((await db.query("SELECT 1 FROM actors WHERE id = 'staff:1'")).length).toBe(0);
   });
 
-  it('browsers may send it (CORS)', async () => {
+  it('browsers are not offered it (CORS): an act-for key belongs on a server', async () => {
     const res = await fetchApp(`${BASE}/v1/uploads`, { method: 'OPTIONS', headers: { Origin: 'https://dashboard.example.org', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'chalk-actor' } });
-    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('chalk-actor');
+    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).not.toContain('chalk-actor');
   });
 });
 

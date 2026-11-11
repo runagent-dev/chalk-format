@@ -26,6 +26,10 @@ export function requireRole(c: Context, role: Role): Response | null {
 
 /** `Chalk-Actor`'s id: a person (`staff:<id>`) or a job (`system:<job>`) of the deployment (registry-api §10.7). */
 export const ACTOR_ID = /^(staff|system):[A-Za-z0-9._:-]{1,80}$/;
+/** A who-value that names a person or a job of the deployment: only a key acting for them may write one (§10.7). */
+export const ACTOR_LIKE = /^\s*(staff|system):/i;
+/** Control characters, bidi embeddings, overrides and isolates, line and paragraph separators: never in a display name. */
+const NAME_FORBIDDEN = /[\p{Cc}\u202A-\u202E\u2066-\u2069\u2028\u2029]/u;
 
 /** `Chalk-Actor: base64url(JSON {"id", "name"})` → the actor, or null when it is not one. */
 export function parseActor(header: string): Actor | null {
@@ -34,11 +38,11 @@ export function parseActor(header: string): Actor | null {
   let v: unknown;
   try { v = JSON.parse(Buffer.from(h, 'base64url').toString('utf8')); } catch { return null; }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
-  const { id, name } = v as { id?: unknown; name?: unknown };
-  if (typeof id !== 'string' || !ACTOR_ID.test(id) || typeof name !== 'string') return null;
-  const n = [...name].length;
-  // a display name: 1 to 120 characters, no control characters
-  if (n < 1 || n > 120 || !name.trim() || [...name].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) return null;
+  const { id, name: raw } = v as { id?: unknown; name?: unknown };
+  if (typeof id !== 'string' || !ACTOR_ID.test(id) || typeof raw !== 'string') return null;
+  // a display name: 1 to 120 characters once trimmed, no control or bidi characters
+  const name = raw.trim(), n = [...name].length;
+  if (n < 1 || n > 120 || NAME_FORBIDDEN.test(name)) return null;
   return { id, name };
 }
 
@@ -46,7 +50,7 @@ export function parseActor(header: string): Actor | null {
  * Reads `Authorization: Bearer …` once per request and puts the caller (or null) on it.
  *
  * `Chalk-Actor` (registry-api §10.7): from a key that may act for people, the caller becomes that person for every
- * record (`user` = the actor's id) and `onActor` notes them; from any other caller it is refused (403
+ * record (`user` = the actor's id) and `onActor` notes them after a change that succeeded (2xx, not GET or HEAD); from any other caller it is refused (403
  * `act_for_not_allowed`), so a client set up wrong is noticed instead of writing under the wrong name. A bearer token
  * that is not valid is left to the route (401), header or not.
  */
@@ -63,10 +67,14 @@ export function authenticate(o: { publicRead: boolean; resolve: (token: string, 
       if (!caller?.actFor) return fail(403, 'act_for_not_allowed', 'Chalk-Actor is accepted only from an API key that may act for people');
       const actor = parseActor(actorHeader);
       if (!actor) return fail(400, 'invalid', 'Chalk-Actor must be base64url JSON {"id": "staff:<id>" | "system:<job>", "name": "<1 to 120 characters>"}');
-      try { await o.onActor?.(actor); } catch (e) { console.error('Chalk-Actor: the actor could not be recorded:', e); }
       caller = { ...caller, user: actor.id, actingFor: actor, via: caller.user };
     }
     c.set('caller', caller);
     await next();
+    // the actor is recorded once a change made for them succeeded: not for reads, refusals or failures
+    const a = caller?.actingFor;
+    if (a && o.onActor && c.req.method !== 'GET' && c.req.method !== 'HEAD' && c.res.status >= 200 && c.res.status < 300) {
+      try { await o.onActor(a); } catch (e) { console.error('Chalk-Actor: the actor could not be recorded:', e); }
+    }
   };
 }
