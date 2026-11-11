@@ -12,6 +12,7 @@ import type { DeliveryOptions } from './delivery.js';
  *
  *   DATABASE_URL     postgres://user:pass@host/db   (or pglite:./data to keep it in a folder, pglite: in memory)
  *   DB_SCHEMA        chalk_library                  (Postgres: the library keeps everything in this schema)
+ *   MIGRATE_ON_START true | false                   (false: the schema is left as it is and must be current; `chalk-library migrate` with the owner login)
  *   STORAGE          s3 | disk
  *   S3_ENDPOINT      https://<account>.r2.cloudflarestorage.com · http://minio:9000 · https://s3.<region>.amazonaws.com
  *   S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION (R2: auto), S3_VIRTUAL_HOSTED (true for AWS)
@@ -46,8 +47,8 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   const refreshGrace = env.REFRESH_TOKEN_GRACE ? grace() : undefined;
   const adopt = adoptPrefixes(env.ADOPT_PREFIXES); // checked before anything is opened
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
-  const humanAccounts = onOff(env, 'HUMAN_ACCOUNTS', true);
-  const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
+  const humanAccounts = onOff(env, 'HUMAN_ACCOUNTS', true), migrate = onOff(env, 'MIGRATE_ON_START', true);
+  const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}), migrate });
   let storage: Storage;
   if ((env.STORAGE ?? 'disk') === 's3') {
     storage = s3Storage({
