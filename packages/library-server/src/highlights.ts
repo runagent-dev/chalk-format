@@ -170,7 +170,13 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     const caller = c.get('caller') as Caller | null | undefined;
     const actor = caller?.actingFor;
     // a request without a body (DELETE links/{id}) is an empty one for a key acting for a person: `by` comes from the header
-    const raw: unknown = await c.req.json().catch(() => (actor ? {} : null));
+    const text = await c.req.text();
+    let raw: unknown;
+    try {
+      raw = actor && c.req.method === 'DELETE' && text === '' ? {} : JSON.parse(text);
+    } catch {
+      throw new HighlightError(400, 'invalid', 'body must be valid JSON');
+    }
     // a key acting for a person (Chalk-Actor, §10.7): the person is `by`, whatever the body says (and it may leave `by` out)
     const takesBy = schema instanceof z.ZodObject && 'by' in schema.shape;
     const r = schema.safeParse(actor && takesBy && raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw, by: actor.id } : raw);

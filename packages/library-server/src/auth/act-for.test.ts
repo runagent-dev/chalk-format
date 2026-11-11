@@ -102,6 +102,33 @@ describe('an API key acting for a person (Chalk-Actor)', () => {
     expect((await db.query<{ reviewed_by: string; status: string }>('SELECT reviewed_by, status FROM book_links WHERE id = $1', [plainLink.body.id]))[0]).toEqual({ reviewed_by: RITA.id, status: 'rejected' });
   });
 
+  it('rejects malformed bodies under Chalk-Actor without changing links; only an empty DELETE may omit JSON', async () => {
+    const line = { key: 'malformed/0/0', pageId: 'malformed', pageNo: 18, idx: 0, block: 0, kind: 'body', text: 'preserved', textHash: 'hm', rects: [] };
+    await call(`/v1/books/${BOOK}/lines/sync`, { token: 't-1', body: { lines: [line] } });
+    const id = ((await call(`/v1/books/${BOOK}/lines/all`)).body.items as { id: string; key: string }[]).find((l) => l.key === line.key)!.id;
+    const link = await call(`/v1/books/${BOOK}/links`, { token: dash.key, actor: actor(RITA), body: { questionId: Q1, lineId: id } });
+    expect(link.status).toBe(201);
+    const before = await db.query('SELECT * FROM book_links WHERE id = $1', [link.body.id]);
+    for (const [method, path] of [
+      ['PATCH', `/links/${link.body.id}`],
+      ['DELETE', `/links/${link.body.id}`],
+      ['POST', `/lines/${id}/links/remove`],
+    ] as const) {
+      for (const body of ['not json at all', '{"status":"rejec']) {
+        const res = await fetchApp(`${BASE}/v1/books/${BOOK}${path}`, { method, body, headers: {
+          Authorization: `Bearer ${dash.key}`, 'Chalk-Actor': actor(RITA), 'Content-Type': 'application/json',
+        } });
+        expect(res.status, `${method} ${path} ${body}`).toBe(400);
+        expect(await db.query('SELECT * FROM book_links WHERE id = $1', [link.body.id])).toEqual(before);
+      }
+    }
+    const emptyPost = await fetchApp(`${BASE}/v1/books/${BOOK}/lines/${id}/links/remove`, { method: 'POST', headers: { Authorization: `Bearer ${dash.key}`, 'Chalk-Actor': actor(RITA) } });
+    expect(emptyPost.status).toBe(400);
+    expect(await db.query('SELECT * FROM book_links WHERE id = $1', [link.body.id])).toEqual(before);
+    const emptyDelete = await fetchApp(`${BASE}/v1/books/${BOOK}/links/${link.body.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${dash.key}`, 'Chalk-Actor': actor(RITA) } });
+    expect(emptyDelete.status).toBe(200);
+  });
+
   it('only a key acting for someone may write a staff: or system: id (400 actor_requires_act_for)', async () => {
     const line = { key: 'p8/0/0', pageId: 'p8', pageNo: 8, idx: 0, block: 0, kind: 'body', text: 'eight', textHash: 'h8', rects: [] };
     await call(`/v1/books/${BOOK}/lines/sync`, { token: 't-1', body: { lines: [line] } });
