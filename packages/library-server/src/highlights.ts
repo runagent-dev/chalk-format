@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requireRole, type AuthVariables } from './auth/guard.js';
+import type { Caller } from './auth/roles.js';
 import type { Db } from './db.js';
 
 /**
@@ -166,7 +167,11 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     }
   };
   const parse = async <T>(c: Context, schema: z.ZodType<T>): Promise<T> => {
-    const r = schema.safeParse(await c.req.json().catch(() => null));
+    const raw: unknown = await c.req.json().catch(() => null);
+    // a key acting for a person (Chalk-Actor, §10.7): the person is `by`, whatever the body says (and it may leave `by` out)
+    const actor = (c.get('caller') as Caller | null | undefined)?.actingFor;
+    const takesBy = schema instanceof z.ZodObject && 'by' in schema.shape;
+    const r = schema.safeParse(actor && takesBy && raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw, by: actor.id } : raw);
     if (!r.success) throw new HighlightError(400, 'invalid', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
     return r.data;
   };

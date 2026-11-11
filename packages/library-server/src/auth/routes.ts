@@ -19,14 +19,18 @@ export type AuthRouteOptions = {
   rateLimit?: { perUser?: number; perAddress?: number };
   /** Take the caller's address from the last `X-Forwarded-For` entry (behind one reverse proxy). Default false. */
   trustProxy?: boolean;
+  /** HUMAN_ACCOUNTS (default true). false: no password or refresh grants, no user administration (404). */
+  humanAccounts?: boolean;
 };
 
 const rolesSchema = z.array(z.enum(ROLES)).min(1);
 const newUserSchema = z.object({ username: z.string().min(1).max(64), password: z.string(), roles: rolesSchema });
 const patchUserSchema = z.object({ password: z.string().optional(), roles: rolesSchema.optional(), disabled: z.boolean().optional() }).strict();
-const newKeySchema = z.object({ name: z.string().min(1).max(100), roles: rolesSchema });
+const newKeySchema = z.object({ name: z.string().min(1).max(100), roles: rolesSchema, actFor: z.boolean().optional() });
+const patchKeySchema = z.object({ actFor: z.boolean().optional() }).strict();
 
 export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: Auth, o: AuthRouteOptions) {
+  const humans = o.humanAccounts !== false;
   const perUser = rateLimiter(o.rateLimit?.perUser ?? 10), perAddress = rateLimiter(o.rateLimit?.perAddress ?? 60);
   const address = (c: Context) => {
     if (o.trustProxy) { const xff = c.req.header('x-forwarded-for')?.split(',').map((s) => s.trim()).filter(Boolean); if (xff?.length) return xff.at(-1)!; }
@@ -53,7 +57,7 @@ export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: A
     c.header('Cache-Control', 'public, max-age=300'); c.header('Access-Control-Allow-Origin', '*');
     return c.json({
       issuer: iss, jwks_uri: `${iss}/.well-known/jwks.json`, token_endpoint: `${iss}/v1/auth/token`, revocation_endpoint: `${iss}/v1/auth/revoke`,
-      userinfo_endpoint: `${iss}/v1/auth/me`, grant_types_supported: ['password', 'refresh_token'], token_endpoint_auth_methods_supported: ['none'],
+      userinfo_endpoint: `${iss}/v1/auth/me`, grant_types_supported: humans ? ['password', 'refresh_token'] : [], token_endpoint_auth_methods_supported: ['none'],
       id_token_signing_alg_values_supported: ['EdDSA'], response_types_supported: [], scopes_supported: [], subject_types_supported: ['public'],
     });
   });
@@ -65,7 +69,8 @@ export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: A
     const str = (k: string) => (b && typeof b[k] === 'string' ? (b[k] as string) : undefined);
     const grant = str('grant_type');
     if (!grant) return oauthError(c, 400, 'invalid_request', 'grant_type is required');
-    if (grant !== 'password' && grant !== 'refresh_token') return oauthError(c, 400, 'unsupported_grant_type');
+    // HUMAN_ACCOUNTS=off: both grants are for users, so neither is offered
+    if ((grant !== 'password' && grant !== 'refresh_token') || !humans) return oauthError(c, 400, 'unsupported_grant_type');
     const limited = (r: { ok: boolean; retryAfter: number }) => { c.header('Retry-After', String(r.retryAfter)); return oauthError(c, 429, 'rate_limited', 'too many attempts; try again later'); };
     const byAddress = perAddress.hit(address(c));
     if (!byAddress.ok) return limited(byAddress);
@@ -100,22 +105,25 @@ export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: A
     const caller = c.get('caller');
     if (!caller) { const denied = requireRole(c, 'author'); if (denied) return denied; }
     c.header('Cache-Control', 'no-store');
-    return c.json({ sub: caller!.sub ?? caller!.user, name: caller!.user, roles: rolesOf(caller!), kind: caller!.kind ?? 'bootstrap' });
+    return c.json({ sub: caller!.sub ?? caller!.user, name: caller!.via ?? caller!.user, roles: rolesOf(caller!), kind: caller!.kind ?? 'bootstrap',
+      ...(caller!.actFor ? { actFor: true } : {}), ...(caller!.actingFor ? { actingFor: caller!.actingFor } : {}) });
   });
 
   // ---- administrators: users and API keys ----
   const by = (c: Context<{ Variables: AuthVariables }>) => c.get('caller')!.user;
+  // HUMAN_ACCOUNTS=off: there are no user accounts to manage
+  const noUsers = (c: Context) => (humans ? null : fail(c, 404, 'not_found', 'this library has no user accounts (HUMAN_ACCOUNTS=off)'));
   app.post('/v1/admin/users', small, async (c) => {
-    const denied = requireRole(c, 'admin'); if (denied) return denied;
+    const denied = noUsers(c) ?? requireRole(c, 'admin'); if (denied) return denied;
     const b = await json(c, newUserSchema); if (!b.ok) return b.res;
     return guarded(c, async () => c.json(await auth.createUser(b.data), 201));
   });
   app.get('/v1/admin/users', async (c) => {
-    const denied = requireRole(c, 'admin'); if (denied) return denied;
+    const denied = noUsers(c) ?? requireRole(c, 'admin'); if (denied) return denied;
     return c.json({ items: await auth.listUsers() });
   });
   app.patch('/v1/admin/users/:id', small, async (c) => {
-    const denied = requireRole(c, 'admin'); if (denied) return denied;
+    const denied = noUsers(c) ?? requireRole(c, 'admin'); if (denied) return denied;
     const b = await json(c, patchUserSchema); if (!b.ok) return b.res;
     const p = b.data;
     return guarded(c, async () => c.json(await auth.updateUser(c.req.param('id'), {
@@ -135,5 +143,17 @@ export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: A
   app.delete('/v1/admin/keys/:id', async (c) => {
     const denied = requireRole(c, 'admin'); if (denied) return denied;
     return (await auth.revokeApiKey(c.req.param('id'))) ? c.json({ id: c.req.param('id'), revoked: true }) : fail(c, 404, 'not_found', 'no such key, or it is already revoked');
+  });
+  // whether a key may act for people (Chalk-Actor, §10.7)
+  app.patch('/v1/admin/keys/:id', small, async (c) => {
+    const denied = requireRole(c, 'admin'); if (denied) return denied;
+    const b = await json(c, patchKeySchema); if (!b.ok) return b.res;
+    const k = await auth.updateApiKey(c.req.param('id'), { ...(b.data.actFor !== undefined ? { actFor: b.data.actFor } : {}) });
+    return k ? c.json(k) : fail(c, 404, 'not_found', 'no such key');
+  });
+  // the people (and jobs) act-for keys acted for: the ids records keep, with their latest names
+  app.get('/v1/admin/actors', async (c) => {
+    const denied = requireRole(c, 'admin'); if (denied) return denied;
+    return c.json({ items: await auth.listActors() });
   });
 }

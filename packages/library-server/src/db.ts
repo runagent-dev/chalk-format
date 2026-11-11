@@ -85,6 +85,16 @@ INSERT INTO chalk_library_schema (version) VALUES (4);`);
 ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_by text;
 ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_at timestamptz;
 INSERT INTO chalk_library_schema (version) VALUES (6);`);
+  // step 7: API keys that act for people (registry-api §10.7, Chalk-Actor), and the people they acted for: the records
+  // keep an actor's id (staff:<id>, system:<job>), this table its latest display name
+  if (!done.has(7)) await exec(`ALTER TABLE auth_api_keys ADD COLUMN IF NOT EXISTS act_for boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS actors (
+  id             text PRIMARY KEY,
+  name           text NOT NULL,
+  first_seen_at  timestamptz NOT NULL DEFAULT now(),
+  last_seen_at   timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO chalk_library_schema (version) VALUES (7);`);
 }
 
 /** Step 5: book highlights (spec/1.2/registry-api.md §11). Questions are named by their lasting id only (no foreign key: they are manifests). */

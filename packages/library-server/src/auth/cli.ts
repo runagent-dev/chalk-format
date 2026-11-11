@@ -1,3 +1,4 @@
+import { onOff } from '../config.js';
 import { openDb } from '../db.js';
 import { parseRoles } from './roles.js';
 import { AuthError, createAuth } from './service.js';
@@ -11,7 +12,8 @@ export const AUTH_USAGE = `  chalk-library user add <username> --roles reader[,a
   chalk-library user list
   chalk-library user disable|enable <username>
   chalk-library user password <username>                             (password: prompt or stdin)
-  chalk-library key add <name> --roles reader[,author,admin]         (prints the key once)
+  chalk-library key add <name> --roles reader[,author,admin] [--act-for]   (prints the key once; --act-for: may send Chalk-Actor)
+  chalk-library key act-for <id> on|off
   chalk-library key list
   chalk-library key revoke <id>
   chalk-library signing-key rotate`;
@@ -51,6 +53,9 @@ export async function runAuthCommand(args: string[], env: Record<string, string 
   const [group, verb, name] = args;
   const opt = (n: string) => { const i = args.indexOf(n); return i > 0 ? args[i + 1] : undefined; };
   if (!env.DATABASE_URL) { console.error('DATABASE_URL is not set (the library\'s database)'); return 2; }
+  let humans: boolean;
+  try { humans = onOff(env, 'HUMAN_ACCOUNTS', true); } catch (e) { console.error(e instanceof Error ? e.message : String(e)); return 2; }
+  if (group === 'user' && !humans) { console.error('HUMAN_ACCOUNTS=off: this library has no user accounts'); return 2; }
   const db = await openDb(env.DATABASE_URL, { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   // AUTH_KEY_SECRET: adding a user and rotating the signing key need it (as the server does)
   let auth: ReturnType<typeof createAuth>;
@@ -73,11 +78,15 @@ export async function runAuthCommand(args: string[], env: Record<string, string 
       const u = await auth.updateUser((await user(name)).id, { password: await newPassword() });
       console.log(`new password for ${u.username}; its sign-ins are revoked`);
     } else if (group === 'key' && verb === 'add' && name) {
-      const k = await auth.createApiKey({ name, roles: parseRoles(opt('--roles') ?? 'reader'), createdBy: 'cli' });
-      console.error(`key ${k.id} "${k.name}" (${k.roles.join(', ')}). It is shown only now; keep it in a secret store:`);
+      const k = await auth.createApiKey({ name, roles: parseRoles(opt('--roles') ?? 'reader'), actFor: args.includes('--act-for'), createdBy: 'cli' });
+      console.error(`key ${k.id} "${k.name}" (${k.roles.join(', ')}${k.actFor ? '; acts for people' : ''}). It is shown only now; keep it in a secret store:`);
       console.log(k.key);
     } else if (group === 'key' && verb === 'list') {
-      for (const k of await auth.listApiKeys()) console.log(`${k.id}  ${k.name.padEnd(24)} ${k.hint} ${k.roles.join(',').padEnd(20)} ${k.revokedAt ? `revoked ${k.revokedAt}` : `last used ${k.lastUsedAt ?? 'never'}`}`);
+      for (const k of await auth.listApiKeys()) console.log(`${k.id}  ${k.name.padEnd(24)} ${k.hint} ${k.roles.join(',').padEnd(20)} ${k.actFor ? 'act-for ' : '        '}${k.revokedAt ? `revoked ${k.revokedAt}` : `last used ${k.lastUsedAt ?? 'never'}`}`);
+    } else if (group === 'key' && verb === 'act-for' && name && (args[3] === 'on' || args[3] === 'off')) {
+      const k = await auth.updateApiKey(name, { actFor: args[3] === 'on' });
+      if (!k) throw new AuthError(404, 'not_found', `no key ${name}`);
+      console.log(`key ${k.id} "${k.name}" ${k.actFor ? 'may now act for people (Chalk-Actor)' : 'no longer acts for people'}`);
     } else if (group === 'key' && verb === 'revoke' && name) {
       if (!(await auth.revokeApiKey(name))) throw new AuthError(404, 'not_found', `no key ${name}, or it is already revoked`);
       console.log(`key ${name} revoked`);

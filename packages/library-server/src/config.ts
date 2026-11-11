@@ -20,6 +20,7 @@ import type { DeliveryOptions } from './delivery.js';
  *   SERVER_URL       this server's own address (disk uploads and file links come here; a private library's store names it)
  *   TOKENS           name:token,name:token           (bootstrap callers: author; a name ending in ! is an administrator)
  *   PUBLIC_READ      true | false                    (search and read without a token; default true)
+ *   HUMAN_ACCOUNTS   on | off                        (off: no user accounts, sign-in or refresh; API keys and TOKENS only; default on)
  *   ACCESS_TOKEN_TTL 900                             (seconds an access token lasts)
  *   REFRESH_TOKEN_TTL 2592000                        (seconds a refresh token lasts: 30 days)
  *   REFRESH_TOKEN_GRACE 30                           (seconds a used refresh token still gives the same successor; 0 to 60, 0: never)
@@ -45,6 +46,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   const refreshGrace = env.REFRESH_TOKEN_GRACE ? grace() : undefined;
   const adopt = adoptPrefixes(env.ADOPT_PREFIXES); // checked before anything is opened
   const serverUrl = env.SERVER_URL ?? `http://localhost:${port}`;
+  const humanAccounts = onOff(env, 'HUMAN_ACCOUNTS', true);
   const db = await openDb(env.DATABASE_URL ?? 'pglite:', { ...(env.DB_SCHEMA ? { schema: env.DB_SCHEMA } : {}) });
   let storage: Storage;
   if ((env.STORAGE ?? 'disk') === 's3') {
@@ -59,7 +61,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
   }
   const publicRead = env.PUBLIC_READ !== 'false';
   const keySecret = env.AUTH_KEY_SECRET || undefined;
-  try { await checkKeySetup(db, { publicRead, ...(keySecret ? { keySecret } : {}) }); } catch (e) { await db.close(); throw e; }
+  try { await checkKeySetup(db, { publicRead, humanAccounts, ...(keySecret ? { keySecret } : {}) }); } catch (e) { await db.close(); throw e; }
   return {
     db, storage, port,
     publicUrl: env.PUBLIC_URL ?? `${serverUrl.replace(/\/$/, '')}/files/`,
@@ -73,6 +75,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       ...(keySecret ? { keySecret } : {}),
       rateLimit: { ...(env.AUTH_RATE_LIMIT ? { perUser: positive('AUTH_RATE_LIMIT') } : {}), ...(env.AUTH_RATE_LIMIT_IP ? { perAddress: positive('AUTH_RATE_LIMIT_IP') } : {}) },
       trustProxy: env.TRUST_PROXY === 'true',
+      humanAccounts,
     },
     ...(env.MAX_BYTES ? { maxBytes: Number(env.MAX_BYTES) } : {}),
     ...(adopt.length ? { adoptPrefixes: adopt } : {}),
@@ -81,6 +84,15 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
     // only when set: the default (localhost) would be wrong in a private library's store; the request's address is used instead
     ...(env.SERVER_URL ? { serverUrl: env.SERVER_URL } : {}),
   };
+}
+
+/** A yes/no setting: on, true, 1 or off, false, 0 (any case); not set: `fallback`. */
+export function onOff(env: Record<string, string | undefined>, k: string, fallback: boolean): boolean {
+  const v = env[k]?.trim().toLowerCase();
+  if (!v) return fallback;
+  if (['on', 'true', '1', 'yes'].includes(v)) return true;
+  if (['off', 'false', '0', 'no'].includes(v)) return false;
+  throw new Error(`${k} must be on or off (true or false); got ${env[k]}`);
 }
 
 /** `name:token,…` (bootstrap tokens): a name ending in `!` is an administrator, any other an author. Compared in constant time. */
