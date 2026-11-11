@@ -50,6 +50,7 @@ starting point. Never commit the real `.env`.
 |---|---|---|
 | `DATABASE_URL` | `pglite:` (in memory) | `postgres://user:pass@host:5432/db?sslmode=require`, or `pglite:./dir` to keep PGlite's data in a folder. The Docker image needs Postgres (see below). |
 | `DB_SCHEMA` | `chalk_library` | Postgres only. The library keeps everything in this schema (tables, its migration record, `pg_trgm`), so it can share a database with an app. |
+| `MIGRATE_ON_START` | `true` | `false`: the server creates nothing at start (no schema, extension or migration) and refuses to start unless the schema is at its migration step; `chalk-library migrate`, run with the owner login, brings it there. Lets the server run as a login with only row rights (see [Postgres](#postgres)). |
 | `STORAGE` | `disk` | `s3` or `disk`. |
 | `S3_ENDPOINT` | | e.g. `https://<account-id>.r2.cloudflarestorage.com`, `http://minio:9000`, `https://s3.eu-central-1.amazonaws.com`. |
 | `S3_BUCKET` | | The bucket. |
@@ -62,6 +63,7 @@ starting point. Never commit the real `.env`.
 | `PUBLIC_URL` | `<SERVER_URL>/files/` | Where readers fetch the bytes: the bucket's public domain or CDN. With disk storage the server serves them itself at `/files/`. |
 | `SERVER_URL` | `http://localhost:<PORT>` | This server's own public address, e.g. `https://library.example.org`. Disk storage puts it in upload links, and it is the `iss` of every access token, so set it in production and do not change it casually (tokens issued under the old value stop working). With `PUBLIC_READ=false` the store at `GET /v1/stores` names it; not set, the address the request reached is used (with `X-Forwarded-Proto`), and the answer is not shared-cacheable. |
 | `TOKENS` | none | Bootstrap tokens: `name:token,name:token`. A plain name is an author (reads and writes), a name ending in `!` an administrator (`admin!:…`). Compared in constant time. See [Users, sign-in and API keys](#users-sign-in-and-api-keys). |
+| `HUMAN_ACCOUNTS` | `on` | `off`: the library has no user accounts. No sign-in or refresh (`400 unsupported_grant_type`), the user endpoints answer `404`, tokens users already have are refused; API keys (acting for people included) and `TOKENS` work. For a deployment whose people sign in to another app that acts for them ([below](#acting-for-a-person-chalk-actor)). |
 | `PUBLIC_READ` | `true` | `false`: searching, reading records **and the files' bytes** need a token too (any signed-in user or key; see [A private library](#a-private-library-public_readfalse)). Writing always needs one. |
 | `ACCESS_TOKEN_TTL` | `900` | Seconds an access token lasts. |
 | `REFRESH_TOKEN_TTL` | `2592000` (30 days) | Seconds a refresh token lasts (each use gives a new one). |
@@ -87,10 +89,35 @@ exist). On first start the server:
 
 1. creates `DB_SCHEMA` if it is missing;
 2. points every connection's `search_path` at it (then `public`);
-3. applies [`spec/1.2/registry.sql`](../../spec/1.2/registry.sql) once, recording it in
-   `chalk_library_schema`.
+3. applies [`spec/1.2/registry.sql`](../../spec/1.2/registry.sql) once, then each later migration step, recording
+   them in `chalk_library_schema`.
 
-Nothing outside that schema is touched. Search uses trigram similarity on titles, file names and tags, which works
+Nothing outside that schema is touched.
+
+**An owner login for migrations, a runtime login for the server.** With `MIGRATE_ON_START=false` the server
+changes nothing in the database and checks at start that the schema has every migration step it knows; if not, it
+stops with a message to run `chalk-library migrate`. Migrations are then a release step, run with a login that owns
+the schema (`DATABASE_URL=postgres://px_library_owner:…@…/db chalk-library migrate`, in the image `node server.mjs
+migrate`), before the new version starts. The server's own login needs only this (as a superuser or the database
+owner, once):
+
+```sql
+CREATE ROLE px_library_owner LOGIN PASSWORD '…';
+CREATE ROLE px_library_app LOGIN PASSWORD '…';
+CREATE SCHEMA chalk_library AUTHORIZATION px_library_owner;
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA chalk_library;   -- the setup makes it: the owner may not create extensions
+GRANT USAGE ON SCHEMA chalk_library TO px_library_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE px_library_owner IN SCHEMA chalk_library GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO px_library_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE px_library_owner IN SCHEMA chalk_library GRANT USAGE, SELECT ON SEQUENCES TO px_library_app;
+-- tables the owner made before these defaults existed:
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA chalk_library TO px_library_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA chalk_library TO px_library_app;
+```
+
+`pg_trgm` can be installed once per database, in one schema: put it in the library's schema (the server finds it
+through `search_path`). If another app of the same database already installed it in `public`, that works too.
+The `user`, `key` and `signing-key` commands follow `MIGRATE_ON_START` like the server, so they run with either
+login. Search uses trigram similarity on titles, file names and tags, which works
 in any script, including Bengali (no Bengali stemmer exists).
 
 ## S3-compatible storage
@@ -239,17 +266,19 @@ needs `GetObject` on the bucket, which it already has (it reads uploads back to 
 
 ```bash
 chalk-library serve                       # the API (the default)
+chalk-library migrate                     # create the schema and apply the migrations, then exit (the release step with MIGRATE_ON_START=false)
 chalk-library scan [prefix]               # adopt media already in the storage; again adds only what is new
 chalk-library check <url> --token T [--admin-token A]   # conformance: does a server do what the registry API says?
 chalk-library check <url> --user U [--admin-token A]    # the same, signed in (password: CHALK_LIBRARY_PASSWORD, a prompt or stdin)
 chalk-library user add <username> --roles reader        # users (password: a prompt without echo, or the first line of stdin)
 chalk-library user list | disable <username> | enable <username> | password <username>
-chalk-library key add <name> --roles author             # API keys for machines; the key is printed once
+chalk-library key add <name> --roles author [--act-for] # API keys for machines; the key is printed once; --act-for: it may send Chalk-Actor
+chalk-library key act-for <id> on|off                   # allow or stop a key acting for people
 chalk-library key list | revoke <id>
 chalk-library signing-key rotate                        # a new token signing key
 ```
 
-`user`, `key` and `signing-key` need only `DATABASE_URL` (and `DB_SCHEMA`), not the storage settings.
+`migrate`, `user`, `key` and `signing-key` need only `DATABASE_URL` (and `DB_SCHEMA`), not the storage settings.
 
 From the repository use `npx tsx packages/library-server/src/cli.ts <command>`. From a build use
 `node dist/server.mjs <command>`.
@@ -330,6 +359,26 @@ on every device that shares it (theft detection). The one exception is a retry: 
 seconds (30) of its use, the same token gives the same new refresh token again, as long as that one has not been
 used, so a client whose answer was lost stays signed in. `POST /v1/auth/revoke {"refresh_token"}` signs out.
 `libraryAuth` in `@chalk-format/store` does all of this for a browser or an app (`signIn`, `token()`, `signOut`).
+
+### Acting for a person (Chalk-Actor)
+
+An app whose people sign in to the app itself (a staff dashboard) can call the library with one API key and say on
+each request who it acts for, so the library's records name the person ([registry API
+§10.7](../../spec/1.2/registry-api.md#107-acting-for-a-person)):
+
+```bash
+chalk-library key add dashboard --roles admin --act-for   # or POST /v1/admin/keys {"name","roles","actFor":true}; PATCH /v1/admin/keys/{id} {"actFor"} later
+```
+
+The app's server sends `Chalk-Actor: base64url(JSON.stringify({ id: 'staff:<uuid>', name: 'Rita Akter' }))` with
+the key. The library then records the `id` wherever it records who did something (`uploaded_by`; the highlights'
+`reviewed_by` and `rects_by`, in place of the body's `by`; the key that made a key), `?mine=1` means that person,
+and the table `actors` keeps each id's latest name (`GET /v1/admin/actors`). `GET /v1/auth/me` answers
+`actingFor`. The header from any other caller is refused (`403 act_for_not_allowed`), a malformed one is `400`.
+Without the header the key is recorded under its own name.
+
+Such a key can write as anyone it names, so it stays on the app's server. With `HUMAN_ACCOUNTS=off` the library has
+no accounts of its own at all: only such keys, machine keys and `TOKENS`.
 
 ### Making a library private (PUBLIC_READ=false)
 
