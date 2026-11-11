@@ -8,9 +8,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     # a real Postgres for the library server's highlights tests (the production driver, postgres.js, passes parameters differently from PGlite)
+    # and for its runtime-login test (an owner migrates, a login with row rights only serves; logins are real only on a real server)
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: hltest
@@ -31,6 +32,11 @@ jobs:
         run: pnpm --filter @chalk-format/library-server exec vitest run src/highlights.test.ts
         env:
           TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/hltest
+      - name: The library server on a real Postgres with an owner and a DML-only runtime login (MIGRATE_ON_START=false)
+        run: pnpm --filter @chalk-format/library-server exec vitest run src/migrate.test.ts
+        env:
+          # a superuser: the test makes its own database and logins, and drops them after
+          CHALK_LIBRARY_TEST_DB: postgres://postgres:postgres@127.0.0.1:5432/postgres
       - name: JSON Schema is up to date with the model
         run: pnpm gen:schema && git diff --exit-code schema/
       - name: Shared lab library builds reproduce their keys (libraries/catalog.json)
