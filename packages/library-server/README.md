@@ -24,8 +24,11 @@ DATABASE_URL=postgres://owner… npx tsx src/cli.ts migrate                     
 ```
 
 An app's server can act for its signed-in people with a key made `--act-for`: it sends `Chalk-Actor` (base64url
-JSON `{"id": "staff:<id>", "name"}`), and the library records the person's id (registry API §10.7). `HUMAN_ACCOUNTS=off`
-runs the library with keys and `TOKENS` only (§10.8).
+JSON `{"id": "staff:<id>", "name"}`), and the library records the person's id (registry API §10.7). `staff:` and
+`system:` ids are reserved for this: every writer that names a person or a job (a staff dashboard, a sync job sending
+`system:library-sync`) needs its own `--act-for` key; a plain key sending such a `by` gets `400 actor_requires_act_for`.
+`HUMAN_ACCOUNTS=off` runs the library with keys and `TOKENS` only (§10.8). The keys and settings of such a
+deployment, one by one: [run a library server](../../docs/guides/run-a-library-server.md#a-deployment-whose-people-sign-in-elsewhere-keys-and-settings).
 
 (PGlite allows one process at a time: stop `serve` first, or use the admin API.) Docker, from the repository root: `docker build -f packages/library-server/Dockerfile -t chalk-library-server .`
 

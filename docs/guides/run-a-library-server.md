@@ -373,12 +373,36 @@ chalk-library key add dashboard --roles admin --act-for   # or POST /v1/admin/ke
 The app's server sends `Chalk-Actor: base64url(JSON.stringify({ id: 'staff:<uuid>', name: 'Rita Akter' }))` with
 the key. The library then records the `id` wherever it records who did something (`uploaded_by`; the highlights'
 `reviewed_by` and `rects_by`, in place of the body's `by`; the key that made a key), `?mine=1` means that person,
-and the table `actors` keeps each id's latest name (`GET /v1/admin/actors`). `GET /v1/auth/me` answers
-`actingFor`. The header from any other caller is refused (`403 act_for_not_allowed`), a malformed one is `400`.
-Without the header the key is recorded under its own name.
+and the table `actors` keeps each id's latest name once a change made for them succeeded (`GET /v1/admin/actors`;
+reads and refused requests record nobody). `GET /v1/auth/me` answers `actingFor`. The header from any other caller
+is refused (`403 act_for_not_allowed`), a malformed one is `400`. Without the header the key is recorded under its
+own name.
 
-Such a key can write as anyone it names, so it stays on the app's server. With `HUMAN_ACCOUNTS=off` the library has
-no accounts of its own at all: only such keys, machine keys and `TOKENS`.
+`staff:` and `system:` ids are reserved for acting: a highlight write whose `by` starts with one, from a caller that
+is not acting for someone, is refused (`400 actor_requires_act_for`). **So every writer that names a person or a job
+needs an act-for key and sends `Chalk-Actor`**, a sync job included (`{"id":"system:library-sync","name":"Library
+sync"}`), instead of putting that id in `by`. `POST …/import` is the exception: it restores links with their
+original `reviewedBy`, and accepts `staff:`/`system:` reviewers only from an act-for key or an administrator.
+
+Such a key can write as anyone it names, so it stays on the app's server and never goes to a browser (the library
+does not allow `Chalk-Actor` in CORS). With `HUMAN_ACCOUNTS=off` the library has no accounts of its own at all:
+only such keys, machine keys and `TOKENS`.
+
+#### A deployment whose people sign in elsewhere (keys and settings)
+
+The settings: `HUMAN_ACCOUNTS=off`, `MIGRATE_ON_START=false` (the server's `DATABASE_URL` is the runtime login), and
+`chalk-library migrate` with the owner login as the release step ([Postgres](#postgres)). The keys, one per writer,
+each in that writer's secret store:
+
+| Key | Command | Sends `Chalk-Actor` | Recorded as |
+|---|---|---|---|
+| The staff dashboard's server | `key add dashboard --roles author --act-for` (`--roles admin` only if it withdraws assets or lists actors and keys) | `staff:<id>` of the signed-in person, `system:<job>` for its own jobs (`system:publish`) | that person or job |
+| The library sync (media and highlights published from a computer or a job) | `key add library-sync --roles author --act-for` | `system:library-sync` | `system:library-sync` |
+| CI that publishes books or media | `key add github-publish --roles author` | no | the key's name, `github-publish` |
+| A server that only reads (`PUBLIC_READ=false`) | `key add web-reader --roles reader` | no | (reads record nothing) |
+
+A key made without `--act-for` can get it later (`key act-for <id> on`, or `PATCH /v1/admin/keys/{id}
+{"actFor":true}`). Keep one bootstrap administrator in `TOKENS` only as long as you need it to make these keys.
 
 ### Making a library private (PUBLIC_READ=false)
 
