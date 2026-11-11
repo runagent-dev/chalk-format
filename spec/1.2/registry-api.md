@@ -324,19 +324,29 @@ this; one that does MUST do it as this section says.
 - An administrator marks a key as one that may act for people (`actFor`, §10.5). No other credential may.
 - The app sends **`Chalk-Actor: <base64url of JSON {"id", "name"}>`** (RFC 4648 §5, padding optional). `id` is the
   person's lasting id in the app, `staff:<id>`, or a job's, `system:<job>`; it MUST match
-  `^(staff|system):[A-Za-z0-9._:-]{1,80}$`. `name` is a display name, 1 to 120 characters, no control characters.
+  `^(staff|system):[A-Za-z0-9._:-]{1,80}$`. `name` is a display name, 1 to 120 characters after trimming white
+  space, with no control characters (Unicode `Cc`), bidirectional embeddings, overrides or isolates
+  (U+202A to U+202E, U+2066 to U+2069) and no line or paragraph separators (U+2028, U+2029).
 - From a key that may act for people, the registry records `id` wherever it records who did something (an asset's
   `uploadedBy`; in §11, `reviewedBy` and `rectsBy`, in place of the body's `by`, which may then be left out), and
-  filters that name the caller (`mine=1`, §5) mean that person. It keeps the latest `name` for each `id`
-  (`GET v1/admin/actors`) so screens can show a name; records keep only the id. A header that does not decode to
-  such an object is `400 invalid`.
+  filters that name the caller (`mine=1`, §5) mean that person. After a change made for a person succeeds (a `2xx`
+  answer to a request other than `GET` or `HEAD`), it keeps that person's latest `name` (`GET v1/admin/actors`: the
+  people keys have acted for in a change) so screens can show a name; records keep only the id. Reads, refusals and
+  failed requests record nobody. A header that does not decode to such an object is `400 invalid`.
 - From any other caller (a key without `actFor`, a user's token, another token, no token) the header MUST be
   refused with `403 act_for_not_allowed`, never ignored: a client set up wrong is then noticed instead of writing
   under the wrong name. A credential that is not valid is still `401`.
 - Without the header, a key that may act for people is recorded under its own name, as any key.
+- Ids of this form are reserved for acting: a caller that is not acting for someone MUST NOT be able to record one.
+  A `by` (§11.3) that starts with `staff:` or `system:` (in any case) from such a caller is refused with
+  `400 actor_requires_act_for`.
+- One exception: **`POST import`** (§11.3) restores records as they were, so it keeps each link's own `reviewedBy`,
+  also under `Chalk-Actor`. Reviewers that start with `staff:` or `system:` are accepted there only from a key that
+  may act for people or from an `admin`; from anyone else, `400 actor_requires_act_for`.
 
-The registry trusts the app to say who its person is: such a key is as powerful as every person it can name, and
-is kept on the app's server, never in a browser.
+The registry trusts the app to say who its person is: such a key is as powerful as every person it can name. It is
+kept on the app's server and MUST NOT be used from a browser; a registry SHOULD NOT list `Chalk-Actor` among the
+request headers its CORS answers allow.
 
 ### 10.8 Without user accounts
 
@@ -413,7 +423,9 @@ A **link** (a question tied to a line):
 ### 11.3 Writing (`author`)
 
 Every write names the person (or job) in `by`, kept as `reviewedBy`; from a key acting for a person (§10.7), the
-person's id is kept instead and `by` may be left out. Each request is one transaction.
+person's id is kept instead and `by` may be left out (a request with no body, such as `DELETE links/{id}`, is then
+valid). A `by` that starts with `staff:` or `system:` is only for keys acting for someone: from any other caller it
+is `400 actor_requires_act_for`. Each request is one transaction.
 
 | Request | What it does |
 |---|---|
@@ -426,7 +438,7 @@ person's id is kept instead and `by` may be left out. Each request is one transa
 | `POST lines/{id}/links/move` `{ to, by }` | Moves the live links of a line to another: a pair the other line has is kept (confirmed if it was rejected, `human`) and this one dropped; rejected rows stay. → `{ "moved": n }` |
 | `PUT questions/{questionId}/lines` `{ role, add: [lineId], remove: [lineId], scope?, questionType?, by }` | A question's highlight under one role (≤ 200 lines named): `add`ed lines become the person's confirmed links, `remove`d ones rejected rows (whatever they were), the kept ones the person's. → `{ "items": [link + line] }` as `GET links?question=` |
 | `POST links/place` `{ questionId, questionType?, proposals: [{ lineId, role, scope?, score?, rationale? }] }` | A matcher's suggestions, written only if the question still has no live link and no person's decision in any book; lines retired since, and lines the question already has a row on, are skipped. → `{ "placed": n }` (0: not placed) |
-| `POST import` `{ lines: [line], links: [link] }` | Copies records with their ids (moving from another system). Upsert by id. → `{ "lines", "links" }` |
+| `POST import` `{ lines: [line], links: [link] }` | Copies records with their ids (moving from another system). Upsert by id; links keep their `reviewedBy` (staff:/system: ones only from an act-for key or an `admin`, §10.7). → `{ "lines", "links" }` |
 
 Writes that touch a question (`links`, `questions/…/lines`, `place`, `move`) are serialised per question, so a matcher
 never places a question a person is tagging at the same moment.
