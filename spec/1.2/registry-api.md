@@ -172,8 +172,11 @@ stores. It is public and cacheable.
 
 A registry whose bytes are public MAY also answer **`GET v1/files/{key}`** without a token (for apps that link one
 file by key, such as an `<img>`), with a `302` to the file in the store it names here, which the redirect may let
-any cache keep (the reference: `public, max-age=604800`, as a key's bytes never change). It MUST NOT redirect a
-private registry's readers (§7.1) to a public address.
+any cache keep (the reference: `public, max-age=86400`, as a key's bytes never change). It MUST NOT redirect a
+private registry's readers (§7.1) to a public address, and SHOULD NOT redirect a file a browser could open there as
+a page with script (SVG; the reference pre-signs it as an attachment instead). A withdrawal (§8) reaches a reader
+only once the redirect it kept and the file its browser kept have expired, and a CDN in front of the store keeps
+the bytes until it is purged.
 
 ### 7.1 A private library's files
 
@@ -205,7 +208,9 @@ How tokens are issued is in §10; a token "may read" when it has the `reader` ro
 ## 8. Withdrawing an asset
 
 **`POST v1/assets/{key}/withdraw`** `{ "reason" }` (privileged) sets `status: "withdrawn"`. From then on the
-registry's API store answers `410 Gone` for the key, and stores it controls SHOULD delete the bytes. The
+registry's API store answers `410 Gone` for the key, and stores it controls SHOULD delete the bytes (a cache in
+front of a public store keeps them until purged; caches it allowed to keep a redirect or a file, §7, keep them
+for as long as it allowed). The
 record is kept, so the same key cannot be uploaded again by mistake (`gone`).
 
 An adopted file (§3.1) belongs to whoever wrote it: withdrawing removes it from every store and index the registry

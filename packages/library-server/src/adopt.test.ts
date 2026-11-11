@@ -537,7 +537,14 @@ describe('adopting on S3: a public library behind a CDN, and a private one', () 
     vi.setSystemTime(Date.now() + 2000);
     objects.set(B, bytes); types.set(B, 'image/png');
     await createRegistryClient(LIB, { token: 't-1' }).adopt({ ...s, type: 'image/png', size: bytes.byteLength, path: B });
-    const at = async () => new URL((await fetch(`${PRIV}/v1/files/${s.key}`, { headers: bearer(), redirect: 'manual' })).headers.get('location')!).pathname;
+    // the public library sends readers to the copy at the CDN (a redirect kept 5 minutes, as long as a check may take); the private one pre-signs it
+    const at = async () => {
+      const pub = (await fetch(`${LIB}/v1/files/${s.key}`, { redirect: 'manual' })).headers, priv = await fetch(`${PRIV}/v1/files/${s.key}`, { headers: bearer(), redirect: 'manual' });
+      expect(pub.get('cache-control')).toBe('public, max-age=300');
+      const path = pub.get('location')!.slice(`${CDN}/`.length);
+      expect(new URL(priv.headers.get('location')!).pathname).toBe(`/books/${path}`);
+      return `/books/${path}`;
+    };
     const entry = async () => ((await (await fetch(`${LIB}/index/${s.key.slice(3, 5)}.json`)).json()) as { entries: Record<string, { p: string }> }).entries[s.key.slice(3)]!.p;
     // B is pruned first this time; within the check interval nothing is HEADed and B is still named
     objects.delete(B);
@@ -565,13 +572,13 @@ describe('adopting on S3: a public library behind a CDN, and a private one', () 
     expect(await book.urlFor(want.assets[3]!.id)).toBe(`${CDN}/chalk-books/s3-book/assets/${want.assets[3]!.id.replace(':', '-')}`);
   }, 60_000);
 
-  it('an uploaded key: a public library redirects /v1/files to the CDN\'s standard path, kept a week; a private one pre-signs the bucket', async () => {
+  it('an uploaded key: a public library redirects /v1/files to the CDN\'s standard path, kept a day; a private one pre-signs the bucket', async () => {
     const bytes = new TextEncoder().encode('uploaded, then read through the CDN');
     const rec = await createRegistryClient(LIB, { token: 't-1' }).add(bytes, { type: 'image/png', title: 'cdn' });
     const r = await fetch(`${LIB}/v1/files/${rec.key.slice(3)}`, { redirect: 'manual' });
     expect(r.status).toBe(302);
     expect(r.headers.get('location')).toBe(`${CDN}/${standardPath(rec.key)}`);
-    expect(r.headers.get('cache-control')).toBe('public, max-age=604800');
+    expect(r.headers.get('cache-control')).toBe('public, max-age=86400');
     expect(r.headers.get('vary') ?? '').not.toMatch(/authorization/i);
     log.length = 0;
     expect(text(await (await fetch(`${LIB}/v1/files/${rec.key}`)).arrayBuffer())).toBe(text(bytes));
@@ -587,15 +594,53 @@ describe('adopting on S3: a public library behind a CDN, and a private one', () 
     expect([gone.status, gone.headers.get('location')]).toEqual([410, null]);
   });
 
-  it('a public S3 library without a public domain (PUBLIC_URL left at its own /files/) still pre-signs', async () => {
-    const own = createLibraryApp({ db, storage: s3Storage({ endpoint: S3, bucket: 'books', ...CREDS }), publicUrl: 'https://lib.example.org/files/', serverUrl: 'https://lib.example.org', callers: tokenCallers('teacher:t-1') } as Parameters<typeof createLibraryApp>[0]);
-    const bytes = new TextEncoder().encode('no public domain'), k2 = await assetKeyAndSha256(bytes), path = standardPath(k2.key);
-    objects.set(path, bytes);
-    await db.query("INSERT INTO assets (key, sha256, type, size, status) VALUES ($1, $2, 'image/png', $3, 'available')", [k2.key, k2.sha256, bytes.byteLength]);
-    const r = await own.fetch(new Request(`https://lib.example.org/v1/files/${k2.key}`));
-    expect(r.status).toBe(302);
-    expect(new URL(r.headers.get('location')!).origin).toBe(S3);
-    expect(r.headers.get('cache-control')).toBe('private, max-age=240');
+  it('a public S3 library without a public domain still pre-signs: PUBLIC_URL and SERVER_URL unset, or PUBLIC_URL its own https://host/files/', async () => {
+    const bytes = new TextEncoder().encode('no public domain'), k2 = await assetKeyAndSha256(bytes);
+    objects.set(standardPath(k2.key), bytes);
+    const s3env: Record<string, string> = { STORAGE: 's3', S3_ENDPOINT: S3, S3_BUCKET: 'books', S3_ACCESS_KEY_ID: CREDS.accessKeyId, S3_SECRET_ACCESS_KEY: CREDS.secretAccessKey, PORT: '8099' };
+    for (const env of [s3env, { ...s3env, PUBLIC_URL: 'https://lib.example.org/files/', SERVER_URL: 'https://lib.example.org' }, { ...s3env, PUBLIC_URL: 'https://lib.example.org/files' }]) {
+      const o = await libraryFromEnv(env);
+      try {
+        expect(o.publicRead).toBe(true);
+        await o.db.query("INSERT INTO assets (key, sha256, type, size, status) VALUES ($1, $2, 'image/png', $3, 'available')", [k2.key, k2.sha256, bytes.byteLength]);
+        const r = await createLibraryApp(o).fetch(new Request(`https://lib.example.org/v1/files/${k2.key}`));
+        expect(r.status, env.PUBLIC_URL ?? 'unset').toBe(302);
+        expect(new URL(r.headers.get('location')!).origin).toBe(S3);
+        expect(r.headers.get('location')).not.toContain('localhost');
+        expect(r.headers.get('cache-control')).toBe('private, max-age=240');
+      } finally { await o.db.close(); }
+    }
+    // a public domain set explicitly is used
+    const o = await libraryFromEnv({ ...s3env, PUBLIC_URL: 'https://assets.example.org/' });
+    try {
+      await o.db.query("INSERT INTO assets (key, sha256, type, size, status) VALUES ($1, $2, 'image/png', $3, 'available')", [k2.key, k2.sha256, bytes.byteLength]);
+      expect((await createLibraryApp(o).fetch(new Request(`https://lib.example.org/v1/files/${k2.key}`))).headers.get('location')).toBe(`https://assets.example.org/${standardPath(k2.key)}`);
+    } finally { await o.db.close(); }
+  }, 60_000);
+
+  it('an SVG is never sent to the public address (it would open there inline, script and all): pre-signed as an attachment', async () => {
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    const rec = await createRegistryClient(LIB, { token: 't-1' }).add(svg, { type: 'image/svg+xml', title: 'svg' });
+    for (const type of ['image/svg+xml', ' IMAGE/SVG+XML; charset=utf-8']) {
+      await db.query('UPDATE assets SET type = $2 WHERE key = $1', [rec.key, type]);
+      const r = await fetch(`${LIB}/v1/files/${rec.key}`, { redirect: 'manual' });
+      expect(r.status).toBe(302);
+      const u = new URL(r.headers.get('location')!);
+      expect(u.origin).toBe(S3);
+      expect(u.searchParams.get('response-content-disposition')).toMatch(/^attachment/);
+      expect(r.headers.get('cache-control')).toBe('private, max-age=240');
+    }
+  });
+
+  it('an adopted path that needs encoding: the redirect names it encoded, and the CDN serves the bytes', async () => {
+    const bytes = new TextEncoder().encode('a path with a space, a hash and Bangla'), a = await assetKeyAndSha256(bytes);
+    const path = 'chalk-books/chem-10/assets/পরমাণু model #2 (v1)?.png';
+    objects.set(path, bytes); types.set(path, 'image/png');
+    expect((await createRegistryClient(LIB, { token: 't-1' }).adopt({ ...a, type: 'image/png', size: bytes.byteLength, path })).status).toBe('available');
+    const r = await fetch(`${LIB}/v1/files/${a.key}`, { redirect: 'manual' });
+    expect(r.headers.get('location')).toBe(`${CDN}/${path.split('/').map(encodeURIComponent).join('/')}`);
+    expect(r.headers.get('location')).toContain('%20%232%20(v1)%3F.png');
+    expect(text(await (await fetch(`${LIB}/v1/files/${a.key}`)).arrayBuffer())).toBe(text(bytes));
   });
 
   it('withdrawing deletes only the standard path, never the adopted object', async () => {
