@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v11/lesson.schema.json",
+  "$id": "https://chalk-format.dev/schema/v12/lesson.schema.json",
   "title": "Chalk lesson (assembled model)",
-  "x-chalk-format-version": 11,
+  "x-chalk-format-version": 12,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
@@ -757,6 +757,70 @@
                 "fontSize"
               ]
             }
+          },
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "fill": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "fill"
+              ]
+            }
+          },
+          "numberSlot": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "fontSize": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "align": {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "center",
+                  "end"
+                ]
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "fontSize",
+              "align"
+            ]
           }
         },
         "required": [
@@ -1511,6 +1575,70 @@
                 "fontSize"
               ]
             }
+          },
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "fill": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "fill"
+              ]
+            }
+          },
+          "numberSlot": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "fontSize": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "align": {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "center",
+                  "end"
+                ]
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "fontSize",
+              "align"
+            ]
           }
         },
         "required": [

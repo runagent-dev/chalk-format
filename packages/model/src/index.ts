@@ -21,6 +21,7 @@ export {
   type ModelType,
 } from './media-type.js';
 export * from './object-transform.js';
+export * from './printed-marks.js';
 // Schema functions/constants only. The model *types* come via lesson.js
 // (which re-exports them from schema.js), so we deliberately do not
 // `export *` from schema.js to avoid duplicate type exports.
@@ -36,6 +37,8 @@ export {
   lessonObjectSchema,
   pageBackgroundSchema,
   textRunSchema,
+  hiddenAreaSchema,
+  pageNumberSlotSchema,
   parseLesson,
   safeParseLesson,
   validateLessonModel,

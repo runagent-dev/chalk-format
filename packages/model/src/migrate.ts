@@ -52,6 +52,8 @@ export const MIGRATIONS: Record<number, Migration> = {
   9: (doc) => doc,
   // v10 → v11: a lab may list `libraries` (spec 1.5)
   10: (doc) => doc,
+  // v11 → v12: a page may list `hidden` areas and a `numberSlot` (spec 1.9)
+  11: (doc) => doc,
 };
 
 /**
