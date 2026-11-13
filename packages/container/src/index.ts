@@ -7,3 +7,4 @@ export * from './stream.js';
 export * from './patch.js';
 export * from './merge.js';
 export * from './apply-patch.js';
+export * from './printed-marks.js';
