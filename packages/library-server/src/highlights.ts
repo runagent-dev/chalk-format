@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
-import { requireRole, type AuthVariables } from './auth/guard.js';
+import { ACTOR_LIKE, requireRole, type AuthVariables } from './auth/guard.js';
+import type { Caller } from './auth/roles.js';
 import type { Db } from './db.js';
 
 /**
@@ -166,10 +167,25 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     }
   };
   const parse = async <T>(c: Context, schema: z.ZodType<T>): Promise<T> => {
-    const r = schema.safeParse(await c.req.json().catch(() => null));
+    const caller = c.get('caller') as Caller | null | undefined;
+    const actor = caller?.actingFor;
+    // a request without a body (DELETE links/{id}) is an empty one for a key acting for a person: `by` comes from the header
+    const text = await c.req.text();
+    let raw: unknown;
+    try {
+      raw = actor && c.req.method === 'DELETE' && text === '' ? {} : JSON.parse(text);
+    } catch {
+      throw new HighlightError(400, 'invalid', 'body must be valid JSON');
+    }
+    // a key acting for a person (Chalk-Actor, §10.7): the person is `by`, whatever the body says (and it may leave `by` out)
+    const takesBy = schema instanceof z.ZodObject && 'by' in schema.shape;
+    const r = schema.safeParse(actor && takesBy && raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw, by: actor.id } : raw);
     if (!r.success) throw new HighlightError(400, 'invalid', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+    // only a key acting for someone may name a person or a job of the deployment: anyone else could sign as them
+    if (!actor && takesBy && ACTOR_LIKE.test((r.data as { by?: string }).by ?? '')) throw notActing();
     return r.data;
   };
+  const notActing = () => new HighlightError(400, 'actor_requires_act_for', 'a staff: or system: id is recorded only from an API key acting for that person (Chalk-Actor)');
   const int = (v: string | undefined) => (v !== undefined && /^\d{1,9}$/.test(v) ? Number(v) : undefined);
   const statusFilter = (c: Context) => (c.req.query('status') === 'confirmed' ? `k.status = 'confirmed'` : `k.status <> 'rejected'`);
 
@@ -494,6 +510,9 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
 
   app.post('/v1/books/:slug/import', (c) => run(c, 'author', async (book) => {
     const b = await parse(c, importSchema);
+    // a restore keeps each link's original reviewer (§10.7); staff:/system: reviewers only from an act-for key or an administrator
+    const caller = c.get('caller') as Caller | null | undefined;
+    if (!caller?.actFor && !caller?.admin && b.links.some((l) => ACTOR_LIKE.test(l.reviewedBy ?? ''))) throw notActing();
     await db.begin(async (q) => {
       // an id that is another book's is refused, not skipped: the answer must not count records it did not write
       const elsewhere = async (table: 'book_lines' | 'book_links', ids: string[]) =>

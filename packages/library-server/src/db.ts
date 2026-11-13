@@ -20,12 +20,20 @@ function schemaSql(): string {
   throw new Error('registry.sql not found');
 }
 
+/** The newest migration step this server knows (the steps of `migrate`). */
+export const SCHEMA_VERSION = 7;
+
 /**
  * `schema`: Postgres only: everything the library makes (tables, its migration record, the pg_trgm extension) goes
  * into this schema, so a library can share a database with an app without touching the app's tables. Default
  * `chalk_library`.
+ *
+ * `migrate` (default true, MIGRATE_ON_START): create the schema and apply the migration steps. false: touch nothing
+ * (the login may hold only DML rights on the schema's tables) and refuse to open a schema that is not at
+ * `SCHEMA_VERSION`; `chalk-library migrate`, run with the owner login, brings it there.
  */
-export async function openDb(url: string, o: { schema?: string } = {}): Promise<Db> {
+export async function openDb(url: string, o: { schema?: string; migrate?: boolean } = {}): Promise<Db> {
+  const migrating = o.migrate !== false;
   let db: Db;
   if (url.startsWith('pglite:')) {
     const { PGlite } = await import('@electric-sql/pglite');
@@ -38,14 +46,19 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
       begin: (fn) => pg.transaction((tx) => fn(async <T>(sql: string, params: unknown[] = []) => (await tx.query<T>(sql, params)).rows)),
       async close() { await pg.close(); },
     };
-    await migrate(db, (sql) => pg.transaction((tx) => tx.exec(sql)).then(() => undefined));
+    if (migrating) await migrate(db, (sql) => pg.transaction((tx) => tx.exec(sql)).then(() => undefined));
   } else {
     const { default: postgres } = await import('postgres');
     const schema = o.schema ?? 'chalk_library';
     if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new Error(`not a schema name: ${schema}`);
-    const setup = postgres(url, { max: 1, onnotice: () => {} });
-    await setup.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-    await setup.end();
+    if (migrating) {
+      const setup = postgres(url, { max: 1, onnotice: () => {} });
+      // only when it is missing: Postgres checks the right to create schemas before IF NOT EXISTS, and an owner login
+      // given its schema by the database's setup has no such right
+      try {
+        if (!(await setup`SELECT 1 FROM pg_namespace WHERE nspname = ${schema}`).length) await setup.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+      } finally { await setup.end(); }
+    }
     // every connection works in the library's schema (public after it, for what the database already has)
     const sql = postgres(url, { max: 10, onnotice: () => {}, connection: { search_path: `${schema}, public` } });
     db = {
@@ -53,9 +66,29 @@ export async function openDb(url: string, o: { schema?: string } = {}): Promise<
       begin: <T>(fn: (query: Db['query']) => Promise<T>) => sql.begin((tx) => fn(async <R>(text: string, params: unknown[] = []) => (await tx.unsafe(text, params as never[])) as unknown as R[])) as Promise<T>,
       async close() { await sql.end(); },
     };
-    await migrate(db, (text) => sql.begin((tx) => tx.unsafe(text).simple()).then(() => undefined));
+    if (migrating) await migrate(db, (text) => sql.begin((tx) => tx.unsafe(text).simple()).then(() => undefined));
+  }
+  if (!migrating) {
+    try { await checkSchema(db, o.schema ?? 'chalk_library'); } catch (e) { await db.close(); throw e; }
   }
   return db;
+}
+
+/** The migration steps a schema has, 0 when it has none (no record table). */
+async function versionsOf(db: Db): Promise<Set<number>> {
+  const [t] = await db.query<{ t: string | null }>("SELECT to_regclass('chalk_library_schema')::text AS t");
+  if (!t?.t) return new Set();
+  return new Set((await db.query<{ version: number }>('SELECT version FROM chalk_library_schema')).map((r) => Number(r.version)));
+}
+
+/** MIGRATE_ON_START=false: the schema must already have every step this server knows. */
+async function checkSchema(db: Db, schema: string) {
+  const done = await versionsOf(db);
+  const missing = Array.from({ length: SCHEMA_VERSION }, (_, i) => i + 1).filter((v) => !done.has(v));
+  if (missing.length) {
+    throw new Error(`the library's database schema (${schema}) is not current: ${done.size ? `migration steps ${missing.join(', ')} are missing` : 'it has no tables yet'} `
+      + `(this server needs step ${SCHEMA_VERSION}). MIGRATE_ON_START=false, so the server does not change it: run \`chalk-library migrate\` with the owner login, then start again`);
+  }
 }
 
 /** The reference schema, once. Later versions add numbered steps here (backward compatible only). */
@@ -85,6 +118,16 @@ INSERT INTO chalk_library_schema (version) VALUES (4);`);
 ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_by text;
 ALTER TABLE book_lines ADD COLUMN IF NOT EXISTS rects_at timestamptz;
 INSERT INTO chalk_library_schema (version) VALUES (6);`);
+  // step 7: API keys that act for people (registry-api §10.7, Chalk-Actor), and the people they acted for: the records
+  // keep an actor's id (staff:<id>, system:<job>), this table its latest display name
+  if (!done.has(7)) await exec(`ALTER TABLE auth_api_keys ADD COLUMN IF NOT EXISTS act_for boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS actors (
+  id             text PRIMARY KEY,
+  name           text NOT NULL,
+  first_seen_at  timestamptz NOT NULL DEFAULT now(),
+  last_seen_at   timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO chalk_library_schema (version) VALUES (7);`);
 }
 
 /** Step 5: book highlights (spec/1.2/registry-api.md §11). Questions are named by their lasting id only (no foreign key: they are manifests). */
