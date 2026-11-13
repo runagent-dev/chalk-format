@@ -273,12 +273,20 @@ export function createLibraryApp(o: LibraryOptions) {
     return c.json({ key, status: 'withdrawn', usedByBooks: used.length > 0 });
   });
 
-  // ---- a disk library delivers its own files (readers' store): immutable, ranges for video ----
+  // ---- stable public file URLs: disk bytes, or a short-lived S3 redirect after a storage move ----
   app.get('/files/*', async (c) => {
-    if (!disk) return c.notFound();
+    if (!disk && o.publicRead === false) return c.notFound();
     const path = decodeURIComponent(c.req.path.slice('/files/'.length));
     // the standard layout, or a file adopted in place: the asset recorded at this path
     const row = await assetAt(db, path);
+    if (!disk) {
+      if (row?.status !== 'available') return c.body(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
+      const { url } = await storage.presignGet(path, 300, { contentType: row.type });
+      return c.body(null, 302, {
+        Location: url, 'Cache-Control': 'public, max-age=60',
+        'Access-Control-Allow-Origin': '*', 'Referrer-Policy': 'no-referrer',
+      });
+    }
     const file = row?.status === 'available' ? disk.file(path) : null;
     if (!file) return c.body(row?.status === 'withdrawn' ? 'gone' : 'not found', row?.status === 'withdrawn' ? 410 : 404);
     const size = statSync(file).size, range = /bytes=(\d*)-(\d*)/.exec(c.req.header('range') ?? '');

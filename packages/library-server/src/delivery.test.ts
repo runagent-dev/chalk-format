@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { storeDescriptorSchema } from '@chalk-format/model';
 import { createRegistryClient } from '@chalk-format/store';
+import type { Storage } from './storage.js';
 import { checkLibrary, createLibraryApp, diskStorage, libraryFromEnv, openDb, tokenCallers, type Db, type DeliveryOptions, type LibraryOptions } from './index.js';
 
 // a private library on disk (PUBLIC_READ=false) next to a public one over the same database and folder
@@ -194,6 +195,51 @@ describe('a public library (PUBLIC_READ=true, the default) is unchanged', () => 
     expect((await get(pub, l.url)).status).toBe(200);
     // a public /files/ ignores a link's query, so it serves a tampered one as it serves a bare path
     expect((await get(pub, l.url.replace(/sig=[^&]+/, 'sig=x'))).status).toBe(200);
+  });
+});
+
+describe('public file URLs after moving from disk to S3', () => {
+  const s3 = (publicRead = true) => {
+    const presignGet = vi.fn(async () => ({ url: 'https://bucket.test/object?signature=temporary', expiresAt: new Date(Date.now() + 300_000).toISOString() }));
+    const storage: Storage = {
+      id: 's3:staging', presignGet,
+      presignPut: async () => ({ url: 'https://bucket.test/upload', headers: {} }),
+      head: async () => null, read: async () => null,
+      async *list() { yield* []; }, copy: async () => {}, remove: async () => {},
+    };
+    return { app: createLibraryApp(options({ storage, publicRead })), presignGet };
+  };
+
+  it('keeps existing public /files/ links usable with a short-lived signed S3 redirect', async () => {
+    const { app, presignGet } = s3();
+    const r = await get(app, `/files/${path}`, { Range: 'bytes=2-8' });
+    expect(r.status).toBe(302);
+    expect(r.headers.get('location')).toBe('https://bucket.test/object?signature=temporary');
+    expect(r.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(r.headers.get('access-control-allow-origin')).toBe('*');
+    expect(r.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(presignGet).toHaveBeenCalledWith(path, 300, { contentType: 'text/html' });
+  });
+
+  it('does not sign unknown or withdrawn assets', async () => {
+    const { app, presignGet } = s3();
+    expect((await get(app, '/files/c1/xx/yy/not-a-key')).status).toBe(404);
+    const fetchPub = (async (input: RequestInfo | URL, init?: RequestInit) => pub.fetch(new Request(input, init))) as typeof fetch;
+    const withdrawn = await createRegistryClient(BASE, { token: 't-1', fetch: fetchPub }).add(new TextEncoder().encode('withdrawn S3 migration fixture'), { type: 'image/png' });
+    await db.query("UPDATE assets SET status = 'withdrawn' WHERE key = $1", [withdrawn.key]);
+    const wh = withdrawn.key.slice(3);
+    expect((await get(app, `/files/c1/${wh.slice(0, 2)}/${wh.slice(2, 4)}/${wh}`)).status).toBe(410);
+    expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('keeps private S3 libraries behind the authenticated file endpoint', async () => {
+    const { app, presignGet } = s3(false);
+    expect((await get(app, `/files/${path}`)).status).toBe(404);
+    expect((await get(app, `/files/${path}`, bearer())).status).toBe(404);
+    expect((await get(app, `/v1/files/${h}`)).status).toBe(401);
+    expect(presignGet).not.toHaveBeenCalled();
+    expect((await get(app, `/v1/files/${h}`, bearer())).status).toBe(302);
+    expect(presignGet).toHaveBeenCalledOnce();
   });
 });
 
