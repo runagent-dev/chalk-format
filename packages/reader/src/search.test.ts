@@ -41,4 +41,10 @@ describe('searchBook', () => {
     expect(h.page).toBe(1); expect(h.y).toBeCloseTo(34);
     expect(searchBook(book, '   ')).toEqual([]);
   });
+
+  it('does not find text a hidden area covers (spec 1.9 §2)', () => {
+    const marked = lesson([page('p1', { textLayer: [{ text: 'ফর্মা-২, পদার্থবিজ্ঞান', x: 60, y: 1500, width: 280, fontSize: 18 }, { text: 'পদার্থবিজ্ঞান পড়ি', x: 60, y: 200, width: 200, fontSize: 18 }], hidden: [{ x: 50, y: 1490, width: 300, height: 40, fill: '#fff' }] })]);
+    expect(searchBook(marked, 'ফর্মা')).toEqual([]);
+    expect(searchBook(marked, 'পদার্থবিজ্ঞান').map((h) => h.y)).toEqual([200]);
+  });
 });

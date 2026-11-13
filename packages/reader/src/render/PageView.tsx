@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react';
-import { getPageSize, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
+import { getPageSize, visibleTextLayer, type LessonObject, type LessonPage, type PageBackground } from '@chalk-format/model';
 import type { Book } from '../book.js';
 import { usePresenter, type Presenter } from '../present.js';
 import { useAssetSrc } from './assets.js';
@@ -31,6 +31,8 @@ export type PageViewProps = {
   /** Live embeds (a running lab, a 3D viewer) in screen pixels above the page, so they stay sharp at any zoom. */
   active?: ReactNode | undefined;
   label?: string | undefined;
+  /** The page's own number, written at its `numberSlot` (spec 1.9 §3). */
+  number?: string | undefined;
 };
 
 /**
@@ -46,8 +48,11 @@ export const PageView = memo(function PageView(p: PageViewProps) {
       {p.live && (
         <div className="chalk-page-units" style={{ width, height, transform: `scale(${p.scale})` }}>
           <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc} />
+          {/* printed marks the book hides, then its own page number: both part of the paper (spec 1.9) */}
+          {p.page.hidden?.map((a, i) => <div key={i} className="chalk-hidden" style={{ left: a.x, top: a.y, width: a.width, height: a.height, background: a.fill }} />)}
+          {p.page.numberSlot && p.number && <PageNumber slot={p.page.numberSlot} text={p.number} width={width} height={height} />}
           {/* the text layer sits on the background, under the objects: cards and players stay clickable */}
-          {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.textLayer} />}
+          {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.hidden?.length ? visibleTextLayer(p.page) : p.page.textLayer} />}
           {runs(p.page.objects, pr).map((run, i) =>
             run.kind === 'svg'
               ? <svg key={i} className="chalk-layer" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>{run.items.map((o) => <VectorObject key={o.id} o={o} book={p.book} />)}</svg>
@@ -64,6 +69,15 @@ export const PageView = memo(function PageView(p: PageViewProps) {
     </div>
   );
 });
+
+// SVG text: `y` is the baseline and text-anchor the alignment, exactly as the slot says (spec 1.9 §3)
+function PageNumber({ slot, text, width, height }: { slot: NonNullable<LessonPage['numberSlot']>; text: string; width: number; height: number }) {
+  return (
+    <svg className="chalk-layer chalk-page-number" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
+      <text x={slot.x} y={slot.y} fontSize={slot.fontSize} fill={slot.color} textAnchor={slot.align === 'end' ? 'end' : slot.align === 'center' ? 'middle' : 'start'}>{text}</text>
+    </svg>
+  );
+}
 
 type Run = { kind: 'svg'; items: LessonObject[] } | { kind: 'html'; item: LessonObject };
 // an image the author made openable (spec 1.3) is drawn as HTML, so it can be tapped
