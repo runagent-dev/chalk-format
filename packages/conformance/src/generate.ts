@@ -13,9 +13,9 @@ const T = '2026-01-01T00:00:00.000Z';
 // 1×1 transparent PNG
 const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
 
-type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5' | '1.6'; covers: string };
+type Case = { file: string; kind: 'lesson' | 'overlay'; valid: boolean; since: '1.0' | '1.1' | '1.2' | '1.3' | '1.5' | '1.6' | '1.9'; covers: string };
 const cases: Case[] = [];
-const CURRENT = '1.6';
+const CURRENT = '1.9';
 const write = (dir: 'valid' | 'invalid', name: string, bytes: Uint8Array, c: Omit<Case, 'file' | 'valid' | 'since'> & { since?: Case['since'] }) => {
   const since = c.since ?? '1.0', url = new URL(`${dir}/${name}`, ROOT);
   mkdirSync(new URL(`${dir}/`, ROOT), { recursive: true });
@@ -229,6 +229,16 @@ write('invalid', 'missing-inline-asset.chalk', await rawZip({
     { ...labObject, id: 'lab-window', poster: k.png, lab: { ...labObject.lab, entry: k.lab, assets: [k.glb] }, presentation: { open: 'window', icon: 'atom' } },
   ] })] }), media), { kind: 'lesson', since: '1.6', covers: 'open: window (the floating window) on an image, an icon image, a model, a video and a lab' });
 }
+
+// ---- 1.9: printed marks a book hides, and the page's own number ----
+write('valid', 'printed-marks.chalk', await packLesson(lesson({ pages: [1, 2].map((n) => page(`p${n}`, {
+  background: { type: 'image', assetId: png }, width: 600, height: 800,
+  textLayer: [{ text: '৯৬', x: 60, y: 38, width: 16, fontSize: 9 }, { text: 'বল', x: 300, y: 38, width: 16, fontSize: 9 }, { text: 'ফর্মা-২, পদার্থবিজ্ঞান', x: 60, y: 760, width: 140, fontSize: 9 }],
+  hidden: [{ x: 57, y: 36, width: 22, height: 16, fill: '#e3e8f4' }, { x: 57, y: 758, width: 146, height: 16, fill: '#ffffff' }],
+  ...(n === 1 ? { numberSlot: { x: 60, y: 49, fontSize: 16, align: 'start' as const, color: '#1e202b' } } : {}),
+})) }), assets), { kind: 'lesson', since: '1.9', covers: 'hidden areas over a printed number and a forme line (their runs leave selection and search), a number slot on page 1, none on page 2' });
+write('invalid', 'number-slot-align.chalk', await rawZip({ 'manifest.json': manifest({ formatVersion: 12 }), 'pages/page-1.json': JSON.stringify({ ...JSON.parse(blankPage), numberSlot: { x: 10, y: 20, fontSize: 12, align: 'left' } }) }),
+  { kind: 'lesson', since: '1.9', covers: "a number slot's align that is not start, center or end" });
 
 writeFileSync(new URL('cases.json', ROOT), JSON.stringify(cases, null, 2) + '\n');
 console.log(`${cases.length} cases → conformance/`);
