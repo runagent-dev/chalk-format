@@ -550,7 +550,9 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   useEffect(() => { if (streamed && (panel === 'search' || query)) void streamed.searchText().then(setStreamText); }, [streamed, panel, query]);
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
   const bookLocale = lesson.locale || locale;
-  const pageNumber = useCallback((i: number) => pageNumberText(i, bookLocale), [bookLocale]);
+  // a page's own label (a streamed book's index names it: "১২", "iv") is its number; else its position (spec 1.9 §3)
+  const pageLabels = useMemo(() => new Map((streamed?.index.pages ?? []).flatMap((p) => (p.label ? [[p.id, p.label] as const] : []))), [streamed]);
+  const pageNumber = useCallback((i: number) => pageNumberText(i, bookLocale, pageLabels.get(lesson.pages[i]?.id ?? '')), [bookLocale, pageLabels, lesson.pages]);
 
   // search hits on each page; the current one marked
   const byPage = useMemo(() => {
