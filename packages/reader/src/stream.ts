@@ -129,7 +129,21 @@ export async function openLibraryStreamedBook(source: LibrarySource, o: { resolv
   }, o);
 }
 
-const sha256Id = async (bytes: Uint8Array) => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+/**
+ * The version of a book's index: a key for the caches, not a check. SHA-256 where the page has `crypto.subtle`; a page served over plain
+ * http on another host (a phone on the LAN, a tailnet address) has none, so there an FNV-1a hash of the bytes stands in.
+ */
+const sha256Id = async (bytes: Uint8Array) => {
+  if (!globalThis.crypto?.subtle) return `fnv1a:${fnv1a(bytes)}`;
+  return `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer))].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+};
+
+/** 64-bit FNV-1a of the bytes, as 16 hex digits. */
+export function fnv1a(bytes: Uint8Array): string {
+  let h = 0xcbf29ce484222325n;
+  for (const b of bytes) h = BigInt.asUintN(64, (h ^ BigInt(b)) * 0x100000001b3n);
+  return h.toString(16).padStart(16, '0');
+}
 
 /** Where a streamed book's files come from: a folder of files by URL, or the items of a library. */
 type StreamFiles = {
