@@ -180,5 +180,19 @@
     "kind": "lesson",
     "since": "1.6",
     "covers": "open: window (the floating window) on an image, an icon image, a model, a video and a lab"
+  },
+  {
+    "file": "valid/printed-marks.chalk",
+    "valid": true,
+    "kind": "lesson",
+    "since": "1.9",
+    "covers": "hidden areas over a printed number and a forme line (their runs leave selection and search), a number slot on page 1, none on page 2"
+  },
+  {
+    "file": "invalid/number-slot-align.chalk",
+    "valid": false,
+    "kind": "lesson",
+    "since": "1.9",
+    "covers": "a number slot's align that is not start, center or end"
   }
 ]

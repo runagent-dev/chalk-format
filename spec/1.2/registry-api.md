@@ -170,6 +170,14 @@ pinned. It MUST NOT delete an asset any book uses, nor a current book item (spec
 this registry's assets, in order. Apps fetch this when they start and pass it to their reader as its host
 stores. It is public and cacheable.
 
+A registry whose bytes are public MAY also answer **`GET v1/files/{key}`** without a token (for apps that link one
+file by key, such as an `<img>`), with a `302` to the file in the store it names here, which the redirect may let
+any cache keep (the reference: `public, max-age=86400`, as a key's bytes never change). It MUST NOT redirect a
+private registry's readers (§7.1) to a public address, and SHOULD NOT redirect a file a browser could open there as
+a page with script (SVG; the reference pre-signs it as an attachment instead). A withdrawal (§8) reaches a reader
+only once the redirect it kept and the file its browser kept have expired, and a CDN in front of the store keeps
+the bytes until it is purged.
+
 ### 7.1 A private library's files
 
 A registry whose bytes are not public (its bucket is private) serves them only to callers with a token, and
@@ -200,7 +208,9 @@ How tokens are issued is in §10; a token "may read" when it has the `reader` ro
 ## 8. Withdrawing an asset
 
 **`POST v1/assets/{key}/withdraw`** `{ "reason" }` (privileged) sets `status: "withdrawn"`. From then on the
-registry's API store answers `410 Gone` for the key, and stores it controls SHOULD delete the bytes. The
+registry's API store answers `410 Gone` for the key, and stores it controls SHOULD delete the bytes (a cache in
+front of a public store keeps them until purged; caches it allowed to keep a redirect or a file, §7, keep them
+for as long as it allowed). The
 record is kept, so the same key cannot be uploaded again by mistake (`gone`).
 
 An adopted file (§3.1) belongs to whoever wrote it: withdrawing removes it from every store and index the registry
@@ -253,7 +263,7 @@ All are sent as `Authorization: Bearer <credential>`.
    window, or once the successor was used, the reuse revokes the family as above.
 3. **API key** (machines: CI, publishers, an app's server): an opaque string `clk_<random>`, at least 32 random
    bytes. Made by an administrator, shown once, kept as its SHA-256. It has a name and roles, records when it was
-   last used, and can be revoked.
+   last used, and can be revoked. A key MAY be allowed to act for people (§10.7).
 4. **Other tokens** the deployment configures (the reference server: `TOKENS`) MAY also be accepted.
 
 Passwords are stored with a memory-hard hash (the reference server: scrypt with a random salt per user) and
@@ -287,7 +297,8 @@ when a limit is reached.
 **`POST v1/auth/revoke`** `{ "refresh_token" }` → `200`, always: signing out ends that sign-in (its family).
 
 **`GET v1/auth/me`** → `{ "sub", "name", "roles", "kind": "user" | "api-key" | "bootstrap" }` for any valid
-credential, `401` without one.
+credential, `401` without one. A key that may act for people adds `"actFor": true`, and when the request carries
+`Chalk-Actor` (§10.7), `"actingFor": { "id", "name" }`; `name` stays the key's own.
 
 ### 10.5 Administration (`admin`)
 
@@ -297,17 +308,63 @@ credential, `401` without one.
 - **`GET v1/admin/users`** → `{ "items": [user, …] }`.
 - **`PATCH v1/admin/users/{id}`** `{ "password"?, "roles"?, "disabled"? }` → the user. Disabling a user or
   setting a new password revokes all of the user's refresh tokens.
-- **`POST v1/admin/keys`** `{ "name", "roles" }` → `201 { "id", "key", "name", "roles", … }`. `key` is never
-  shown again.
-- **`GET v1/admin/keys`** → `{ "items": [{ "id", "name", "hint", "roles", "createdBy", "createdAt", "lastUsedAt",
-  "revokedAt" }] }`; never the key.
+- **`POST v1/admin/keys`** `{ "name", "roles", "actFor"? }` → `201 { "id", "key", "name", "roles", "actFor", … }`.
+  `key` is never shown again. `actFor` (default `false`): the key may act for people (§10.7).
+- **`GET v1/admin/keys`** → `{ "items": [{ "id", "name", "hint", "roles", "actFor", "createdBy", "createdAt",
+  "lastUsedAt", "revokedAt" }] }`; never the key.
+- **`PATCH v1/admin/keys/{id}`** `{ "actFor"? }` → the key. It applies from the key's next request.
 - **`DELETE v1/admin/keys/{id}`** → `200`; the key stops working at once.
+- **`GET v1/admin/actors`** → `{ "items": [{ "id", "name", "firstSeenAt", "lastSeenAt" }] }`: everyone keys have
+  acted for (§10.7), with the latest name sent for each.
+
+A registry without user accounts (§10.8) answers `404` to the three user endpoints.
 
 ### 10.6 A private library
 
 A registry MAY require a token for reading too (the reference server: `PUBLIC_READ=false`). It then names, at
 `GET v1/stores`, a store with `"auth": "bearer"` (1.2 §5.1) for the bytes, and readers send the same bearer
 credential to it (§7.1). `GET v1/stores` itself and the discovery documents of §10.3 stay public.
+
+### 10.7 Acting for a person
+
+An app that signs in its own people (a dashboard with staff accounts) MAY call the registry with one API key and say,
+on each request, who it acts for, so the registry's records name the person and not the app. A registry MAY allow
+this; one that does MUST do it as this section says.
+
+- An administrator marks a key as one that may act for people (`actFor`, §10.5). No other credential may.
+- The app sends **`Chalk-Actor: <base64url of JSON {"id", "name"}>`** (RFC 4648 §5, padding optional). `id` is the
+  person's lasting id in the app, `staff:<id>`, or a job's, `system:<job>`; it MUST match
+  `^(staff|system):[A-Za-z0-9._:-]{1,80}$`. `name` is a display name, 1 to 120 characters after trimming white
+  space, with no control characters (Unicode `Cc`), bidirectional embeddings, overrides or isolates
+  (U+202A to U+202E, U+2066 to U+2069) and no line or paragraph separators (U+2028, U+2029).
+- From a key that may act for people, the registry records `id` wherever it records who did something (an asset's
+  `uploadedBy`; in §11, `reviewedBy` and `rectsBy`, in place of the body's `by`, which may then be left out), and
+  filters that name the caller (`mine=1`, §5) mean that person. After a change made for a person succeeds (a `2xx`
+  answer to a request other than `GET` or `HEAD`), it keeps that person's latest `name` (`GET v1/admin/actors`: the
+  people keys have acted for in a change) so screens can show a name; records keep only the id. Reads, refusals and
+  failed requests record nobody. A header that does not decode to such an object is `400 invalid`.
+- From any other caller (a key without `actFor`, a user's token, another token, no token) the header MUST be
+  refused with `403 act_for_not_allowed`, never ignored: a client set up wrong is then noticed instead of writing
+  under the wrong name. A credential that is not valid is still `401`.
+- Without the header, a key that may act for people is recorded under its own name, as any key.
+- Ids of this form are reserved for acting: a caller that is not acting for someone MUST NOT be able to record one.
+  A `by` (§11.3) that starts with `staff:` or `system:` (in any case) from such a caller is refused with
+  `400 actor_requires_act_for`.
+- One exception: **`POST import`** (§11.3) restores records as they were, so it keeps each link's own `reviewedBy`,
+  also under `Chalk-Actor`. Reviewers that start with `staff:` or `system:` are accepted there only from a key that
+  may act for people or from an `admin`; from anyone else, `400 actor_requires_act_for`.
+
+The registry trusts the app to say who its person is: such a key is as powerful as every person it can name. It is
+kept on the app's server and MUST NOT be used from a browser; a registry SHOULD NOT list `Chalk-Actor` among the
+request headers its CORS answers allow.
+
+### 10.8 Without user accounts
+
+A registry MAY run without user accounts, with API keys and its other tokens only (the reference server:
+`HUMAN_ACCOUNTS=off`), for example when the people sign in to another app that acts for them (§10.7). It then
+answers the `password` and `refresh_token` grants with `400 unsupported_grant_type`, leaves them out of
+`grant_types_supported`, answers `404` to the user endpoints of §10.5, and refuses access tokens of users it issued
+before. Discovery (§10.3) stays published.
 
 ## 11. Book highlights (optional)
 
@@ -375,7 +432,10 @@ A **link** (a question tied to a line):
 
 ### 11.3 Writing (`author`)
 
-Every write names the person (or job) in `by`, kept as `reviewedBy`. Each request is one transaction.
+Every write names the person (or job) in `by`, kept as `reviewedBy`; from a key acting for a person (§10.7), the
+person's id is kept instead and `by` may be left out (a request with no body, such as `DELETE links/{id}`, is then
+valid). A `by` that starts with `staff:` or `system:` is only for keys acting for someone: from any other caller it
+is `400 actor_requires_act_for`. Each request is one transaction.
 
 | Request | What it does |
 |---|---|
@@ -388,7 +448,7 @@ Every write names the person (or job) in `by`, kept as `reviewedBy`. Each reques
 | `POST lines/{id}/links/move` `{ to, by }` | Moves the live links of a line to another: a pair the other line has is kept (confirmed if it was rejected, `human`) and this one dropped; rejected rows stay. → `{ "moved": n }` |
 | `PUT questions/{questionId}/lines` `{ role, add: [lineId], remove: [lineId], scope?, questionType?, by }` | A question's highlight under one role (≤ 200 lines named): `add`ed lines become the person's confirmed links, `remove`d ones rejected rows (whatever they were), the kept ones the person's. → `{ "items": [link + line] }` as `GET links?question=` |
 | `POST links/place` `{ questionId, questionType?, proposals: [{ lineId, role, scope?, score?, rationale? }] }` | A matcher's suggestions, written only if the question still has no live link and no person's decision in any book; lines retired since, and lines the question already has a row on, are skipped. → `{ "placed": n }` (0: not placed) |
-| `POST import` `{ lines: [line], links: [link] }` | Copies records with their ids (moving from another system). Upsert by id. → `{ "lines", "links" }` |
+| `POST import` `{ lines: [line], links: [link] }` | Copies records with their ids (moving from another system). Upsert by id; links keep their `reviewedBy` (staff:/system: ones only from an act-for key or an `admin`, §10.7). → `{ "lines", "links" }` |
 
 Writes that touch a question (`links`, `questions/…/lines`, `place`, `move`) are serialised per question, so a matcher
 never places a question a person is tagging at the same moment.

@@ -87,6 +87,7 @@ snip). **Open a book** loads any `.chalk`; **Configure** changes the reader live
 | [1.6 Floating window](spec/1.6/README.md) | 11 (no model change) | A new `open` value, `window`: media opens in a window that floats over the page and leaves it usable |
 | [1.7 Question manifests](spec/1.7/README.md) | 11 (no model change) | A question kept in a store, so books point at it instead of copying it |
 | [1.8 Books in a library](spec/1.8/README.md) | 11 (no model change) | A streamed book kept as items of a library (index, pages, text, question links), so an app loads a whole book through one library |
+| [1.9 Printed marks and the page's own number](spec/1.9/README.md) | 12 | A page hides the printer's marks (page numbers, forme lines) and says where the reader writes its number, which follows the page's position |
 
 Each version only adds to the ones before: every valid book stays valid, and older readers still open newer books.
 [`schema/`](schema) has the JSON Schemas for readers written in other languages, and

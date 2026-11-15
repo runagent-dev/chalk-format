@@ -2,10 +2,11 @@ import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import type { Context, Hono } from 'hono';
 import { isC1Key, type StoreDescriptor } from '@chalk-format/model';
+import { standardPath } from '@chalk-format/store';
 import { assetAt, locate } from './adopt.js';
 import type { LibraryOptions } from './app.js';
 import { requireRole, type AuthVariables } from './auth/guard.js';
-import { contentDisposition, servedType, type DiskStorage } from './storage.js';
+import { contentDisposition, needsAttachment, servedType, type DiskStorage } from './storage.js';
 
 /**
  * File bytes for signed-in readers (spec/1.2/registry-api.md §7.1). With PUBLIC_READ=false the bucket is private
@@ -17,7 +18,12 @@ import { contentDisposition, servedType, type DiskStorage } from './storage.js';
  *   GET /files/*               (disk) only signed links: 403 without a valid one, 410 for a withdrawn key
  *
  * With PUBLIC_READ=true (the default) `/v1/stores` and `/files/*` are left to app.ts as they were; the two new
- * routes work too, open to anyone like the rest of a public library's reading.
+ * routes work too, open to anyone like the rest of a public library's reading. On S3, `/v1/files/{key}` then
+ * redirects to the file under PUBLIC_URL (the bucket's public domain, behind a CDN), where the store already
+ * names it, instead of pre-signing the bucket's own endpoint: the bytes come from the CDN's cache, and the
+ * redirect is kept (a day; 5 minutes for a file adopted in place). Not for an SVG (a public address sends it
+ * inline, where its script would run on that domain: it is pre-signed as an attachment), and not when
+ * PUBLIC_URL is a server's own `/files/` (the default when it is not set; only a disk library serves that).
  *
  * Code is never served as a page: HTML and JavaScript go out as `application/octet-stream` (S3: fixed in the
  * signature with `response-content-type`), and the server's own answers add `Content-Security-Policy: sandbox`
@@ -31,6 +37,13 @@ export type DeliveryOptions = {
 /** A pre-signed URL behind `GET /v1/files/{key}`, and how long the redirect to it may be kept (less, so it is never stale). */
 export const FILE_SECONDS = 5 * 60;
 export const FILE_REDIRECT_CACHE = 'private, max-age=240';
+/**
+ * A public library's redirect to PUBLIC_URL. A key's bytes never change, so the redirect to the standard path is kept a day by anyone. That
+ * is also how long a browser may still follow it after the key is withdrawn (the file itself then 404s once its object is deleted and the
+ * CDN purged). A file adopted in place may move to another copy within minutes (adopt.ts), so that redirect is kept 5 minutes.
+ */
+export const PUBLIC_REDIRECT_CACHE = 'public, max-age=86400';
+export const ADOPTED_REDIRECT_CACHE = 'public, max-age=300';
 /** A link for places that cannot send a header (the contract allows 5 to 15 minutes; a video plays from it). */
 export const LINK_SECONDS = 15 * 60;
 
@@ -57,6 +70,8 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
     return { key, path: await locate(o.db, o.storage, key), type: row.type }; // where the bytes are: the standard path, or where they were adopted
   };
   const base = (c: Context) => baseOf(c, o.serverUrl);
+  /** Where a public S3 library sends `/v1/files` readers: PUBLIC_URL, unless it is a library's own `/files/` (see above). */
+  const cdn = publicRead && !disk && !ownFiles(o.publicUrl) ? o.publicUrl.replace(/\/?$/, '/') : null;
 
   // ---- the store readers use: a private library's names this server, with a token ----
   app.get('/v1/stores', async (c, next) => {
@@ -73,6 +88,12 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
     if (disk) {
       const file = disk.file(a.path);
       return file ? serveFile(c, file, a.type, { 'Cache-Control': 'private, max-age=31536000, immutable', Vary: BY_TOKEN }) : fail(c, 404, 'not_found', 'no such asset');
+    }
+    // a public library: its bytes are already public at PUBLIC_URL (the store /v1/stores names), so send the reader there, where a CDN
+    // keeps them, and let the redirect be kept too. A private library never does (its bucket is not public; PUBLIC_URL may still answer)
+    if (cdn && !needsAttachment(a.type)) {
+      const std = a.path === standardPath(a.key);
+      return c.body(null, 302, { Location: `${cdn}${a.path.split('/').map(encodeURIComponent).join('/')}`, 'Cache-Control': std ? PUBLIC_REDIRECT_CACHE : ADOPTED_REDIRECT_CACHE });
     }
     // the bearer header is not sent on to the bucket: fetch drops Authorization on a redirect to another origin
     const { url } = await o.storage.presignGet(a.path, FILE_SECONDS, { contentType: a.type });
@@ -112,6 +133,14 @@ export function registerDelivery(app: Hono<{ Variables: AuthVariables }>, o: Lib
       ...(signed.filename ? { 'Content-Disposition': contentDisposition(signed.filename) } : {}),
     });
   });
+}
+
+/**
+ * True when PUBLIC_URL is a library server's own `/files/` (what PUBLIC_URL defaults to when it is not set: `<SERVER_URL>/files/`, or
+ * `http://localhost:<PORT>/files/` without SERVER_URL), decided from the address alone. Only a disk library serves that path.
+ */
+export function ownFiles(publicUrl: string) {
+  try { return new URL(publicUrl).pathname.replace(/\/?$/, '/') === '/files/'; } catch { return true; }
 }
 
 /** This server's public address: SERVER_URL, else the one the request reached (only X-Forwarded-Proto is taken from the request, a proxy's TLS). */

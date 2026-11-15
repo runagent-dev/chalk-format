@@ -1,4 +1,4 @@
-import type { Lesson } from '@chalk-format/model';
+import { visibleTextLayer, type Lesson } from '@chalk-format/model';
 
 /** One match: where it is (page units) and the line it is in, for the results list. */
 export type Hit = {
@@ -55,7 +55,7 @@ export function searchBook(lesson: Lesson, query: string, limit = 500): Hit[] {
   lesson.pages.forEach((page, pi) => {
     if (hits.length >= limit) return;
     const lines: { text: string; x: number; y: number; width: number; height: number }[] = [];
-    for (const r of page.textLayer ?? []) lines.push({ text: r.text, x: r.x, y: r.y, width: r.width, height: r.fontSize * 1.25 });
+    for (const r of visibleTextLayer(page)) lines.push({ text: r.text, x: r.x, y: r.y, width: r.width, height: r.fontSize * 1.25 });
     for (const o of page.objects) {
       if (o.type !== 'text') continue;
       // one line per text line; width estimated from the font size (no layout engine here)

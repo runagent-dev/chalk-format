@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Db } from '../db.js';
 import { CLOCK_SKEW_S, jwkOf, keyFromPem, kidOf, newKeyPair, signAccessToken, verifyAccessToken, type Jwk, type SigningKey } from './jwt.js';
 import { hashPassword, MAX_PASSWORD, passwordProblem, verifyPassword } from './password.js';
-import { expandRoles, type Caller, type Role } from './roles.js';
+import { expandRoles, type Actor, type Caller, type Role } from './roles.js';
 import { isSealed, keySealer, openSuccessor, sealSuccessor } from './sealed.js';
 
 /**
@@ -28,12 +28,16 @@ export type AuthOptions = {
   refreshGrace?: number;
   /** AUTH_KEY_SECRET: seals the private signing keys (at least 32 characters). */
   keySecret?: string;
+  /** HUMAN_ACCOUNTS (default true). false: users' access tokens are refused; only API keys and bootstrap tokens work. */
+  humanAccounts?: boolean;
   now?: () => number;
 };
 
 export type TokenResponse = { access_token: string; token_type: 'Bearer'; expires_in: number; refresh_token: string; roles: Role[] };
 export type UserRecord = { id: string; username: string; roles: Role[]; disabled: boolean; createdAt: string; updatedAt: string; lastSignInAt: string | null };
-export type ApiKeyRecord = { id: string; name: string; hint: string; roles: Role[]; createdBy: string | null; createdAt: string; lastUsedAt: string | null; revokedAt: string | null };
+export type ApiKeyRecord = { id: string; name: string; hint: string; roles: Role[]; actFor: boolean; createdBy: string | null; createdAt: string; lastUsedAt: string | null; revokedAt: string | null };
+/** Someone an act-for key acted for (registry-api §10.7): the id the records keep, and the latest name sent with it. */
+export type ActorRecord = { id: string; name: string; firstSeenAt: string; lastSeenAt: string };
 
 /** A request the service refuses: a status and a code for the API's error shape. */
 export class AuthError extends Error {
@@ -41,7 +45,7 @@ export class AuthError extends Error {
 }
 
 type UserRow = { id: string; username: string; password_hash: string; roles: string[]; disabled: boolean; created_at: Date | string; updated_at: Date | string; last_sign_in_at: Date | string | null };
-type KeyRow = { id: string; name: string; hint: string; roles: string[]; created_by: string | null; created_at: Date | string; last_used_at: Date | string | null; revoked_at: Date | string | null };
+type KeyRow = { id: string; name: string; hint: string; roles: string[]; act_for: boolean | null; created_by: string | null; created_at: Date | string; last_used_at: Date | string | null; revoked_at: Date | string | null };
 
 /** How often an instance re-reads the signing keys (another instance or the CLI may have rotated them). */
 const RELOAD_MS = 5 * 60_000;
@@ -53,7 +57,7 @@ const userRecord = (r: UserRow): UserRecord => ({
   createdAt: iso(r.created_at)!, updatedAt: iso(r.updated_at)!, lastSignInAt: iso(r.last_sign_in_at),
 });
 const keyRecord = (r: KeyRow): ApiKeyRecord => ({
-  id: r.id, name: r.name, hint: r.hint, roles: expandRoles(r.roles), createdBy: r.created_by,
+  id: r.id, name: r.name, hint: r.hint, roles: expandRoles(r.roles), actFor: r.act_for === true, createdBy: r.created_by,
   createdAt: iso(r.created_at)!, lastUsedAt: iso(r.last_used_at), revokedAt: iso(r.revoked_at),
 });
 export const normalizeUsername = (u: string) => u.trim().normalize('NFC').toLowerCase();
@@ -65,6 +69,9 @@ export function createAuth(o: AuthOptions) {
   const accessTtl = o.accessTtl ?? 900, refreshTtl = o.refreshTtl ?? 30 * 24 * 3600;
   const userCacheMs = o.userCacheMs ?? 10_000, refreshGrace = o.refreshGrace ?? 30;
   const now = o.now ?? Date.now;
+  const humanAccounts = o.humanAccounts !== false;
+  // actors written to the table lately (id → name and when), so a busy dashboard writes each at most once a minute
+  const actorSeen = new Map<string, { name: string; at: number }>();
   const sealer = o.keySecret ? keySealer(o.keySecret) : null;
   const needSecret = (what: string) => {
     if (!sealer) throw new AuthError(503, 'not_configured', `${what} needs AUTH_KEY_SECRET (the key that encrypts the token signing keys); set it and restart`);
@@ -264,13 +271,15 @@ export function createAuth(o: AuthOptions) {
     /** The caller a bearer token names (an access token or an API key), or null. */
     async resolve(token: string, issuer: string): Promise<Caller | null> {
       if (token.startsWith('clk_')) {
-        const k = (await db.query<{ id: string; name: string; roles: string[] }>('SELECT id, name, roles FROM auth_api_keys WHERE key_hash = $1 AND revoked_at IS NULL', [sha256(token)]))[0];
+        const k = (await db.query<{ id: string; name: string; roles: string[]; act_for: boolean }>('SELECT id, name, roles, act_for FROM auth_api_keys WHERE key_hash = $1 AND revoked_at IS NULL', [sha256(token)]))[0];
         if (!k) return null;
         // when it was last used, to the minute: not a write on every request
         void db.query("UPDATE auth_api_keys SET last_used_at = now() WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')", [k.id]).catch(() => {});
         const roles = expandRoles(k.roles);
-        return { user: k.name, sub: k.id, roles, admin: roles.includes('admin'), kind: 'api-key' };
+        return { user: k.name, sub: k.id, roles, admin: roles.includes('admin'), kind: 'api-key', ...(k.act_for ? { actFor: true } : {}) };
       }
+      // HUMAN_ACCOUNTS=off: a user's token, even one issued before, is not a credential here
+      if (!humanAccounts) return null;
       const kid = kidOf(token);
       if (!kid) return null;
       let ks = await keys();
@@ -312,13 +321,13 @@ export function createAuth(o: AuthOptions) {
     },
 
     // ---- API keys ----
-    async createApiKey(i: { name: string; roles: Role[]; createdBy?: string }): Promise<ApiKeyRecord & { key: string }> {
+    async createApiKey(i: { name: string; roles: Role[]; actFor?: boolean | undefined; createdBy?: string }): Promise<ApiKeyRecord & { key: string }> {
       const name = i.name.trim();
       if (!name || name.length > 100) throw new AuthError(400, 'invalid', 'a key needs a name (at most 100 characters)');
       const roles = expandRoles(i.roles); if (!roles.length) throw new AuthError(400, 'invalid', 'a key needs a role');
       const key = `clk_${randomBytes(32).toString('base64url')}`;
-      const rows = await db.query<KeyRow>('INSERT INTO auth_api_keys (id, name, key_hash, hint, roles, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [randomUUID(), name, sha256(key), `${key.slice(0, 8)}…`, roles, i.createdBy ?? null]);
+      const rows = await db.query<KeyRow>('INSERT INTO auth_api_keys (id, name, key_hash, hint, roles, act_for, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [randomUUID(), name, sha256(key), `${key.slice(0, 8)}…`, roles, i.actFor === true, i.createdBy ?? null]);
       return { ...keyRecord(rows[0]!), key };
     },
     async listApiKeys(): Promise<ApiKeyRecord[]> { return (await db.query<KeyRow>('SELECT * FROM auth_api_keys ORDER BY created_at')).map(keyRecord); },
@@ -326,6 +335,27 @@ export function createAuth(o: AuthOptions) {
     async revokeApiKey(id: string): Promise<boolean> {
       return (await db.query('UPDATE auth_api_keys SET revoked_at = now() WHERE id::text = $1 AND revoked_at IS NULL RETURNING id', [id])).length > 0;
     },
+    /** May the key act for people (send Chalk-Actor)? Takes effect on its next request. null: no such key. */
+    async updateApiKey(id: string, p: { actFor?: boolean }): Promise<ApiKeyRecord | null> {
+      const rows = await db.query<KeyRow>('UPDATE auth_api_keys SET act_for = COALESCE($2, act_for) WHERE id::text = $1 RETURNING *', [id, p.actFor ?? null]);
+      return rows[0] ? keyRecord(rows[0]) : null;
+    },
+
+    // ---- people act-for keys acted for (registry-api §10.7) ----
+    /** Records that an act-for key acted for `a` (its latest name, when last seen): at most once a minute per id in this process. */
+    async noteActor(a: Actor): Promise<void> {
+      const seen = actorSeen.get(a.id), t = now();
+      if (seen && seen.name === a.name && t - seen.at < 60_000) return;
+      await db.query(`INSERT INTO actors (id, name) VALUES ($1, $2)
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()`, [a.id, a.name]);
+      if (actorSeen.size > 10_000) actorSeen.clear();
+      actorSeen.set(a.id, { name: a.name, at: t });
+    },
+    async listActors(): Promise<ActorRecord[]> {
+      return (await db.query<{ id: string; name: string; first_seen_at: Date | string; last_seen_at: Date | string }>('SELECT * FROM actors ORDER BY last_seen_at DESC, id'))
+        .map((r) => ({ id: r.id, name: r.name, firstSeenAt: iso(r.first_seen_at)!, lastSeenAt: iso(r.last_seen_at)! }));
+    },
+    humanAccounts,
   };
 }
 
@@ -335,11 +365,12 @@ export function createAuth(o: AuthOptions) {
  * start only as it did before it had accounts: no users, PUBLIC_READ not false, no sealed keys. Throws a message
  * for the operator otherwise.
  */
-export async function checkKeySetup(db: Db, o: { keySecret?: string; publicRead: boolean }): Promise<void> {
+export async function checkKeySetup(db: Db, o: { keySecret?: string; publicRead: boolean; humanAccounts?: boolean }): Promise<void> {
   if (o.keySecret) { await createAuth({ db, keySecret: o.keySecret }).loadSigningKeys(); return; }
   const sealed = await db.query("SELECT 1 FROM auth_keys WHERE retired_at IS NULL AND private_key LIKE 'enc:v1:%' LIMIT 1");
   if (sealed.length) throw new Error('AUTH_KEY_SECRET is not set, but the token signing keys are encrypted with it');
-  const users = await db.query('SELECT 1 FROM auth_users LIMIT 1');
+  // HUMAN_ACCOUNTS=off: users that exist cannot sign in, so their tokens need no signing key
+  const users = o.humanAccounts === false ? [] : await db.query('SELECT 1 FROM auth_users LIMIT 1');
   if (users.length) throw new Error('AUTH_KEY_SECRET is not set: this library has user accounts, so its token signing keys must be encrypted (openssl rand -base64 32)');
   if (!o.publicRead) throw new Error('AUTH_KEY_SECRET is not set: a private library (PUBLIC_READ=false) needs it (openssl rand -base64 32)');
 }

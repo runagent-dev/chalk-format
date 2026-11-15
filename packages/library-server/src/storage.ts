@@ -46,6 +46,11 @@ export function servedType(type: string): string {
   // (a pre-signed URL makes it a download, see presignGet; disk answers send CSP: sandbox)
   return t.endsWith('+xml') && t !== 'image/svg+xml' ? 'application/octet-stream' : t;
 }
+/**
+ * True for a type a browser could open as a page with script although it is served as itself: SVG. Such a file is shown by an `<img>` but
+ * must reach a reader only with `Content-Disposition: attachment` (a pre-signed URL fixes that), never from a public address that sends none.
+ */
+export const needsAttachment = (type: string) => servedType(type) === 'image/svg+xml';
 /** `inline` with the file name, RFC 6266 / 5987 (any script). */
 export const contentDisposition = (filename: string) => `inline; filename*=UTF-8''${encodeURIComponent(filename.replace(/[\r\n"\\/]/g, '_'))}`;
 /** S3 accepts 1 s to 7 days for a pre-signed URL. */
@@ -95,8 +100,8 @@ export function s3Storage(o: S3Options): Storage {
       u.searchParams.set('response-cache-control', 'private');
       u.searchParams.set('response-expires', expiresAt.toUTCString());
       // an SVG may hold script: shown by an <img>, never opened as a page on the bucket's origin (a bucket sends no CSP)
-      const disposition = g.filename ? contentDisposition(g.filename) : type === 'image/svg+xml' ? 'inline' : null;
-      if (disposition) u.searchParams.set('response-content-disposition', type === 'image/svg+xml' ? disposition.replace(/^inline/, 'attachment') : disposition);
+      const attach = needsAttachment(type), disposition = g.filename ? contentDisposition(g.filename) : attach ? 'inline' : null;
+      if (disposition) u.searchParams.set('response-content-disposition', attach ? disposition.replace(/^inline/, 'attachment') : disposition);
       const signed = await aws.sign(new Request(u, { method: 'GET' }), { aws: { signQuery: true } });
       return { url: signed.url, expiresAt: expiresAt.toISOString() };
     },
