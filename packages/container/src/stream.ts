@@ -1,5 +1,5 @@
 import {
-  CHALK_FORMAT_VERSION, STREAM_VERSION, migrateToLatest, parseLesson, referencedAssetIds, streamIndexSchema, streamTextSchema,
+  CHALK_FORMAT_VERSION, STREAM_VERSION, migrateToLatest, parseLesson, referencedAssetIds, streamIndexSchema, streamTextSchema, visibleTextLayer,
   type AssetInfo, type Lesson, type LessonPage, type StoreDescriptor, type StreamAsset, type StreamIndex, type StreamPage, type StreamText, type TextRun,
 } from '@chalk-format/model';
 import type { AssetBundle } from './pack.js';
@@ -31,9 +31,9 @@ export function drawnAssetIds(page: LessonPage): string[] {
   return ids.filter((x): x is string => typeof x === 'string');
 }
 
-/** A page's searchable text as runs (spec 1.4 §4): its text layer and its text objects. */
+/** A page's searchable text as runs (spec 1.4 §4): its text layer without hidden runs (1.9 §2) and its text objects. */
 export function pageText(page: LessonPage): TextRun[] {
-  const runs: TextRun[] = [...(page.textLayer ?? [])];
+  const runs: TextRun[] = visibleTextLayer(page);
   for (const o of page.objects) {
     if (o.type !== 'text') continue;
     o.text.split('\n').forEach((t, i) => { if (t.trim()) runs.push({ text: t, x: o.x, y: o.y + i * o.fontSize * 1.2, width: t.length * o.fontSize * 0.55, fontSize: o.fontSize }); });

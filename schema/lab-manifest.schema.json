@@ -1,7 +1,7 @@
 {
-  "$id": "https://chalk-format.dev/schema/v11/lab-manifest.schema.json",
+  "$id": "https://chalk-format.dev/schema/v12/lab-manifest.schema.json",
   "title": "Chalk lab manifest, what a store keeps about a lab (spec 1.5 §4)",
-  "x-chalk-format-version": 11,
+  "x-chalk-format-version": 12,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {

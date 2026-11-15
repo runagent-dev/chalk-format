@@ -20,6 +20,8 @@ export type {
   LessonObject,
   PageBackground,
   TextRun,
+  HiddenArea,
+  PageNumberSlot,
   LessonPage,
   Lesson,
 } from './schema.js';

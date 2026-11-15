@@ -23,6 +23,8 @@ const PRESET = env.VITE_CHALK_LIBRARY_URL
   ? [{ url: env.VITE_CHALK_LIBRARY_URL, ...(env.VITE_CHALK_LIBRARY_NAME ? { name: env.VITE_CHALK_LIBRARY_NAME } : {}), ...(env.VITE_CHALK_LIBRARY_TOKEN ? { token: env.VITE_CHALK_LIBRARY_TOKEN } : {}) }]
   : [];
 
+// any book by its address: `?src=/samples/mine/` (a streamed folder) or `?src=/samples/mine.chalk`
+const FROM_URL = new URLSearchParams(location.search).get('src');
 // a book in a library (spec 1.8): `?library=<server>&book=<slug>[&token=<token>]` opens the current revision of that book from the library
 const query = new URLSearchParams(location.search);
 const FROM_LIBRARY: LibrarySource | null = query.get('library') && query.get('book')
@@ -36,7 +38,7 @@ const onBookLinks = (links: LibraryBookLinks | null) => { (window as unknown as 
 
 /** The showcase: pick a sample or open your own .chalk file. */
 export function App() {
-  const [source, setSource] = useState<{ key: string; src: BookSource | LibrarySource }>(FROM_LIBRARY ? { key: `library: ${FROM_LIBRARY.slug}`, src: FROM_LIBRARY } : { key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
+  const [source, setSource] = useState<{ key: string; src: BookSource | LibrarySource }>(FROM_LIBRARY ? { key: `library: ${FROM_LIBRARY.slug}`, src: FROM_LIBRARY } : FROM_URL ? { key: FROM_URL, src: FROM_URL } : { key: SAMPLES[0]!.id, src: SAMPLES[0]!.url });
   const file = useRef<HTMLInputElement>(null);
   const [config, setConfig] = useState<ReaderConfig>(BASE);
   const [configuring, setConfiguring] = useState(false);

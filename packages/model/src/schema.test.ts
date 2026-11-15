@@ -131,8 +131,8 @@ describe('CHALK_FORMAT_VERSION', () => {
     expect(CHALK_FORMAT_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 9 now that asset ids may be c1 keys (spec 1.2)', () => {
-    expect(CHALK_FORMAT_VERSION).toBe(11);
+  it('is 12 now that a page may hide printed marks and give a number slot (spec 1.9)', () => {
+    expect(CHALK_FORMAT_VERSION).toBe(12);
   });
 });
 

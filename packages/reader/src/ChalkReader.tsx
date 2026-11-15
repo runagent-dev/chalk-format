@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { LAB_MANIFEST_TYPE, getPageSize, isLabObject, labManifestSchema, labObjectFromManifest, generateId, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
+import { LAB_MANIFEST_TYPE, getPageSize, isLabObject, labManifestSchema, labObjectFromManifest, generateId, pageNumberText, type EmbedObject, type LabObject, type LessonObject, type LessonPage } from '@chalk-format/model';
 import { openBook, type AssetResolver, type Book, type BookSource } from './book.js';
 import { resolveConfig, type Fit, type Layout, type Locale, type ReaderConfig, type ReaderConfigInput } from './config.js';
 import { num, strings } from './i18n.js';
@@ -549,6 +549,8 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
   // search a streamed book with its text file: pages not loaded yet are searched by their text runs
   useEffect(() => { if (streamed && (panel === 'search' || query)) void streamed.searchText().then(setStreamText); }, [streamed, panel, query]);
   const pageLabel = useCallback((i: number) => `${t.page} ${num(locale, i + 1)}`, [t, locale]);
+  const bookLocale = lesson.locale || locale;
+  const pageNumber = useCallback((i: number) => pageNumberText(i, bookLocale), [bookLocale]);
 
   // search hits on each page; the current one marked
   const byPage = useMemo(() => {
@@ -844,7 +846,7 @@ function Reader(props: Omit<ChalkReaderProps, 'config'> & { book: Book; config: 
       <Viewer
         ref={viewer} book={book} pages={pages} layout={layout} fit={fit} zoom={zoom} zoomRange={config.zoom}
         onZoom={setZoom} onPage={changePage} page={page} renderHtmlObject={author ? renderPreview : renderHtmlObject}
-        textLayer={config.features.textSelection && !drawing && !author} gestures={!drawing} pageLabel={pageLabel} highlights={highlights}
+        textLayer={config.features.textSelection && !drawing && !author} gestures={!drawing} pageLabel={pageLabel} pageNumber={pageNumber} highlights={highlights}
         pageActive={author ? noActive : pageActive} pageOverlay={author ? authorOverlay : pageOverlay} pdfWorkerSrc={config.pdfWorkerSrc}
       />
       {modal && (

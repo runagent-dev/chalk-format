@@ -38,6 +38,8 @@ export type ViewerProps = {
   pageOverlay?: (page: LessonPage, index: number, scale: number) => ReactNode;
   pageActive?: (page: LessonPage, index: number, scale: number) => ReactNode;
   pageLabel: (index: number) => string;
+  /** The number printed on the page at its number slot (spec 1.9 §3). */
+  pageNumber?: (index: number) => string;
   pdfWorkerSrc?: string | null;
 };
 
@@ -204,7 +206,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(p, r
               <PageView
                 key={p.pages[i]!.id} book={p.book} page={p.pages[i]!} scale={scale} live={near(r)}
                 renderHtmlObject={p.renderHtmlObject} textLayer={p.textLayer} highlights={p.highlights?.(i)} pdfWorkerSrc={p.pdfWorkerSrc}
-                overlay={p.pageOverlay?.(p.pages[i]!, i, scale)} active={p.pageActive?.(p.pages[i]!, i, scale)} label={p.pageLabel(i)}
+                overlay={p.pageOverlay?.(p.pages[i]!, i, scale)} active={p.pageActive?.(p.pages[i]!, i, scale)} label={p.pageLabel(i)} number={p.pageNumber?.(i)}
               />
             ))}
           </div>

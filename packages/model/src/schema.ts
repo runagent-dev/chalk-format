@@ -22,7 +22,7 @@ import { presentationSchema } from './presentation.js';
  */
 
 /** Bumped whenever the on-disk model changes; drives migration. */
-export const CHALK_FORMAT_VERSION = 11;
+export const CHALK_FORMAT_VERSION = 12;
 
 /** Placement size for image/embed objects — `'full'` (default, absent)
  *  draws at the object's stored `width`/`height`; `'icon'` draws as a
@@ -267,6 +267,32 @@ export const textRunSchema = z.object({
   fontSize: z.number(),
 });
 
+/**
+ * A printed mark the book hides (schema v12, spec 1.9 §2): a box of the background (a page number, a
+ * printer's line, an edition mark) the reader paints over with `fill`, the paper's colour there. Text
+ * layer runs whose centre is inside it are dropped from selection and search.
+ */
+export const hiddenAreaSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+  fill: z.string(),
+});
+
+/**
+ * Where the reader writes the page's own number (schema v12, spec 1.9 §3): the page's label, or its
+ * position in the book counted from 1, so the number follows when pages are added or removed. `y` is the
+ * text's baseline; `align` says which part of the text `x` is (start = its left end, end = its right end).
+ */
+export const pageNumberSlotSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  fontSize: z.number().positive(),
+  align: z.enum(['start', 'center', 'end']),
+  color: z.string().optional(),
+});
+
 export const lessonPageSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -275,6 +301,10 @@ export const lessonPageSchema = z.object({
   width: z.number().optional(),
   height: z.number().optional(),
   textLayer: z.array(textRunSchema).optional(),
+  /** Printed marks the reader paints over (schema v12, spec 1.9 §2). */
+  hidden: z.array(hiddenAreaSchema).optional(),
+  /** Where the reader writes the page's number (schema v12, spec 1.9 §3). Absent: no number on the page. */
+  numberSlot: pageNumberSlotSchema.optional(),
 });
 
 export const lessonSchema = z.object({
@@ -316,6 +346,8 @@ export type MediaDisplayMode = z.infer<typeof mediaDisplayModeSchema>;
 export type LessonObject = z.infer<typeof lessonObjectSchema>;
 export type PageBackground = z.infer<typeof pageBackgroundSchema>;
 export type TextRun = z.infer<typeof textRunSchema>;
+export type HiddenArea = z.infer<typeof hiddenAreaSchema>;
+export type PageNumberSlot = z.infer<typeof pageNumberSlotSchema>;
 export type LessonPage = z.infer<typeof lessonPageSchema>;
 export type Lesson = z.infer<typeof lessonSchema>;
 
