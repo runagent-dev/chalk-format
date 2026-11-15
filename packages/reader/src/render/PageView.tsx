@@ -47,10 +47,12 @@ export const PageView = memo(function PageView(p: PageViewProps) {
     <div className="chalk-page" style={{ width: width * p.scale, height: height * p.scale }} aria-label={p.label} role="img">
       {p.live && (
         <div className="chalk-page-units" style={{ width, height, transform: `scale(${p.scale})` }}>
-          <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc} />
-          {/* printed marks the book hides, then its own page number: both part of the paper (spec 1.9) */}
-          {p.page.hidden?.map((a, i) => <div key={i} className="chalk-hidden" style={{ left: a.x, top: a.y, width: a.width, height: a.height, background: a.fill }} />)}
-          {p.page.numberSlot && p.number && <PageNumber slot={p.page.numberSlot} text={p.number} width={width} height={height} />}
+          {/* printed marks the book hides, then its own page number: both part of the paper (spec 1.9), so drawn inside the background's
+              box: a host that tints or blends the paper (.chalk-bg) gets them tinted the same, still covering the print under them */}
+          <Background book={p.book} bg={p.page.background} width={width} height={height} scale={p.scale} pdfWorkerSrc={p.pdfWorkerSrc}>
+            {p.page.hidden?.map((a, i) => <div key={i} className="chalk-hidden" style={{ left: a.x, top: a.y, width: a.width, height: a.height, background: a.fill }} />)}
+            {p.page.numberSlot && p.number && <PageNumber slot={p.page.numberSlot} text={p.number} width={width} height={height} />}
+          </Background>
           {/* the text layer sits on the background, under the objects: cards and players stay clickable */}
           {p.textLayer !== false && p.page.textLayer && <TextLayer runs={p.page.hidden?.length ? visibleTextLayer(p.page) : p.page.textLayer} />}
           {runs(p.page.objects, pr).map((run, i) =>
@@ -92,7 +94,7 @@ function runs(objects: readonly LessonObject[], pr: Presenter): Run[] {
   return out;
 }
 
-function Background({ book, bg, width, height, scale, pdfWorkerSrc }: { book: Book; bg: PageBackground; width: number; height: number; scale: number; pdfWorkerSrc?: string | null | undefined }) {
+function Background({ book, bg, width, height, scale, pdfWorkerSrc, children }: { book: Book; bg: PageBackground; width: number; height: number; scale: number; pdfWorkerSrc?: string | null | undefined; children?: ReactNode }) {
   const imageId = bg.type === 'image' ? bg.assetId : bg.type === 'pdf_page' ? bg.renderedImageAssetId : undefined;
   const { url, onError, onLoad } = useAssetSrc(book, imageId);
   // a PDF page with no rendered image: draw it from the PDF, at the width it is shown (rounded up to 400 px steps)
@@ -111,6 +113,7 @@ function Background({ book, bg, width, height, scale, pdfWorkerSrc }: { book: Bo
       {imageId && url && <img src={url} alt="" draggable={false} width={width} height={height} decoding="async" onError={onError} onLoad={onLoad} />}
       {pdfUrl && <img src={pdfUrl} alt="" draggable={false} width={width} height={height} decoding="async" />}
       {bg.type === 'pdf_page' && !imageId && !pdfUrl && <div className="chalk-bg-missing">PDF</div>}
+      {children}
     </div>
   );
 }
