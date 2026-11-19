@@ -59,6 +59,11 @@ const importSchema = z.object({
     score: z.number().nullable().optional(), rationale: z.string().nullable().optional(), questionType: z.string().regex(TYPE_NAME).nullable().optional(),
     reviewedBy: z.string().nullable().optional(), reviewedAt: z.string().nullable().optional(), createdAt: z.string().optional(),
   })).max(500_000),
+  /**
+   * Links of this book to delete before the rest is written. A copy of another library's highlights (a release) sends the links the source no
+   * longer has: there, two links of a question on one line were merged into one. Ids of another book are refused.
+   */
+  remove: z.array(uuid).max(500_000).optional(),
 });
 const questionsSchema = z.object({ questionIds: z.array(uuid).max(5000) });
 /** A box a person drew: on the page (page units), with a width and a type size. */
@@ -513,14 +518,17 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
     // a restore keeps each link's original reviewer (§10.7); staff:/system: reviewers only from an act-for key or an administrator
     const caller = c.get('caller') as Caller | null | undefined;
     if (!caller?.actFor && !caller?.admin && b.links.some((l) => ACTOR_LIKE.test(l.reviewedBy ?? ''))) throw notActing();
+    let removed = 0;
     await db.begin(async (q) => {
       // an id that is another book's is refused, not skipped: the answer must not count records it did not write
       const elsewhere = async (table: 'book_lines' | 'book_links', ids: string[]) =>
         ids.length ? (await q<{ id: string }>(`SELECT id FROM ${table} WHERE id = ANY($1::uuid[]) AND book <> $2 LIMIT 1`, [ids, book]))[0]?.id : undefined;
       const lineClash = await elsewhere('book_lines', b.lines.map((l) => l.id));
       if (lineClash) throw new HighlightError(409, 'conflict', `line ${lineClash} belongs to another book`);
-      const linkClash = await elsewhere('book_links', b.links.map((l) => l.id));
+      const linkClash = await elsewhere('book_links', [...b.links.map((l) => l.id), ...(b.remove ?? [])]);
       if (linkClash) throw new HighlightError(409, 'conflict', `link ${linkClash} belongs to another book`);
+      // first, so a link written below may take the (question, line, role) a removed one held
+      if (b.remove?.length) removed = (await q(`DELETE FROM book_links WHERE book = $1 AND id = ANY($2::uuid[]) RETURNING id`, [book, b.remove])).length;
       for (const part of chunks(b.lines)) {
         await q(`INSERT INTO book_lines (id, book, key, page_id, page_no, idx, block, kind, text, text_hash, chapter_no, chapter_title, section, rects, retired_at)
           SELECT x.id, $1, x.key, x."pageId", x."pageNo", x.idx, x.block, x.kind, x.text, x."textHash", x."chapterNo", x."chapterTitle", x.section, coalesce(x.rects, '[]'), x."retiredAt"
@@ -544,7 +552,7 @@ export function registerHighlights(app: Hono<{ Variables: AuthVariables }>, o: {
           WHERE book_links.book = $1`, [book, JSON.stringify(part)]);
       }
     });
-    return c.json({ lines: b.lines.length, links: b.links.length });
+    return c.json({ lines: b.lines.length, links: b.links.length, ...(b.remove ? { removed } : {}) });
   }));
 }
 

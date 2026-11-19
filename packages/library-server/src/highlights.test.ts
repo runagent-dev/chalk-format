@@ -245,6 +245,15 @@ describe('book highlights (registry-api §11)', () => {
     const again = await call('POST', '/v1/books/third-book/import', { lines: [{ ...line(3, 0), id: lineId, retiredAt: null }], links: [] });
     expect(again.status).toBe(409);
     expect(again.body.error.message).toMatch(/another book/);
+    // `remove` deletes links of the book first, so a link sent with it may take the (question, line, role) a removed one held
+    const merged = '88888888-8888-4888-8888-888888888888';
+    const mergedLink = { id: merged, questionId: Q1, lineId, role: 'answers_from', scope: 'sentence', method: 'human', status: 'confirmed' };
+    expect((await call('POST', '/v1/books/other-book/import', { lines: [], links: [mergedLink] })).status).toBeGreaterThanOrEqual(400);
+    const swapped = await call('POST', '/v1/books/other-book/import', { lines: [], links: [mergedLink], remove: [linkId] });
+    expect(swapped.body).toEqual({ lines: 0, links: 1, removed: 1 });
+    expect((await call('GET', `/v1/books/other-book/links?line=${lineId}`)).body.items.map((x: { id: string }) => x.id)).toEqual([merged]);
+    // a link of another book is not removed through this one
+    expect((await call('POST', '/v1/books/third-book/import', { lines: [], links: [], remove: [merged] })).status).toBe(409);
     // moving a line onto itself still checks the line
     expect((await call('POST', b('/lines/77777777-7777-4777-8777-777777777777/links/move'), { to: '77777777-7777-4777-8777-777777777777', by: 'x' })).status).toBe(404);
   });
