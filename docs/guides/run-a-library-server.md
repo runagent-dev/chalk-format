@@ -385,7 +385,9 @@ own name.
 is not acting for someone, is refused (`400 actor_requires_act_for`). **So every writer that names a person or a job
 needs an act-for key and sends `Chalk-Actor`**, a sync job included (`{"id":"system:library-sync","name":"Library
 sync"}`), instead of putting that id in `by`. `POST …/import` is the exception: it restores links with their
-original `reviewedBy`, and accepts `staff:`/`system:` reviewers only from an act-for key or an administrator.
+original `reviewedBy`, and accepts `staff:`/`system:` reviewers only from an act-for key or an administrator. Its optional
+`remove` (link ids of the book) deletes those links first, in the same transaction: a copy of another library's
+highlights sends the links the source no longer has (two links of a question on one line merged into one there).
 
 Such a key can write as anyone it names, so it stays on the app's server and never goes to a browser (the library
 does not allow `Chalk-Actor` in CORS). With `HUMAN_ACCOUNTS=off` the library has no accounts of its own at all:
