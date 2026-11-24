@@ -263,6 +263,12 @@ describe('HUMAN_ACCOUNTS=off', { timeout: 30_000 }, () => {
     await expect(libraryFromEnv({ DATABASE_URL: 'pglite:', HUMAN_ACCOUNTS: 'maybe' })).rejects.toThrow(/HUMAN_ACCOUNTS must be on or off/);
     const o = await libraryFromEnv({ DATABASE_URL: 'pglite:', HUMAN_ACCOUNTS: 'off' });
     expect(o.auth?.humanAccounts).toBe(false);
+    expect(o.auth?.trustProxy).toBe(false);
     await o.db.close();
+    for (const [v, want] of [['cloudflare', 'cloudflare'], ['true', true], ['false', false]] as const) {
+      const p = await libraryFromEnv({ DATABASE_URL: 'pglite:', TRUST_PROXY: v });
+      expect(p.auth?.trustProxy, v).toBe(want);
+      await p.db.close();
+    }
   }, 60_000);
 });

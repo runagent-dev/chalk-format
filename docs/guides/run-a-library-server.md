@@ -71,7 +71,7 @@ starting point. Never commit the real `.env`.
 | `AUTH_KEY_SECRET` | none | Encrypts the token signing keys in the database (AES-256-GCM), at least 32 characters: `openssl rand -base64 32`. **Required** once the library has user accounts or `PUBLIC_READ=false` (see [below](#the-signing-keys-and-auth_key_secret)). Keep it in the deployment's secret store, not in the database. |
 | `AUTH_RATE_LIMIT` | `10` | Sign-in attempts per minute and username. |
 | `AUTH_RATE_LIMIT_IP` | `60` | Requests to `/v1/auth/token` per minute and client address. Both limits are counted in each process's memory: with several instances the real limit is this times the instances, and a restart clears them. |
-| `TRUST_PROXY` | `false` | `true` behind a reverse proxy (Coolify's Traefik, nginx): the client's address is the last `X-Forwarded-For` entry. Leave it `false` when the server is reached directly, or anyone can choose their address. |
+| `TRUST_PROXY` | `false` | `true` behind a reverse proxy (Coolify's Traefik, nginx): the client's address is the last `X-Forwarded-For` entry. Leave it `false` when the server is reached directly, or anyone can choose their address. `cloudflare` behind Cloudflare (then any reverse proxy, e.g. Cloudflare → Traefik): the client's address is `CF-Connecting-IP` (falling back to the last `X-Forwarded-For` entry when it is missing); with `true` every client would share the address of a Cloudflare edge. Only when the origin is reachable through Cloudflare alone, since anyone reaching it directly can send `CF-Connecting-IP`. These addresses key the sign-in rate limit (`AUTH_RATE_LIMIT_IP`). |
 | `ORIGINS` | any | Browser origins allowed to call the API (CORS), comma separated, e.g. `https://editor.example.org`. |
 | `MAX_BYTES` | `536870912` (512 MiB) | The largest file accepted. |
 | `ADOPT_PREFIXES` | none (off) | Where in its own bucket the library adopts files in place, comma separated, e.g. `chalk-books/` (a trailing `/` is added). Never `c1/`. See [Files adopted in place](#files-adopted-in-place). |
@@ -124,8 +124,10 @@ in any script, including Bengali (no Bengali stemmer exists).
 
 The server uses only standard S3 calls: pre-signed PUT, HEAD, GET, ListObjectsV2, CopyObject and DELETE. Authors'
 browsers upload **straight to the bucket** through a pre-signed URL that is valid for 15 minutes. The bytes never
-pass through the server. Then the server reads the object back, checks its SHA-256 and size against the key, and
-only then makes it available.
+pass through the server. The URL's signature covers the announced `Content-Type` and exact `Content-Length` (both
+are in `upload.headers`), so a PUT of another type or size is refused by the bucket. Then the server reads the object
+back, checks its stored type (the one announced, or `application/octet-stream`), its SHA-256 and size against the
+key, and only then makes it available; an object that fails is deleted (`422`).
 
 What the bucket needs:
 

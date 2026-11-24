@@ -12,7 +12,7 @@ import { AwsClient } from 'aws4fetch';
  */
 export interface Storage {
   readonly id: string;
-  /** Where the author's tool uploads one object: a URL to PUT the bytes to directly, with these headers. */
+  /** Where the author's tool uploads one object: a URL to PUT the bytes to directly, with exactly these headers (S3: `Content-Type` and `Content-Length` are signed). */
   presignPut(path: string, type: string, size: number, expiresSeconds: number): Promise<{ url: string; headers: Record<string, string> }>;
   /**
    * A short-lived URL that GETs one object with no other credential (a private library's readers, spec
@@ -84,11 +84,15 @@ export function s3Storage(o: S3Options): Storage {
   const send = async (url: string, init: RequestInit = {}) => doFetch(await aws.sign(url, init) as Request);
   return {
     id: `s3:${o.bucket}`,
-    async presignPut(path, type, _size, expiresSeconds) {
+    async presignPut(path, type, size, expiresSeconds) {
       const u = new URL(objectUrl(path));
       u.searchParams.set('X-Amz-Expires', String(expiresSeconds));
-      const signed = await aws.sign(new Request(u, { method: 'PUT', headers: { 'Content-Type': type } }), { aws: { signQuery: true } });
-      return { url: signed.url, headers: { 'Content-Type': type } };
+      // the type and the exact size are part of the signature (aws4fetch leaves both out unless allHeaders): a PUT with
+      // another type (text/html, served as a page by the public domain) or another size does not match it and is refused.
+      // R2 has no POST policy, so this is how an upload is held to what was announced.
+      const headers = { 'Content-Type': type, 'Content-Length': String(size) };
+      const signed = await aws.sign(new Request(u, { method: 'PUT', headers }), { aws: { signQuery: true, allHeaders: true } });
+      return { url: signed.url, headers };
     },
     async presignGet(path, expiresSeconds, g) {
       // the response's type and name are fixed by the signature (response-* parameters), not by whoever holds the URL

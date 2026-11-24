@@ -28,7 +28,8 @@ import type { DeliveryOptions } from './delivery.js';
  *   AUTH_KEY_SECRET  at least 32 characters          (encrypts the token signing keys; needed once there are users or PUBLIC_READ=false)
  *   AUTH_RATE_LIMIT  10                              (token requests per minute and username; per process)
  *   AUTH_RATE_LIMIT_IP 60                            (token requests per minute and address; per process)
- *   TRUST_PROXY      false                           (true: the caller's address is the last X-Forwarded-For entry)
+ *   TRUST_PROXY      false                           (true: the caller's address is the last X-Forwarded-For entry;
+ *                                                    cloudflare: CF-Connecting-IP, else as true; behind Cloudflare only)
  *   ORIGINS          https://app.example.org,…       (browsers allowed to call; default any)
  *   MAX_BYTES        536870912
  *   ADOPT_PREFIXES   chalk-books/,…                  (where in its own bucket the library adopts files in place; default none: off)
@@ -75,7 +76,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       ...(refreshGrace !== undefined ? { refreshGrace } : {}),
       ...(keySecret ? { keySecret } : {}),
       rateLimit: { ...(env.AUTH_RATE_LIMIT ? { perUser: positive('AUTH_RATE_LIMIT') } : {}), ...(env.AUTH_RATE_LIMIT_IP ? { perAddress: positive('AUTH_RATE_LIMIT_IP') } : {}) },
-      trustProxy: env.TRUST_PROXY === 'true',
+      trustProxy: env.TRUST_PROXY === 'cloudflare' ? 'cloudflare' : env.TRUST_PROXY === 'true',
       humanAccounts,
     },
     ...(env.MAX_BYTES ? { maxBytes: Number(env.MAX_BYTES) } : {}),

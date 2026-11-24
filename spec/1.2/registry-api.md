@@ -55,7 +55,9 @@ The author's tool hashes the file once, then:
    The URL is normally a pre-signed URL of the store's bucket at the standard layout (1.2 §5.2), so the bytes
    go from the author's machine to the bucket directly. The registry MUST check that `key` is the c1 key of
    `sha256` and MAY refuse types or sizes it does not accept (`unsupported_type`, `too_large`).
-3. The tool uploads the bytes to `upload.url` with `upload.method` and `upload.headers`.
+3. The tool uploads the bytes to `upload.url` with `upload.method` and every one of `upload.headers`, unchanged: a
+   pre-signed URL may sign them (e.g. `Content-Type` and `Content-Length`), so a request without them, or with other
+   values, is refused by the store.
 4. **`POST v1/assets`** `{ "key", "sha256", "type", "size", "meta"?, "title"?, "tags"?, "subject"?, "license"?,
    "filename"?, "poster"?, "renditions"? }` → the asset record, `status: "available"`.
    Before it answers, the registry MUST confirm the object exists at the location with the declared size, and

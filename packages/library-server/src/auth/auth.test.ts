@@ -245,6 +245,23 @@ describe('the library as its own identity provider', { timeout: 30_000 }, () => 
     expect((await post({ grant_type: 'refresh_token', refresh_token: 'x' })).status).toBe(429);
   });
 
+  it('TRUST_PROXY=cloudflare: the address limited is CF-Connecting-IP, not the Cloudflare edge every caller shares', async () => {
+    const appWith = (trustProxy: boolean | 'cloudflare') => createLibraryApp({ db, storage: diskStorage(dir, { uploadBase: BASE }), publicUrl: `${BASE}/files/`, callers: () => null, issuer: BASE, auth: { rateLimit: { perUser: 100, perAddress: 2 }, keySecret: SECRET, trustProxy } });
+    // Cloudflare → Traefik: the last X-Forwarded-For entry is the edge that connected to Traefik
+    const from = async (app: ReturnType<typeof appWith>, client?: string) => (await app.fetch(new Request(`${BASE}/v1/auth/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `${client ?? '203.0.113.9'}, 172.68.1.1`, ...(client ? { 'CF-Connecting-IP': client } : {}) },
+      body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: 'x' }),
+    }))).status;
+    const cf = appWith('cloudflare');
+    expect([await from(cf, '198.51.100.1'), await from(cf, '198.51.100.1'), await from(cf, '198.51.100.1')]).toEqual([400, 400, 429]);
+    expect(await from(cf, '198.51.100.2')).toBe(400);
+    // without the header (not through Cloudflare): the last X-Forwarded-For entry, as TRUST_PROXY=true
+    expect([await from(cf), await from(cf), await from(cf)]).toEqual([400, 400, 429]);
+    // TRUST_PROXY=true still takes the last X-Forwarded-For entry: behind Cloudflare, every caller is the edge
+    const xff = appWith(true);
+    expect([await from(xff, '198.51.100.1'), await from(xff, '198.51.100.1'), await from(xff, '198.51.100.2')]).toEqual([400, 400, 429]);
+  });
+
   it('one role check for every route: a reader cannot write, an author cannot withdraw or manage users', async () => {
     const rita = (await tokensOf('rita', PW.rita)).access_token, arun = (await tokensOf('arun', PW.arun)).access_token, ada = (await tokensOf('ada', PW.ada)).access_token;
     const { assetKeyAndSha256 } = await import('@chalk-format/model');
