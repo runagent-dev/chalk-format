@@ -20,7 +20,9 @@ import type { DeliveryOptions } from './delivery.js';
  *   PUBLIC_URL       where readers fetch bytes: the bucket's public domain or CDN (disk: <this server>/files/)
  *   SERVER_URL       this server's own address (disk uploads and file links come here; a private library's store names it)
  *   TOKENS           name:token,name:token           (bootstrap callers: author; a name ending in ! is an administrator)
- *   PUBLIC_READ      true | false                    (search and read without a token; default true)
+ *   PUBLIC_READ      true | files | false            (without a token: true, search and read everything (default); files, only
+ *                                                    single files by key and the stores (search, records' lists and the
+ *                                                    books' lines and links need a token); false, nothing)
  *   HUMAN_ACCOUNTS   on | off                        (off: no user accounts, sign-in or refresh; API keys and TOKENS only; default on)
  *   ACCESS_TOKEN_TTL 900                             (seconds an access token lasts)
  *   REFRESH_TOKEN_TTL 2592000                        (seconds a refresh token lasts: 30 days)
@@ -61,7 +63,10 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
       uploadBase: serverUrl, ...(env.UPLOAD_SECRET ? { secret: env.UPLOAD_SECRET } : {}), ...(env.FILE_LINK_SECRET ? { linkSecret: env.FILE_LINK_SECRET } : {}),
     });
   }
-  const publicRead = env.PUBLIC_READ !== 'false';
+  const pr = env.PUBLIC_READ ?? 'true';
+  if (!['true', 'files', 'false'].includes(pr)) { await db.close(); throw new Error(`PUBLIC_READ must be true, files or false (not ${pr})`); }
+  const publicRead = pr !== 'false';
+  const publicReadScope: 'all' | 'files' = pr === 'files' ? 'files' : 'all';
   const keySecret = env.AUTH_KEY_SECRET || undefined;
   try { await checkKeySetup(db, { publicRead, humanAccounts, ...(keySecret ? { keySecret } : {}) }); } catch (e) { await db.close(); throw e; }
   return {
@@ -69,6 +74,7 @@ export async function libraryFromEnv(env: Record<string, string | undefined> = p
     publicUrl: env.PUBLIC_URL ?? `${serverUrl.replace(/\/$/, '')}/files/`,
     callers: tokenCallers(env.TOKENS ?? ''),
     publicRead,
+    publicReadScope,
     issuer: serverUrl.replace(/\/+$/, ''),
     auth: {
       ...(env.ACCESS_TOKEN_TTL ? { accessTtl: positive('ACCESS_TOKEN_TTL') } : {}),

@@ -39,6 +39,12 @@ when the server starts (or by `chalk-library migrate` with `MIGRATE_ON_START=fal
 
 ## Files from the edge: an R2 custom domain behind Cloudflare's cache
 
+`PUBLIC_READ=files` sits between the two: files stay public exactly as in a public library (the stores, `GET /v1/files/{key}`,
+one record `GET /v1/assets/{key}` and its `/link`, the bucket's public address), so a reader in a browser still fetches what a
+book names by key; searching, listing (`/v1/search`, `/v1/assets/{key}/books`, `POST /v1/assets/current`) and the books' lines,
+links and chapters (`/v1/books/…`, `/v1/highlights/…`) need a token (401 without). For a site whose books' text is sold: its
+server, dashboard and tools read with an API key (`chalk-library key add <name> --roles reader`).
+
 A public library (`PUBLIC_READ` unset or `true`) names its bucket's public address in `GET /v1/stores`
 (`PUBLIC_URL` + `c1/{h0}/{h1}/{h}`), and readers fetch files there. On S3 storage, `GET /v1/files/{key}` (the address
 apps use for a single file: an `<img>` poster, a lab's code) answers `302` to the same file under `PUBLIC_URL`,

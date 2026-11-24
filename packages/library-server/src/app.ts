@@ -23,6 +23,16 @@ import { servedType, type DiskStorage, type Storage } from './storage.js';
 
 export type { Caller } from './auth/roles.js';
 
+/**
+ * What a library with PUBLIC_READ=files answers without a token: the stores, one file and one record by its key, and that
+ * record's link. Everything else needs one: `/v1/search`, `/v1/books/…` (lines, links, chapters), `/v1/highlights/…`,
+ * `/v1/assets/{key}/books`, and every write.
+ */
+export function isFileRead(method: string, path: string): boolean {
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  return path === '/v1/stores' || /^\/v1\/files\/[^/]+$/.test(path) || /^\/v1\/assets\/[^/]+(\/link)?$/.test(path);
+}
+
 export type LibraryOptions = {
   db: Db;
   storage: Storage | DiskStorage;
@@ -33,6 +43,12 @@ export type LibraryOptions = {
   callers: (token: string) => Caller | null | Promise<Caller | null>;
   /** Searching and reading records without a token (default true: a public library). Writing always needs one. */
   publicRead?: boolean;
+  /**
+   * With `publicRead`, what a caller without a token may read (PUBLIC_READ=files): `files` lets through only what a reader in
+   * a browser fetches by a key it was given (the stores, one file, one record and its link); searching, listing records and a
+   * book's lines and links then need a token. Default `all`.
+   */
+  publicReadScope?: 'all' | 'files';
   /** This server's public base URL, the `iss` of its access tokens. Default: the address each request came to. */
   issuer?: string;
   /** The library's own users and API keys (spec/1.2/registry-api.md §10): lifetimes, rate limits, proxies. */
@@ -77,7 +93,8 @@ export function createLibraryApp(o: LibraryOptions) {
   app.use('/v1/*', cors({ origin: o.origins ?? '*', allowHeaders: ['Authorization', 'Content-Type', 'Range'], exposeHeaders: ['Content-Length', 'Content-Range'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], maxAge: 86400 }));
   // every route asks requireRole(c, 'reader' | 'author' | 'admin'); the caller is a bootstrap token, an API key or a user
   // an API key that acts for people sends Chalk-Actor (registry-api §10.7): every record below then names that person
-  app.use('/v1/*', authenticate({ publicRead: o.publicRead !== false, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)), onActor: auth.noteActor }));
+  const publicRead = o.publicRead === false ? false : o.publicReadScope === 'files' ? (c: Context) => isFileRead(c.req.method, c.req.path) : true;
+  app.use('/v1/*', authenticate({ publicRead, resolve: async (token, c) => (await o.callers(token)) ?? auth.resolve(token, issuer(c)), onActor: auth.noteActor }));
   mountAuthRoutes(app, auth, { issuer, ...o.auth });
   const body = async <T>(c: Context, schema: { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { issues: { message: string; path: PropertyKey[] }[] } } }) => {
     const r = schema.safeParse(await c.req.json().catch(() => null));
