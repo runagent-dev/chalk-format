@@ -54,11 +54,11 @@ export function parseActor(header: string): Actor | null {
  * `act_for_not_allowed`), so a client set up wrong is noticed instead of writing under the wrong name. A bearer token
  * that is not valid is left to the route (401), header or not.
  */
-export function authenticate(o: { publicRead: boolean; resolve: (token: string, c: Context) => Promise<Caller | null>; onActor?: (a: Actor) => Promise<void> }): MiddlewareHandler {
+export function authenticate(o: { publicRead: boolean | ((c: Context) => boolean); resolve: (token: string, c: Context) => Promise<Caller | null>; onActor?: (a: Actor) => Promise<void> }): MiddlewareHandler {
   return async (c, next) => {
     const h = c.req.header('authorization');
     const token = h && /^Bearer /i.test(h) ? h.slice(7).trim() : '';
-    c.set('publicRead', o.publicRead);
+    c.set('publicRead', typeof o.publicRead === 'function' ? o.publicRead(c) : o.publicRead);
     c.set('bearer', Boolean(token));
     let caller = token ? await o.resolve(token, c) : null;
     const actorHeader = c.req.header('chalk-actor');
