@@ -17,8 +17,11 @@ export type AuthRouteOptions = {
   issuer: (c: Context) => string;
   /** Token requests per minute and username (default 10) and per address (default 60). Counted in this process. */
   rateLimit?: { perUser?: number; perAddress?: number };
-  /** Take the caller's address from the last `X-Forwarded-For` entry (behind one reverse proxy). Default false. */
-  trustProxy?: boolean;
+  /**
+   * Where the caller's address comes from (default false: the connection's). true: the last `X-Forwarded-For` entry (behind
+   * one reverse proxy). 'cloudflare': `CF-Connecting-IP` (behind Cloudflare, then any reverse proxy), else as true.
+   */
+  trustProxy?: boolean | 'cloudflare';
   /** HUMAN_ACCOUNTS (default true). false: no password or refresh grants, no user administration (404). */
   humanAccounts?: boolean;
 };
@@ -33,6 +36,8 @@ export function mountAuthRoutes(app: Hono<{ Variables: AuthVariables }>, auth: A
   const humans = o.humanAccounts !== false;
   const perUser = rateLimiter(o.rateLimit?.perUser ?? 10), perAddress = rateLimiter(o.rateLimit?.perAddress ?? 60);
   const address = (c: Context) => {
+    // behind Cloudflare the last X-Forwarded-For entry is one of Cloudflare's edges, shared by many callers; it names the caller here
+    if (o.trustProxy === 'cloudflare') { const cf = c.req.header('cf-connecting-ip')?.trim(); if (cf) return cf; }
     if (o.trustProxy) { const xff = c.req.header('x-forwarded-for')?.split(',').map((s) => s.trim()).filter(Boolean); if (xff?.length) return xff.at(-1)!; }
     try { return getConnInfo(c).remote.address ?? 'unknown'; } catch { return 'unknown'; }
   };
