@@ -50,6 +50,8 @@ export type LibraryOptions = {
 export const DEFAULT_TYPES = ['image/*', 'video/*', 'audio/*', 'model/gltf-binary', 'application/pdf', 'text/html', 'text/javascript', 'application/vnd.chalk.lab+json', 'application/vnd.chalk.question+json',
   'application/vnd.chalk.book+json', 'application/vnd.chalk.page+json', 'application/vnd.chalk.text+json', 'application/vnd.chalk.links+json'];
 const UPLOAD_SECONDS = 15 * 60;
+/** The deepest page search goes to (`cursor`): 100 pages of 100. */
+const MAX_OFFSET = 10_000;
 /** The set of keys a book uses: larger than a check, since a textbook uses thousands (spec 1.8 §6.3). */
 const bookAssetsSchema = z.object({ keys: z.array(z.string().regex(C1_KEY_PATTERN)).max(20_000).optional() });
 
@@ -222,7 +224,10 @@ export function createLibraryApp(o: LibraryOptions) {
   // ---- §5 search: trigram similarity, any script; newest first without words ----
   app.get('/v1/search', async (c) => {
     const denied = requireRole(c, 'reader'); if (denied) return denied;
-    const q = c.req.query('q')?.trim(), limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 30) || 30)), offset = Number(c.req.query('cursor') ?? 0) || 0;
+    // the cursor is the offset this server gave as `next`: a small whole number, nothing else (a negative one was a 500, a huge one a long scan)
+    const cursor = c.req.query('cursor') || '0';
+    if (!/^\d{1,5}$/.test(cursor) || Number(cursor) > MAX_OFFSET) return fail(c, 400, 'invalid', `cursor: a whole number from 0 to ${MAX_OFFSET}, as the last page's next gave it`);
+    const q = c.req.query('q')?.trim(), limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 30) || 30)), offset = Number(cursor);
     const where = ["status = 'available'"], params: unknown[] = [];
     const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
     if (q) where.push(`(${p(q)} <% search_text OR search_text ILIKE ${p(`%${q.replace(/[%_\\]/g, '\\$&')}%`)})`);

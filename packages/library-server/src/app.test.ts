@@ -47,6 +47,16 @@ describe('the reference library (disk + PGlite)', () => {
     expect(await part.text()).toBe('doctype');
   });
 
+  it('search takes only a cursor it could have given: a whole number up to 10000, else 400', async () => {
+    const search = (q: string) => fetchApp(`${BASE}/v1/search?${q}`);
+    for (const q of ['', 'cursor=', 'cursor=0', 'cursor=30', 'cursor=10000', 'limit=1&cursor=1']) expect((await search(q)).status, q).toBe(200);
+    for (const q of ['cursor=-1', 'cursor=10001', 'cursor=123456', 'cursor=1e3', 'cursor=abc', 'cursor=1.5', 'cursor=%2030']) {
+      const r = await search(q);
+      expect(r.status, q).toBe(400);
+      expect(((await r.json()) as { error: { code: string } }).error.code, q).toBe('invalid');
+    }
+  });
+
   it('refuses types it does not take, and sizes over the limit', async () => {
     const post = (b: object) => fetchApp(`${BASE}/v1/uploads`, { method: 'POST', headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
     const { assetKeyAndSha256 } = await import('@chalk-format/model');
