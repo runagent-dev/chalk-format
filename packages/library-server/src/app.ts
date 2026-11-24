@@ -162,6 +162,15 @@ export function createLibraryApp(o: LibraryOptions) {
       // the bytes must be there, the size announced, and the content the key says (spec registry-api §3.4)
       const head = await storage.head(path);
       if (!head) return fail(c, 409, 'conflict', 'nothing was uploaded for this key');
+      // the bucket serves the object as the type it was written with: it must be the type declared (as served) or plain bytes,
+      // never e.g. text/html written by hand to an upload URL (as adopt.ts checks an adopted file). Its raw type is compared,
+      // not servedType's: text/html stored would pass as "plain bytes" otherwise.
+      const stored = head.type?.split(';')[0]!.trim().toLowerCase();
+      if (stored && stored !== 'application/octet-stream' && stored !== servedType(d.type)) {
+        await storage.remove(path);
+        await db.query("DELETE FROM assets WHERE key = $1 AND status = 'pending'", [d.key]);
+        return fail(c, 422, 'verification_failed', `the uploaded object is stored as ${stored}, not as ${servedType(d.type)}: upload it again with the headers the upload gave`);
+      }
       const sum = await sha256Of(storage, path);
       if (head.size !== d.size || sum !== d.sha256) {
         await storage.remove(path);

@@ -24,7 +24,10 @@ async function presignedOk(req: Request) {
   if (Date.now() > amzTime(date) + expires * 1000) return false;
   const plain = new URL(u);
   for (const k of ['X-Amz-Signature', 'X-Amz-Algorithm', 'X-Amz-Credential', 'X-Amz-Date', 'X-Amz-SignedHeaders']) plain.searchParams.delete(k);
-  const again = await aws.sign(new Request(plain, { method: req.method }), { aws: { signQuery: true, datetime: date } });
+  // as S3 does: the headers the URL signed are taken from this request (a PUT's Content-Type and Content-Length)
+  const signed = (q.get('X-Amz-SignedHeaders') ?? 'host').split(';').filter((k) => k !== 'host');
+  const headers = Object.fromEntries(signed.map((k) => [k, req.headers.get(k) ?? '']));
+  const again = await aws.sign(new Request(plain, { method: req.method, headers }), { aws: { signQuery: true, datetime: date, allHeaders: true } });
   return new URL(again.url).searchParams.get('X-Amz-Signature') === sig;
 }
 async function bucket(req: Request): Promise<Response> {
@@ -104,6 +107,60 @@ describe('presignGet on S3 storage', () => {
   });
 });
 
+describe('uploads to S3 storage', () => {
+  const upload = async (bytes: Uint8Array, type: string) => {
+    const { assetKeyAndSha256 } = await import('@chalk-format/model');
+    const k = await assetKeyAndSha256(bytes);
+    const r = await fetch(`${BASE}/v1/uploads`, { method: 'POST', headers: { ...bearer(), 'Content-Type': 'application/json' }, body: JSON.stringify({ ...k, type, size: bytes.byteLength }) });
+    expect(r.status).toBe(200);
+    const { upload: up } = (await r.json()) as { upload: { url: string; headers: Record<string, string> } };
+    return { k, up, path: `/books/c1/${k.key.slice(3, 5)}/${k.key.slice(5, 7)}/${k.key.slice(3)}` };
+  };
+  const register = (k: object, type: string, size: number) => fetch(`${BASE}/v1/assets`, { method: 'POST', headers: { ...bearer(), 'Content-Type': 'application/json' }, body: JSON.stringify({ ...k, type, size }) });
+
+  it('a pre-signed PUT signs the type and the exact size, and hands both to the uploader', async () => {
+    const s = s3Storage({ endpoint: 'https://acct.r2.cloudflarestorage.com/', bucket: 'books', ...CREDS });
+    const { url, headers } = await s.presignPut('c1/ab/cd/abcd', 'image/png', 1234, 900);
+    expect(new URL(url).searchParams.get('X-Amz-SignedHeaders')).toBe('content-length;content-type;host');
+    expect(headers).toEqual({ 'Content-Type': 'image/png', 'Content-Length': '1234' });
+  });
+
+  it('the bucket refuses a PUT with another type or another size than the one announced', async () => {
+    const bytes = new TextEncoder().encode('\x89PNG not really');
+    const { up, path } = await upload(bytes, 'image/png');
+    expect(up.headers).toEqual({ 'Content-Type': 'image/png', 'Content-Length': String(bytes.byteLength) });
+    expect((await fetch(up.url, { method: 'PUT', headers: { ...up.headers, 'Content-Type': 'text/html' }, body: bytes })).status).toBe(403);
+    expect((await fetch(up.url, { method: 'PUT', headers: { 'Content-Type': 'text/html' }, body: bytes })).status).toBe(403);
+    const longer = new TextEncoder().encode('<!doctype html><script>alert(1)</script> and more bytes');
+    expect((await fetch(up.url, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: longer })).status).toBe(403);
+    expect(objects.has(path)).toBe(false);
+    expect((await fetch(up.url, { method: 'PUT', headers: up.headers, body: bytes })).status).toBe(200);
+    expect(objects.get(path)?.type).toBe('image/png');
+  });
+
+  it('registering an object stored as another type (text/html) than declared: 422, and the object is deleted', async () => {
+    const bytes = new TextEncoder().encode('<!doctype html><script>alert(document.domain)</script>');
+    const { k, path } = await upload(bytes, 'image/png');
+    // written some other way than the signed URL (before it signed the type, or with the bucket's own keys)
+    objects.set(path, { bytes, type: 'text/html' });
+    const r = await register(k, 'image/png', bytes.byteLength);
+    expect(r.status).toBe(422);
+    expect(((await r.json()) as { error: { code: string } }).error.code).toBe('verification_failed');
+    expect(objects.has(path)).toBe(false);
+    expect((await fetch(`${BASE}/v1/assets/${k.key}`, { headers: bearer() })).status).toBe(404);
+    // declared as HTML too: the bucket would still serve it as a page, so the same
+    objects.set(path, { bytes, type: 'TEXT/HTML; charset=utf-8' });
+    await upload(bytes, 'text/html');
+    expect((await register(k, 'text/html', bytes.byteLength)).status).toBe(422);
+    expect(objects.has(path)).toBe(false);
+    // uploaded as told (HTML is written as plain bytes), it registers
+    const { up } = await upload(bytes, 'text/html');
+    expect(up.headers['Content-Type']).toBe('application/octet-stream');
+    expect((await fetch(up.url, { method: 'PUT', headers: up.headers, body: bytes })).status).toBe(200);
+    expect((await register(k, 'text/html', bytes.byteLength)).status).toBe(200);
+  });
+});
+
 describe('a private library on a private S3 bucket (PUBLIC_READ=false)', () => {
   it('the bucket itself refuses an unsigned GET', async () => {
     expect((await fetch(`${S3}/books/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`)).status).toBe(403);
@@ -169,6 +226,6 @@ describe('a private library on a private S3 bucket (PUBLIC_READ=false)', () => {
     expect(w.status).toBe(200);
     expect((await fetch(`${BASE}/v1/files/${h}`, { headers: bearer(), redirect: 'manual' })).status).toBe(410);
     expect((await fetch(`${BASE}/v1/assets/${key}/link`, { headers: bearer() })).status).toBe(410);
-    expect(objects.size).toBe(0);
+    expect(objects.has(`/books/c1/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}`)).toBe(false);
   });
 });
